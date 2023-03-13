@@ -3,6 +3,20 @@ fasterqc
 ========
 Fast FASTQ quality metrics
 
+This is a stub program which checks if good quality metrics can be generated
+using a count matrix to quickly analyse the data. It is not yet ready for
+production.
+
+Installation
+============
+
+    pip install git+https://github.com/rhpvorderman/fasterqc.git
+
+Usage
+=====
+
+    fasterqc /path/to/fastq/file > result.html
+
 License
 =======
 
