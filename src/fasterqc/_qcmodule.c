@@ -68,6 +68,120 @@ inline uint8_t phred_to_index(uint8_t phred) {
     return phred >> 2;
 }
 
+typedef struct _QCMetricsStruct {
+    PyObject_HEAD
+    PyObject *seq_name;
+    PyObject *qual_name;
+    uint8_t phred_offset;
+    counttable_t *count_tables;
+    Py_ssize_t max_length;
+    size_t number_of_reads;
+} QCMetrics;
+
+static void
+QCMetrics_dealloc(QCMetrics *self) {
+    Py_DECREF(self->seq_name);
+    Py_DECREF(self->qual_name);
+    PyMem_Free(self->count_tables);
+}
+
+static PyObject *
+QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
+    static char *kwargnames[] = {NULL};
+    static char *format = ":QCMetrics";
+    uint8_t phred_offset = 33;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+        return NULL;
+    }
+    PyObject *seq_name = PyUnicode_FromString("sequence");
+    if (seq_name == NULL) {
+        return NULL;
+    }
+    PyObject *qual_name = PyUnicode_FromString("qualities");
+    if (qual_name == NULL) {
+        return NULL;
+    }
+
+    counttable_t *count_tables = NULL;
+    QCMetrics *self = PyObject_New(QCMetrics, type);
+    self->max_length = 0;
+    self->phred_offset = phred_offset;
+    self->count_tables = NULL;
+    self->number_of_reads = 0;
+    self->seq_name = seq_name; 
+    self->qual_name = qual_name;
+}
+
+static int
+QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size) 
+{
+    counttable_t *tmp = PyMem_Realloc(
+        self->count_tables, new_size * sizeof(counttable_t)
+    );
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    self->count_tables = tmp;
+    /* Set the added part to 0 */
+    memset(self->count_tables + self->max_length, 0, 
+           (new_size - self->max_length) * sizeof(counttable_t));
+    self->max_length = new_size;
+}
+
+static PyObject * 
+QCMetrics_add_read(QCMetrics *self, PyObject *read) 
+{
+    if (Py_TYPE(read) != SequenceRecord) {
+        PyErr_Format(PyExc_TypeError, 
+                     "Read should be a dnaio.SequenceRecord object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    /* PyObject_GetAttrString creates a new unicode object every single time. 
+       Use PyObject_GetAttr to prevent this. */
+    PyObject *sequence_obj = PyObject_GetAttr(read, self->seq_name);
+    PyObject *qualities_obj = PyObject_GetAttr(read, self->qual_name);
+    /* Dnaio guarantees ASCII strings */
+    const uint8_t *sequence = PyUnicode_DATA(sequence_obj);
+    const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
+    /* Dnaio guarantees same length */
+    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    size_t i;
+    uint8_t phred_offset = self->phred_offset;
+    uint8_t c, q, c_index, q_index;
+
+    if (sequence_length > self->max_length) {
+        QCMetrics_resize(self, sequence_length);
+    }
+
+    self->number_of_reads += 1; 
+    for (i=0; i < (size_t)sequence_length; i+=1) {
+        c = sequence[i];
+        q = qualities[i] - phred_offset;
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Not a valid phred character: %c", qualities[i]
+            );
+            return NULL;
+        }
+        q_index = phred_to_index(q);
+        c_index = NUCLEOTIDE_TO_INDEX[c];
+        self->count_tables[i][q_index][c_index] += 1;
+    }
+    Py_RETURN_NONE;
+}
+
+QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PyMemoryView_FromMemory(
+        (char *)self->count_tables,
+        self->max_length * sizeof(counttable_t),
+        PyBUF_READ
+    );
+}
+
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
     "_qc",   /* name of module */
