@@ -51,6 +51,6 @@ setup(
         "pygal>=3.0.0"
     ],
     package_data={'fastqsplitter': ['*.pyx', '*.pyi', 'py.typed']},
-    ext_modules=[Extension("fasterqc._qc", ["src/fasterqc/_qc.pyx"])],
+    ext_modules=[Extension("fasterqc._qc", ["src/fasterqc/_qcmodule.c"])],
     entry_points={"console_scripts": ['fasterqc=fasterqc:main']},
 )
