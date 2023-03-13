@@ -19,6 +19,8 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 
+PyTypeObject *SequenceRecord;
+
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
     "_qc",   /* name of module */
@@ -34,6 +36,14 @@ PyInit__qc(void)
     if (m == NULL) {
         return NULL;
     }
-
+    PyObject *dnaio = PyImport_ImportModule("dnaio");
+    if (dnaio == NULL) {
+        return NULL;
+    }
+    PyTypeObject *SequenceRecord = 
+        (PyTypeObject *)PyObject_GetAttrString(dnaio, "SequenceRecord");
+    if (SequenceRecord == NULL) {
+        return NULL;
+    }
     return m;
 }
