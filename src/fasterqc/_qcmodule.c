@@ -20,7 +20,7 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 #include "Python.h"
 #include "structmember.h"
 
-PyTypeObject *SequenceRecord;
+static PyTypeObject *SequenceRecord;
 
 /* Nice trick from fastp: A,C, G, T, N all have different last three
    bits. So this requires only 8 entries per count array. Fastp performs
@@ -32,7 +32,7 @@ PyTypeObject *SequenceRecord;
    characters such as IUPAC K will map to N, unlike the fastp method where K
    will map to C. */
 
-const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
+static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 // Control characters
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -62,7 +62,7 @@ typedef uint64_t counter_t;
    next to eachother. That leads to better cache locality. */
 typedef counter_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
-inline uint8_t phred_to_index(uint8_t phred) {
+static inline uint8_t phred_to_index(uint8_t phred) {
     if (phred > PHRED_LIMIT){
         phred = PHRED_LIMIT;
     }
