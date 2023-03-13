@@ -18,6 +18,7 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
+#include "structmember.h"
 
 PyTypeObject *SequenceRecord;
 
@@ -129,6 +130,21 @@ QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size)
     self->max_length = new_size;
 }
 
+
+PyDoc_STRVAR(QCMetrics_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the count metrics. \n"
+"\n"
+"  read\n"
+"    A dnaio.SequenceRecord object.\n"
+);
+
+#define QCMETRICS_ADD_READ_METHODDEF    \
+    {"add_read", (PyCFunction)(void(*)(void))QCMetrics_add_read, METH_O, \
+     QCMetrics_add_read__doc__}
+
 static PyObject * 
 QCMetrics_add_read(QCMetrics *self, PyObject *read) 
 {
@@ -173,6 +189,18 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(QCMetrics_count_table_view__doc__,
+"count_table_view($self, /)\n"
+"--\n"
+"\n"
+"Return a memoryview on the produced count table. \n"
+);
+
+#define QCMETRICS_COUNT_TABLE_VIEW_METHODDEF    \
+    {"count_table_view", (PyCFunction)(void(*)(void))QCMetrics_add_read, \
+     METH_NOARGS, QCMetrics_add_read__doc__}
+
+static PyObject *
 QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
     return PyMemoryView_FromMemory(
@@ -181,6 +209,30 @@ QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
         PyBUF_READ
     );
 }
+
+PyMethodDef QCMetrics_methods[] = {
+    QCMETRICS_ADD_READ_METHODDEF,
+    QCMETRICS_COUNT_TABLE_VIEW_METHODDEF,
+    {NULL},
+};
+
+PyMemberDef QCMetrics_members[] = {
+    {"max_length", T_PYSSIZET, offsetof(QCMetrics, max_length), READONLY, 
+     "The length of the longest read"},
+    {"number_of_reads", T_ULONGLONG, offsetof(QCMetrics, number_of_reads), 
+     READONLY, "The total amount of reads counted"},
+    {NULL},
+};
+
+static PyTypeObject QCMetrics_Type = {
+    .tp_name = "_qc.QCMetrics",
+    .tp_basicsize = sizeof(QCMetrics),
+    .tp_dealloc = (destructor)QCMetrics_dealloc,
+    .tp_new = (newfunc)QCMetrics__new__,
+    .tp_members = QCMetrics_members, 
+    .tp_methods = QCMetrics_methods,
+};
+
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
@@ -212,5 +264,16 @@ PyInit__qc(void)
             Py_TYPE(SequenceRecord)->tp_name);
         return NULL;
     }
+
+    if (!PyType_Ready(&QCMetrics_Type)) {
+        return NULL;
+    }
+    Py_INCREF(&QCMetrics_Type);
+    if (PyModule_AddObject(m, "QCMetrics", (PyObject *)&QCMetrics_Type) != 0) {
+        return NULL;
+    }
+    PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
+    PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
+    PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
     return m;
 }
