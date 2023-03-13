@@ -16,7 +16,7 @@
 
 from pathlib import Path
 
-from setuptools import find_packages, setup
+from setuptools import Extension, find_packages, setup
 
 setup(
     name="fasterqc",
@@ -47,6 +47,10 @@ setup(
     ],
     python_requires=">=3.7",
     install_requires=[
-        "dnaio"
+        "dnaio",
+        "pygal>=3.0.0"
     ],
+    package_data={'fastqsplitter': ['*.pyx', '*.pyi', 'py.typed']},
+    ext_modules=[Extension("fasterqc._qc", ["src/fasterqc/_qc.pyx"])],
+    entry_points={"console_scripts": ['fasterqc=fasterqc:main']},
 )
