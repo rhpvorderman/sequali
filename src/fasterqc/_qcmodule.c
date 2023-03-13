@@ -256,7 +256,7 @@ PyInit__qc(void)
     if (dnaio == NULL) {
         return NULL;
     }
-    PyTypeObject *SequenceRecord = 
+    SequenceRecord = 
         (PyTypeObject *)PyObject_GetAttrString(dnaio, "SequenceRecord");
     if (SequenceRecord == NULL) {
         return NULL;
@@ -268,7 +268,7 @@ PyInit__qc(void)
         return NULL;
     }
 
-    if (!PyType_Ready(&QCMetrics_Type)) {
+    if (PyType_Ready(&QCMetrics_Type) != 0) {
         return NULL;
     }
     Py_INCREF(&QCMetrics_Type);
