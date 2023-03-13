@@ -103,7 +103,6 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
         return NULL;
     }
 
-    counttable_t *count_tables = NULL;
     QCMetrics *self = PyObject_New(QCMetrics, type);
     self->max_length = 0;
     self->phred_offset = phred_offset;
@@ -111,6 +110,7 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->number_of_reads = 0;
     self->seq_name = seq_name; 
     self->qual_name = qual_name;
+    return (PyObject *)self;
 }
 
 static int
@@ -128,6 +128,7 @@ QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size)
     memset(self->count_tables + self->max_length, 0, 
            (new_size - self->max_length) * sizeof(counttable_t));
     self->max_length = new_size;
+    return 0;
 }
 
 
@@ -168,7 +169,9 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     uint8_t c, q, c_index, q_index;
 
     if (sequence_length > self->max_length) {
-        QCMetrics_resize(self, sequence_length);
+        if (QCMetrics_resize(self, sequence_length) != 0) {
+            return NULL;
+        }
     }
 
     self->number_of_reads += 1; 
@@ -197,8 +200,8 @@ PyDoc_STRVAR(QCMetrics_count_table_view__doc__,
 );
 
 #define QCMETRICS_COUNT_TABLE_VIEW_METHODDEF    \
-    {"count_table_view", (PyCFunction)(void(*)(void))QCMetrics_add_read, \
-     METH_NOARGS, QCMetrics_add_read__doc__}
+    {"count_table_view", (PyCFunction)(void(*)(void))QCMetrics_count_table_view, \
+     METH_NOARGS, QCMetrics_count_table_view__doc__}
 
 static PyObject *
 QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
