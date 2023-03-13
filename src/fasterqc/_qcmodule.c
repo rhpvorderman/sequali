@@ -170,6 +170,8 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
+            Py_DECREF(sequence_obj);
+            Py_DECREF(qualities_obj);
             return NULL;
         }
     }
@@ -183,12 +185,16 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
                 PyExc_ValueError, 
                 "Not a valid phred character: %c", qualities[i]
             );
+            Py_DECREF(sequence_obj);
+            Py_DECREF(qualities_obj);
             return NULL;
         }
         q_index = phred_to_index(q);
         c_index = NUCLEOTIDE_TO_INDEX[c];
         self->count_tables[i][q_index][c_index] += 1;
     }
+    Py_DECREF(sequence_obj);
+    Py_DECREF(qualities_obj);
     Py_RETURN_NONE;
 }
 
