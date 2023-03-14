@@ -68,6 +68,7 @@ class QCMetricsReport:
     raw_count_matrix: array.ArrayType
     aggregated_count_matrix: array.ArrayType
     raw_sequence_lengths: array.ArrayType
+    gc_content: array.ArrayType
     _data_ranges: List[Tuple[int, int]]
     data_categories: List[str]
     max_length: int
@@ -84,6 +85,8 @@ class QCMetricsReport:
         # use from_bytes instead for direct memcpy.
         self.raw_count_matrix.frombytes(metrics.count_table_view())
         # use bytes constructor to initialize the aggregated count matrix to 0.
+        self.gc_content = array.array("Q")
+        self.gc_content.frombytes(metrics.gc_content_view())
 
         matrix = memoryview(self.raw_count_matrix)
 
@@ -284,6 +287,18 @@ class QCMetricsReport:
         plot.add("N", base_content[N], fill=True)
         return plot.render(is_unicode=True)
 
+    def per_sequence_gc_content_plot(self) -> str:
+        plot = pygal.Bar(
+            title="Per sequence GC content",
+            x_labels=range(101),
+            width=1000,
+            explicit_size=True,
+            disable_xml_declaration=True,
+        )
+        plot.add("", self.gc_content)
+        return plot.render(is_unicode=True)
+
+
     def html_report(self):
         return f"""
         <html>
@@ -315,6 +330,8 @@ class QCMetricsReport:
         {self.sequence_length_distribution_plot()}
         <h2>Base content</h2>
         {self.base_content_plot()}
+        <h2>Per sequence GC content</h2>
+        {self.per_sequence_gc_content_plot()}
         </html>
         """
 
