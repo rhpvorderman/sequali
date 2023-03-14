@@ -17,7 +17,8 @@
 import array
 import math
 import sys
-from typing import Iterator, List, Sequence, Tuple
+from collections import defaultdict
+from typing import Dict, Iterator, List, Sequence, Tuple
 
 import dnaio
 
@@ -30,6 +31,38 @@ PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
+
+
+class OverRepresentedSequencesModule:
+    sequence_counter: Dict[str, int]
+    adapters: Dict[str, str]
+    adapter_counter: Dict[str, Dict[int, int]]
+    count: int
+    overrepresentation_limit: int
+
+    def __init__(self):
+        self.sequence_counter = defaultdict(lambda: 0)
+        self.adapters = {
+            "Illumina Universal Adapter": "AGATCGGAAGAG",
+        }
+        self.adapter_counter = defaultdict(lambda: defaultdict(lambda: 0))
+        self.count = 0
+        self.overrepresentation_limit = 100_000
+
+    def add_read(self, read: dnaio.SequenceRecord):
+        self.count += 1
+        sequence = read.sequence
+        shortened_sequence = sequence[:50]
+        if self.count < self.overrepresentation_limit:
+            self.sequence_counter[shortened_sequence] += 1
+        elif shortened_sequence in self.sequence_counter:
+            self.sequence_counter[shortened_sequence] += 1
+
+        for adapter_name, adapter_sequence in self.adapters.items():
+            adapter_index = sequence.find(adapter_sequence)
+            if adapter_index == -1:
+                continue
+            self.adapter_counter[adapter_name][adapter_index] += 1
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
