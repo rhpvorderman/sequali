@@ -202,8 +202,8 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     }
     counter_t at_counts = base_counts[A] + base_counts[T];
     counter_t gc_counts = base_counts[C] + base_counts[G];
-    double gc_content = (double)at_counts / (double)(at_counts + gc_counts);
-    uint64_t gc_content_index = (uint64_t)round(gc_content);
+    double gc_content_percentage = (double)at_counts * 100 / (double)(at_counts + gc_counts);
+    uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
     self->gc_content[gc_content_index] += 1;
 
     Py_DECREF(sequence_obj);
