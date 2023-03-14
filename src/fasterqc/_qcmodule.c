@@ -21,6 +21,7 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 #include "structmember.h"
 
 #include "math.h"
+#include "score_to_error_rate.h"
 
 static PyTypeObject *SequenceRecord;
 
@@ -85,6 +86,7 @@ typedef struct _QCMetricsStruct {
     Py_ssize_t max_length;
     size_t number_of_reads;
     counter_t gc_content[101];
+    counter_t phred_scores[PHRED_MAX + 1];
 } QCMetrics;
 
 static void
@@ -119,6 +121,7 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->seq_name = seq_name; 
     self->qual_name = qual_name;
     memset(self->gc_content, 0, 101 * sizeof(counter_t));
+    memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(counter_t));
     return (PyObject *)self;
 }
 
@@ -177,6 +180,7 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     uint8_t phred_offset = self->phred_offset;
     uint8_t c, q, c_index, q_index;
     counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
+    double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
@@ -199,6 +203,7 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
         c_index = NUCLEOTIDE_TO_INDEX[c];
         self->count_tables[i][q_index][c_index] += 1;
         base_counts[c_index] += 1;
+        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
     }
     counter_t at_counts = base_counts[A] + base_counts[T];
     counter_t gc_counts = base_counts[C] + base_counts[G];
@@ -207,6 +212,13 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     assert(gc_content_index >= 0);
     assert(gc_content_index <= 100);
     self->gc_content[gc_content_index] += 1;
+
+    double average_error_rate = accumulated_error_rate / (double)sequence_length;
+    double average_phred = -10.0 * log10(average_error_rate);
+    uint64_t phred_score_index = (uint64_t)round(average_phred);
+    assert(phred_score_index >= 0);
+    assert(phred_score_index <= PHRED_MAX);
+    self->phred_scores[phred_score_index] += 1;
 
     Py_DECREF(sequence_obj);
     Py_DECREF(qualities_obj);
@@ -259,10 +271,32 @@ QCMetrics_gc_content_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
     );
 }
 
+PyDoc_STRVAR(QCMetrics_phred_scores_view__doc__,
+"phred_scores_view($self, /)\n"
+"--\n"
+"\n"
+"Return a memoryview on the produced average phred score counts. \n"
+);
+
+#define QCMETRICS_PHRED_SCORES_VIEW_METHODDEF    \
+    {"phred_scores_view", (PyCFunction)(void(*)(void))QCMetrics_phred_scores_view, \
+     METH_NOARGS, QCMetrics_phred_scores_view__doc__}
+
+static PyObject *
+QCMetrics_phred_scores_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PyMemoryView_FromMemory(
+        (char *)self->phred_scores,
+        (PHRED_MAX + 1) * sizeof(counter_t),
+        PyBUF_READ
+    );
+}
+
 PyMethodDef QCMetrics_methods[] = {
     QCMETRICS_ADD_READ_METHODDEF,
     QCMETRICS_COUNT_TABLE_VIEW_METHODDEF,
     QCMETRICS_GC_CONTENT_VIEW_METHODDEF,
+    QCMETRICS_PHRED_SCORES_VIEW_METHODDEF,
     {NULL},
 };
 
@@ -330,5 +364,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, G);
     PyModule_AddIntMacro(m, T);
     PyModule_AddIntMacro(m, N);
+    PyModule_AddIntMacro(m, PHRED_MAX);
     return m;
 }

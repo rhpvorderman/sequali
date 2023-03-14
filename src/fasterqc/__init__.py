@@ -23,7 +23,7 @@ import dnaio
 
 import pygal  # type: ignore
 
-from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, TABLE_SIZE, QCMetrics
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE, QCMetrics
 from ._qc import A, C, G, N, T 
 
 PHRED_TO_ERROR_RATE = [
@@ -69,6 +69,7 @@ class QCMetricsReport:
     aggregated_count_matrix: array.ArrayType
     raw_sequence_lengths: array.ArrayType
     gc_content: array.ArrayType
+    phred_scores: array.ArrayType
     _data_ranges: List[Tuple[int, int]]
     data_categories: List[str]
     max_length: int
@@ -84,12 +85,15 @@ class QCMetricsReport:
         # Python will treat the memoryview as an iterable in the array constructor
         # use from_bytes instead for direct memcpy.
         self.raw_count_matrix.frombytes(metrics.count_table_view())
-        # use bytes constructor to initialize the aggregated count matrix to 0.
+
         self.gc_content = array.array("Q")
         self.gc_content.frombytes(metrics.gc_content_view())
+        self.phred_scores = array.array("Q")
+        self.phred_scores.frombytes(metrics.phred_scores_view())
 
         matrix = memoryview(self.raw_count_matrix)
 
+        # use bytes constructor to initialize the aggregated count matrix to 0.
         raw_sequence_lengths = array.array("Q", bytes(8 * (self.max_length + 1)))
         raw_base_counts = array.array("Q", bytes(8 * (self.max_length + 1)))
         # All reads have at least 0 bases
@@ -297,6 +301,17 @@ class QCMetricsReport:
         )
         plot.add("", self.gc_content)
         return plot.render(is_unicode=True)
+    
+    def per_sequence_quality_scores_plot(self) -> str: 
+        plot = pygal.Bar(
+            title="Per sequence quality scores",
+            x_labels=range(PHRED_MAX + 1),
+            width=1000,
+            explicit_size=True,
+            disable_xml_declaration=True,
+        )
+        plot.add("", self.phred_scores)
+        return plot.render(is_unicode=True)
 
 
     def html_report(self):
@@ -332,6 +347,8 @@ class QCMetricsReport:
         {self.base_content_plot()}
         <h2>Per sequence GC content</h2>
         {self.per_sequence_gc_content_plot()}
+        <h2>Per sequence quality scores</h2>
+        {self.per_sequence_quality_scores_plot()}
         </html>
         """
 
