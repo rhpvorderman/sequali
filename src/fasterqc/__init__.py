@@ -319,9 +319,9 @@ class QCMetricsReport:
         <html>
         <head>
             <meta http-equiv="content-type" content="text/html:charset=utf-8">
-            <title>Cutadapt report</title>
+            <title>Fasterqc report</title>
         </head>
-        <h1>Cutadapt report</h1>
+        <h1>fasterqc report</h1>
         <h2>Summary</h2>
         <table>
         <tr><td>Mean length</td><td align="right">{self.mean_length():.2f}</td></tr>
