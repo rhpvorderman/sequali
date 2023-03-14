@@ -19,6 +19,11 @@ from dnaio import SequenceRecord
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
 NUMBER_OF_NUCS: int
+A: int 
+C: int
+G: int 
+T: int 
+N: int 
 
 class QCMetrics:
     number_of_reads: int
@@ -26,3 +31,5 @@ class QCMetrics:
     def __init__(self): ...
     def add_read(self, __read: SequenceRecord): ...
     def count_table_view(self) -> memoryview: ...
+    def gc_content_view(self) -> memoryview: ...
+    def phred_scores_view(self) -> memoryview: ...
