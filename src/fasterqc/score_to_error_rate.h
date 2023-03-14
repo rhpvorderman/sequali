@@ -1,7 +1,7 @@
 // An array holding all error rates for each phred score.
 // This file was automatically generated.
 
-static const double SCORE_TO_ERROR_RATE[128] = {
+static const double SCORE_TO_ERROR_RATE[94] = {
     1.0L,                     // 0
     0.7943282347242815L,      // 1
     0.6309573444801932L,      // 2
