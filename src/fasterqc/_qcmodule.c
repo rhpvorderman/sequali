@@ -20,6 +20,8 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 #include "Python.h"
 #include "structmember.h"
 
+#include "math.h"
+
 static PyTypeObject *SequenceRecord;
 
 /* Nice trick from fastp: A,C, G, T, N all have different last three
@@ -39,20 +41,25 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 // Interpunction numbers etc
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-//  A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
+//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
     0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
 //  P, Q, R, S, T, U, V, W, X, Y, Z,  
     0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-//  a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
+//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
     0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
 //  p, q, r, s, t, u, v, w, x, y, z, 
     0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 };
-
+#define N 0
+#define A 1
+#define C 2
+#define G 3
+#define T 4
 #define NUC_TABLE_SIZE 5
 #define PHRED_MAX 93 
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
+
 
 typedef uint64_t counter_t;
 
@@ -77,6 +84,7 @@ typedef struct _QCMetricsStruct {
     counttable_t *count_tables;
     Py_ssize_t max_length;
     size_t number_of_reads;
+    counter_t gc_content[101];
 } QCMetrics;
 
 static void
@@ -110,6 +118,7 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->number_of_reads = 0;
     self->seq_name = seq_name; 
     self->qual_name = qual_name;
+    memset(self->gc_content, 0, 101 * sizeof(counter_t));
     return (PyObject *)self;
 }
 
@@ -167,6 +176,7 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     size_t i;
     uint8_t phred_offset = self->phred_offset;
     uint8_t c, q, c_index, q_index;
+    counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
@@ -188,7 +198,14 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
         q_index = phred_to_index(q);
         c_index = NUCLEOTIDE_TO_INDEX[c];
         self->count_tables[i][q_index][c_index] += 1;
+        base_counts[c_index] += 1;
     }
+    counter_t at_counts = base_counts[A] + base_counts[T];
+    counter_t gc_counts = base_counts[C] + base_counts[G];
+    double gc_content = (double)at_counts / (double)(at_counts + gc_counts);
+    uint64_t gc_content_index = (uint64_t)round(gc_content);
+    self->gc_content[gc_content_index] += 1;
+
     Py_DECREF(sequence_obj);
     Py_DECREF(qualities_obj);
     Py_RETURN_NONE;
@@ -219,9 +236,31 @@ QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
     );
 }
 
+PyDoc_STRVAR(QCMetrics_gc_content_view__doc__,
+"gc_content_view($self, /)\n"
+"--\n"
+"\n"
+"Return a memoryview on the produced gc content counts. \n"
+);
+
+#define QCMETRICS_GC_CONTENT_VIEW_METHODDEF    \
+    {"gc_content_view", (PyCFunction)(void(*)(void))QCMetrics_gc_content_view, \
+     METH_NOARGS, QCMetrics_gc_content_view__doc__}
+
+static PyObject *
+QCMetrics_gc_content_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PyMemoryView_FromMemory(
+        (char *)self->gc_content,
+        101 * sizeof(counter_t),
+        PyBUF_READ
+    );
+}
+
 PyMethodDef QCMetrics_methods[] = {
     QCMETRICS_ADD_READ_METHODDEF,
     QCMETRICS_COUNT_TABLE_VIEW_METHODDEF,
+    QCMETRICS_GC_CONTENT_VIEW_METHODDEF,
     {NULL},
 };
 
