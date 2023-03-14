@@ -19,6 +19,11 @@ from dnaio import SequenceRecord
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
 NUMBER_OF_NUCS: int
+A: int 
+C: int
+G: int 
+T: int 
+N: int 
 
 class QCMetrics:
     number_of_reads: int

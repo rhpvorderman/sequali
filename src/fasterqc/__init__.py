@@ -24,8 +24,8 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, TABLE_SIZE, QCMetrics
+from ._qc import A, C, G, N, T 
 
-N, A, C, G, T = 0, 1, 2, 3, 4
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)

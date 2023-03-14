@@ -325,5 +325,10 @@ PyInit__qc(void)
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
     PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
+    PyModule_AddIntMacro(m, A);
+    PyModule_AddIntMacro(m, C);
+    PyModule_AddIntMacro(m, G);
+    PyModule_AddIntMacro(m, T);
+    PyModule_AddIntMacro(m, N);
     return m;
 }
