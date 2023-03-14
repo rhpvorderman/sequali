@@ -44,6 +44,11 @@ class OverRepresentedSequencesModule:
         self.sequence_counter = defaultdict(lambda: 0)
         self.adapters = {
             "Illumina Universal Adapter": "AGATCGGAAGAG",
+            "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
+            "Illumina Small RNA 5' Adapter": "GATCGTCGGACT",
+            "Nextera Transposase Sequence": "CTGTCTCTTATA",
+            "PolyA": "AAAAAAAAAAAA",
+            "PolyG": "GGGGGGGGGGGG",
         }
         self.adapter_counter = defaultdict(lambda: defaultdict(lambda: 0))
         self.count = 0
@@ -388,9 +393,11 @@ class QCMetricsReport:
 
 def main():
     metrics = QCMetrics()
+    overrepr = OverRepresentedSequencesModule()
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
+            overrepr.add_read(read)
     report = QCMetricsReport(metrics)
     print(report.html_report())
 
