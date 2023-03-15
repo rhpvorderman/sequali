@@ -58,7 +58,7 @@ class OverRepresentedSequencesModule:
         self.count += 1
         sequence = read.sequence
         shortened_sequence = sequence[:50]
-        if self.count < self.overrepresentation_limit:
+        if len(self.sequence_counter) < self.overrepresentation_limit:
             self.sequence_counter[shortened_sequence] += 1
         elif shortened_sequence in self.sequence_counter:
             self.sequence_counter[shortened_sequence] += 1
