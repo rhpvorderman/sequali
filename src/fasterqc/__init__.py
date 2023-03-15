@@ -33,43 +33,6 @@ PHRED_TO_ERROR_RATE = [
 ]
 
 
-class OverRepresentedSequencesModule:
-    sequence_counter: Dict[str, int]
-    adapters: Dict[str, str]
-    adapter_counter: Dict[str, Dict[int, int]]
-    count: int
-    overrepresentation_limit: int
-
-    def __init__(self):
-        self.sequence_counter = defaultdict(lambda: 0)
-        self.adapters = {
-            "Illumina Universal Adapter": "AGATCGGAAGAG",
-            "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
-            "Illumina Small RNA 5' Adapter": "GATCGTCGGACT",
-            "Nextera Transposase Sequence": "CTGTCTCTTATA",
-            "PolyA": "AAAAAAAAAAAA",
-            "PolyG": "GGGGGGGGGGGG",
-        }
-        self.adapter_counter = defaultdict(lambda: defaultdict(lambda: 0))
-        self.count = 0
-        self.overrepresentation_limit = 100_000
-
-    def add_read(self, read: dnaio.SequenceRecord):
-        self.count += 1
-        sequence = read.sequence
-        shortened_sequence = sequence[:50]
-        if len(self.sequence_counter) < self.overrepresentation_limit:
-            self.sequence_counter[shortened_sequence] += 1
-        elif shortened_sequence in self.sequence_counter:
-            self.sequence_counter[shortened_sequence] += 1
-
-        for adapter_name, adapter_sequence in self.adapters.items():
-            adapter_index = sequence.find(adapter_sequence)
-            if adapter_index == -1:
-                continue
-            self.adapter_counter[adapter_name][adapter_index] += 1
-
-
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
     size = length // parts
     remainder = length % parts
@@ -393,11 +356,32 @@ class QCMetricsReport:
 
 def main():
     metrics = QCMetrics()
-    overrepr = OverRepresentedSequencesModule()
+    sequence_counter = defaultdict(lambda: 0)
+    adapter_counter = defaultdict(lambda: defaultdict(lambda: 0))
+    adapters = {
+        "Illumina Universal Adapter": "AGATCGGAAGAG",
+        "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
+        "Illumina Small RNA 5' Adapter": "GATCGTCGGACT",
+        "Nextera Transposase Sequence": "CTGTCTCTTATA",
+        "PolyA": "AAAAAAAAAAAA",
+        "PolyG": "GGGGGGGGGGGG",
+    }
+    adapter_list = tuple(adapters.values())
+    overrepresentation_limit = 100_000
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
-            overrepr.add_read(read)
+            sequence = read.sequence
+            shortened_sequence = sequence[:50]
+            if len(sequence_counter) < overrepresentation_limit:
+                sequence_counter[shortened_sequence] += 1
+            elif shortened_sequence in sequence_counter:
+                sequence_counter[shortened_sequence] += 1
+            for adapter in adapter_list:
+                adapter_index = sequence.find(adapter)
+                if adapter_index == -1:
+                    continue
+                adapter_counter[adapter][adapter_index] += 1
     report = QCMetricsReport(metrics)
     print(report.html_report())
 
