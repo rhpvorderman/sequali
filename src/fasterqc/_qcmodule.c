@@ -335,7 +335,7 @@ typedef struct AdapterSequenceStruct {
 typedef struct MachineWordPatternMatcherStruct {
     bitmask_t init_mask;
     bitmask_t found_mask;
-    bitmask_t *bitmasks;
+    size_t bitmask_offset;
     AdapterSequence sequences[MAX_SEQUENCES_PER_WORD];
 } MachineWordPatternMatcher;
 
@@ -348,6 +348,7 @@ typedef struct AdapterCounterStruct {
     PyObject *adapters;
     size_t number_of_matchers;
     MachineWordPatternMatcher *matchers;
+    bitmask_t *bitmasks;
 } AdapterCounter;
 
 static void AdapterCounter_dealloc(AdapterCounter *self) {
@@ -357,6 +358,20 @@ static void AdapterCounter_dealloc(AdapterCounter *self) {
     }
     PyMem_Free(self->adapter_counter);
     PyMem_Free(self->matchers);
+}
+
+static void
+populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length) 
+{
+    for (size_t i=0; i < word_length; i++) {
+        char c = word[i];
+        if (c == 0) {
+            continue;
+        }
+        /* Match both upper and lowercase */
+        bitmask[toupper(c)] = 1 << i;
+        bitmask[tolower(c)] = 1 << i;
+    }
 }
 
 static PyObject *
@@ -372,15 +387,17 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         &adapter_iterable)) {
         return NULL;
     } 
-    adapters = PySequence_Fast(
-        adapter_iterable, 
-        "Expected an iterable of adapter sequences");
+    adapters = PySequence_Tuple(adapter_iterable);
     if (adapters == NULL) {
         return NULL;
     }
-    size_t number_of_adapters = PySequence_Fast_GET_SIZE(adapters);
+    size_t number_of_adapters = PyTuple_GET_SIZE(adapters);
+    if (number_of_adapters < 1) {
+        PyErr_SetString(PyExc_ValueError, "At least one adapter is expected");
+        goto error;
+    } 
     for (size_t i=0; i < number_of_adapters; i++) {
-        PyObject *adapter = PySequence_Fast_GET_ITEM(adapters, i);
+        PyObject *adapter = PyTuple_GET_ITEM(adapters, i);
         if (!PyUnicode_CheckExact(adapter)) {
             PyErr_Format(PyExc_TypeError, 
                          "All adapter sequences must be of type str, "
@@ -393,14 +410,87 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                          adapter);
             goto error;
         }
-        if (PyUnicode_GET_SIZE(adapter) > MAX_SEQUENCE_SIZE) {
+        if (PyUnicode_GET_LENGTH(adapter) > MAX_SEQUENCE_SIZE) {
             PyErr_Format(PyExc_ValueError, 
                          "Maximum adapter size is %d, got %zd for %R", 
-                         MAX_SEQUENCE_SIZE, PyUnicode_GET_SIZE(adapter), adapter);
+                         MAX_SEQUENCE_SIZE, PyUnicode_GET_LENGTH(adapter), adapter);
             goto error;
         }
     }
-    AdapterCounter *self = PyObject_New(AdapterCounter, type);
+    self = PyObject_New(AdapterCounter, type);
+    counter_t **counter_tmp = PyMem_Malloc(sizeof(counter_t *) * number_of_adapters);
+    if (counter_tmp == NULL) {
+        PyErr_NoMemory();
+        goto error;
+    }
+    memset(counter_tmp, 0, sizeof(counter_t *) * number_of_adapters);
+    self->adapter_counter = counter_tmp;
+    self->adapter_counter = NULL;
+    self->adapters = NULL;
+    self->matchers = NULL;
+    self->bitmasks = NULL;
+    self->max_length = 0;
+    self->number_of_adapters = number_of_adapters;
+    self->number_of_matchers = 0;
+    self->number_of_sequences = 0;
+    size_t adapter_index = 0;
+    size_t matcher_index = 0;
+    PyObject *adapter;
+    Py_ssize_t adapter_length;
+    char machine_word[64];
+    matcher_index = 0;
+    size_t bitmask_offset = 0;
+    while(adapter_index < number_of_adapters) {
+        self->number_of_matchers += 1; 
+        MachineWordPatternMatcher *tmp = PyMem_Realloc(
+            self->matchers, sizeof(MachineWordPatternMatcher) * self->number_of_matchers);
+        if (tmp == NULL) {
+            PyErr_NoMemory();
+            goto error;
+        }
+        self->matchers = tmp;
+        memset(self->matchers + matcher_index, 0, sizeof(MachineWordPatternMatcher));
+        bitmask_t *bitmask_tmp = PyMem_Realloc(self->bitmasks, sizeof(bitmask_t) * BITMASK_INDEX_SIZE * self->number_of_matchers);
+        if (bitmask_tmp == NULL) {
+            PyErr_NoMemory();
+            goto error;
+        }
+        self->bitmasks = bitmask_tmp;
+        memset(self->bitmasks + bitmask_offset, 0, BITMASK_INDEX_SIZE * sizeof(bitmask_t));
+        self->matchers[matcher_index].bitmask_offset = bitmask_offset;
+        bitmask_t found_mask = 0;
+        bitmask_t init_mask = 0;
+        size_t adapter_in_word_index = 0; 
+        size_t word_index = 0;
+        memset(machine_word, 0, 64);
+        while (adapter_index < number_of_adapters) {
+            adapter = PyTuple_GET_ITEM(adapters, adapter_index); 
+            adapter_length = PyUnicode_GET_LENGTH(adapter);
+            if ((word_index + adapter_length + 1) > 64 || adapter_in_word_index > MAX_SEQUENCES_PER_WORD) {
+                break;
+            }
+            memcpy(machine_word + word_index, PyUnicode_DATA(adapter), adapter_length);
+            init_mask |= (1 << word_index);
+            word_index += adapter_length; 
+            machine_word[word_index] = 0;
+            AdapterSequence adapter_sequence = {
+                .adapter_index = adapter_index,
+                .adapter_length = adapter_length,
+                .found_mask = 1 << word_index,
+            };
+            self->matchers[matcher_index].sequences[adapter_in_word_index] = adapter_sequence;
+            found_mask |= adapter_sequence.found_mask;
+            word_index += 1;
+            adapter_in_word_index += 1;
+            adapter_index += 1;
+       }
+       populate_bitmask(self->bitmasks + bitmask_offset, machine_word, word_index);
+       self->matchers[matcher_index].found_mask = found_mask;
+       self->matchers[matcher_index].init_mask = init_mask;
+       matcher_index += 1;
+    }
+    self->adapters = adapters;
+    return (PyObject *)self;
 
 error:
     Py_XDECREF(adapters);
