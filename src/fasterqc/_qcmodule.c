@@ -321,6 +321,9 @@ static PyTypeObject QCMetrics_Type = {
    allocate enough memory per MachineWordPatternMatcher rather than resizing 
    that dynamically as well */
 #define MAX_SEQUENCES_PER_WORD 8
+#define MAX_SEQUENCE_SIZE 63
+/* ASCII only so max index is 127 */
+#define BITMASK_INDEX_SIZE 128
 typedef uint64_t bitmask_t;
 
 typedef struct AdapterSequenceStruct {
@@ -356,6 +359,54 @@ static void AdapterCounter_dealloc(AdapterCounter *self) {
     PyMem_Free(self->matchers);
 }
 
+static PyObject *
+AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    static char *kwargnames[] = {"", NULL};
+    static char *format = "O:AdapterCounter";
+    PyObject *adapter_iterable = NULL;
+    PyObject *adapters = NULL; 
+    AdapterCounter *self = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
+        &adapter_iterable)) {
+        return NULL;
+    } 
+    adapters = PySequence_Fast(
+        adapter_iterable, 
+        "Expected an iterable of adapter sequences");
+    if (adapters == NULL) {
+        return NULL;
+    }
+    size_t number_of_adapters = PySequence_Fast_GET_SIZE(adapters);
+    for (size_t i=0; i < number_of_adapters; i++) {
+        PyObject *adapter = PySequence_Fast_GET_ITEM(adapters, i);
+        if (!PyUnicode_CheckExact(adapter)) {
+            PyErr_Format(PyExc_TypeError, 
+                         "All adapter sequences must be of type str, "
+                         "got %s, for %R", Py_TYPE(adapter)->tp_name, adapter);
+            goto error;
+        }
+        if (!PyUnicode_IS_COMPACT_ASCII(adapter)) {
+            PyErr_Format(PyExc_ValueError,
+                         "Adapter must contain only ASCII characters: %R", 
+                         adapter);
+            goto error;
+        }
+        if (PyUnicode_GET_SIZE(adapter) > MAX_SEQUENCE_SIZE) {
+            PyErr_Format(PyExc_ValueError, 
+                         "Maximum adapter size is %d, got %zd for %R", 
+                         MAX_SEQUENCE_SIZE, PyUnicode_GET_SIZE(adapter), adapter);
+            goto error;
+        }
+    }
+    AdapterCounter *self = PyObject_New(AdapterCounter, type);
+
+error:
+    Py_XDECREF(adapters);
+    Py_XDECREF(self);
+    return NULL;
+}
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
