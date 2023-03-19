@@ -317,6 +317,45 @@ static PyTypeObject QCMetrics_Type = {
     .tp_methods = QCMetrics_methods,
 };
 
+/* Limit the number of sequences per machine word. So we can statically 
+   allocate enough memory per MachineWordPatternMatcher rather than resizing 
+   that dynamically as well */
+#define MAX_SEQUENCES_PER_WORD 8
+typedef uint64_t bitmask_t;
+
+typedef struct AdapterSequenceStruct {
+    size_t adapter_index;
+    size_t adapter_length;
+    bitmask_t found_mask;    
+} AdapterSequence; 
+
+typedef struct MachineWordPatternMatcherStruct {
+    bitmask_t init_mask;
+    bitmask_t found_mask;
+    bitmask_t *bitmasks;
+    AdapterSequence sequences[MAX_SEQUENCES_PER_WORD];
+} MachineWordPatternMatcher;
+
+typedef struct AdapterCounterStruct {
+    PyObject_HEAD
+    size_t number_of_adapters;
+    size_t max_length;
+    size_t number_of_sequences;
+    counter_t **adapter_counter;
+    PyObject *adapters;
+    size_t number_of_matchers;
+    MachineWordPatternMatcher *matchers;
+} AdapterCounter;
+
+static void AdapterCounter_dealloc(AdapterCounter *self) {
+    Py_XDECREF(self->adapters);
+    for (size_t i=0; i < self->number_of_adapters; i++) {
+        PyMem_Free(self->adapter_counter[i]);
+    }
+    PyMem_Free(self->adapter_counter);
+    PyMem_Free(self->matchers);
+}
+
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
