@@ -521,7 +521,7 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     }
     size_t old_size = self->max_length;
     for (size_t i=0; i < self->number_of_adapters; i++) {
-        counter_t *tmp = PyMem_Realloc(self->adapter_counter + i,
+        counter_t *tmp = PyMem_Realloc(self->adapter_counter[i],
                                        new_size * sizeof(counter_t));
         if (tmp == NULL) {
             PyErr_NoMemory();
@@ -627,7 +627,6 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
     }
     for (size_t i=0; i < self->number_of_adapters; i++) {
         PyObject *tup = PyTuple_New(2);
-        PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
         Py_buffer buf = {
             .buf = self->adapter_counter[i],
             .obj = NULL,
@@ -641,6 +640,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         if (view == NULL) {
             return NULL;
         }
+        PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
         Py_INCREF(adapter);
         PyTuple_SET_ITEM(tup, 0, adapter);
         PyTuple_SET_ITEM(tup, 1, view);
