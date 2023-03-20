@@ -25,6 +25,7 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE, QCMetrics
+from ._qc import AdapterCounter
 from ._qc import A, C, G, N, T 
 
 PHRED_TO_ERROR_RATE = [
