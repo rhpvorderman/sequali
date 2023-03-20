@@ -511,6 +511,38 @@ error:
     return NULL;
 }
 
+
+PyDoc_STRVAR(AdapterCounter_add_sequence__doc__,
+"add_sequence($self, sequence, /)\n"
+"--\n"
+"\n"
+"Add a sequence to the adapter counter. \n"
+"\n"
+"  sequence\n"
+"    An ASCII string containing the sequence.\n"
+);
+
+#define ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF    \
+    {"add_sequence", (PyCFunction)(void(*)(void))AdapterCounter_add_sequence, \
+    METH_O, AdapterCounter_add_sequence__doc__}
+
+static PyObject *
+AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj) 
+{
+    if (!PyUnicode_CheckExact(sequence_obj)) {
+        PyErr_Format(PyExc_TypeError, "sequence should be a str, got %s", 
+                     Py_TYPE(sequence_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "Sequence should only contain ASCII characters: %R",
+                     sequence_obj);
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
     "_qc",   /* name of module */
