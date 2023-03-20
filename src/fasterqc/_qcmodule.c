@@ -499,7 +499,7 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         populate_bitmask(self->bitmasks + bitmask_offset, machine_word, word_index);
         matcher->found_mask = found_mask;
         matcher->init_mask = init_mask;
-        matcher->number_of_sequences = adapter_in_word_index + 1;
+        matcher->number_of_sequences = adapter_in_word_index;
         matcher->bitmask_offset = bitmask_offset;
         matcher_index += 1;
         bitmask_offset += BITMASK_INDEX_SIZE;
