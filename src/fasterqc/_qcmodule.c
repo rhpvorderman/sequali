@@ -355,8 +355,10 @@ typedef struct AdapterCounterStruct {
 
 static void AdapterCounter_dealloc(AdapterCounter *self) {
     Py_XDECREF(self->adapters);
-    for (size_t i=0; i < self->number_of_adapters; i++) {
-        PyMem_Free(self->adapter_counter[i]);
+    if (self->adapter_counter != NULL) {
+        for (size_t i=0; i < self->number_of_adapters; i++) {
+            PyMem_Free(self->adapter_counter[i]);
+        }
     }
     PyMem_Free(self->adapter_counter);
     for (size_t i=0; i < self->number_of_matchers; i++) {
