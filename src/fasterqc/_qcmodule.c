@@ -478,13 +478,13 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                 break;
             }
             memcpy(machine_word + word_index, PyUnicode_DATA(adapter), adapter_length);
-            init_mask |= (1 << word_index);
+            init_mask |= (1ULL << word_index);
             word_index += adapter_length; 
             machine_word[word_index] = 0;
             AdapterSequence adapter_sequence = {
                 .adapter_index = adapter_index,
                 .adapter_length = adapter_length,
-                .found_mask = 1 << word_index,
+                .found_mask = 1ULL << word_index,
             };
             AdapterSequence *adapt_tmp = PyMem_Realloc(matcher->sequences, (adapter_in_word_index + 1) * sizeof(AdapterSequence)); 
             if (adapt_tmp == NULL) {
