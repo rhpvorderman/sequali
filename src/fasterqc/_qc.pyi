@@ -19,6 +19,7 @@ from dnaio import SequenceRecord
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
 NUMBER_OF_NUCS: int
+PHRED_MAX: int
 A: int 
 C: int
 G: int 
