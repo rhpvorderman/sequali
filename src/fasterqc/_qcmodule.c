@@ -519,6 +519,7 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     if (self->max_length >= new_size) {
         return 0;
     }
+    size_t old_size = self->max_length;
     for (size_t i=0; i < self->number_of_adapters; i++) {
         counter_t *tmp = PyMem_Realloc(self->adapter_counter + i,
                                        new_size * sizeof(counter_t));
@@ -527,6 +528,8 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
             return -1;
         }
         self->adapter_counter[i] = tmp;
+        memset(self->adapter_counter[i] + old_size, 0,
+               (new_size - old_size) * sizeof(counter_t));
     }
     self->max_length = new_size;
     return 0;
@@ -613,6 +616,10 @@ PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 static PyObject *
 AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 {
+    if (self->number_of_sequences < 1) {
+        PyErr_SetString(PyExc_ValueError, "No sequences were counted yet.");
+        return NULL;
+    }
     PyObject *counts_list = PyList_New(self->number_of_adapters);
     if (counts_list == NULL) {
         PyErr_NoMemory();
@@ -631,6 +638,9 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
             .ndim = 1,
         };
         PyObject *view = PyMemoryView_FromBuffer(&buf);
+        if (view == NULL) {
+            return NULL;
+        }
         Py_INCREF(adapter);
         PyTuple_SET_ITEM(tup, 0, adapter);
         PyTuple_SET_ITEM(tup, 1, view);

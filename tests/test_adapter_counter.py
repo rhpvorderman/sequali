@@ -47,3 +47,25 @@ def test_adapter_count_init_too_long():
         AdapterCounter(["A" * 31, "A" * 64])
     error.match("64")
     error.match("63")
+
+
+def test_adapter_counter_matcher():
+    counter = AdapterCounter(["singing", "rain", "train"])
+    # Only first match should be counted.
+    sequence = ("I'm singing in the rain, just singing in the rain\n"
+                "What a glorious feeling, I'm happy again")
+    counter.add_sequence(sequence)
+    counts = counter.get_counts()
+    assert counts[0][0] == "singing"
+    assert counts[1][0] == "rain"
+    assert counts[2][0] == "train"
+    singing_list = counts[0][1].tolist()
+    assert len(singing_list) == len(sequence)
+    assert singing_list[sequence.find("singing")] == 1
+    rain_list = counts[1][1].tolist()
+    assert len(rain_list) == len(sequence)
+    assert rain_list[sequence.find("rain")] == 1
+    assert sum(singing_list) == 1
+    assert sum(rain_list) == 1
+    train_list = counts[2][1].tolist()
+    assert sum(train_list) == 0
