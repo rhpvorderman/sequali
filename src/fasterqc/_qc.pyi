@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 
+from typing import List, Tuple
+
 from dnaio import SequenceRecord
 
 TABLE_SIZE: int
@@ -34,3 +36,10 @@ class QCMetrics:
     def count_table_view(self) -> memoryview: ...
     def gc_content_view(self) -> memoryview: ...
     def phred_scores_view(self) -> memoryview: ...
+
+class AdapterCounter:
+    number_of_sequences: int
+    max_length: int
+    adapters: Tuple[str, memoryview]
+    def add_sequence(self, __sequence: str) -> None: ...
+    def get_counts(self) -> List[Tuple[str, memoryview]]: ...
