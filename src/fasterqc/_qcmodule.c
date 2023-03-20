@@ -292,7 +292,7 @@ QCMetrics_phred_scores_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
     );
 }
 
-PyMethodDef QCMetrics_methods[] = {
+static PyMethodDef QCMetrics_methods[] = {
     QCMETRICS_ADD_READ_METHODDEF,
     QCMETRICS_COUNT_TABLE_VIEW_METHODDEF,
     QCMETRICS_GC_CONTENT_VIEW_METHODDEF,
@@ -300,7 +300,7 @@ PyMethodDef QCMetrics_methods[] = {
     {NULL},
 };
 
-PyMemberDef QCMetrics_members[] = {
+static PyMemberDef QCMetrics_members[] = {
     {"max_length", T_PYSSIZET, offsetof(QCMetrics, max_length), READONLY, 
      "The length of the longest read"},
     {"number_of_reads", T_ULONGLONG, offsetof(QCMetrics, number_of_reads), 
@@ -584,7 +584,7 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
             if (R & found_mask) {
                 /* Check which adapter was found */
                 size_t number_of_adapters = matcher->number_of_sequences;
-                for (size_t k; k < number_of_adapters; k++) {
+                for (size_t k=0; k < number_of_adapters; k++) {
                     AdapterSequence *adapter = matcher->sequences + k;
                     if (R & adapter->found_mask) {
                         size_t found_position = j - adapter->adapter_length + 1;
@@ -632,11 +632,37 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         PyObject *view = PyMemoryView_FromBuffer(&buf);
         Py_INCREF(adapter);
         PyTuple_SET_ITEM(tup, 0, adapter);
-        PyTyple_SET_ITEM(tup, 1, view);
+        PyTuple_SET_ITEM(tup, 1, view);
         PyList_SET_ITEM(counts_list, i, tup);
     }
     return counts_list;
 }
+
+static PyMethodDef AdapterCounter_methods[] = {
+    ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF,
+    ADAPTERCOUNTER_GET_COUNTS_METHODDEF,
+    {NULL},
+};
+
+static PyMemberDef AdapterCounter_members[] = {
+    {"max_length", T_ULONGLONG, offsetof(AdapterCounter, max_length), READONLY, 
+    "The length of the longest read"},
+    {"number_of_sequences", T_ULONGLONG, 
+     offsetof(AdapterCounter, number_of_sequences), READONLY, 
+     "The total counted number of sequences"},
+    {"adapters", T_OBJECT_EX, offsetof(AdapterCounter, adapters), READONLY, 
+     "The adapters that are searched for"},
+    {NULL},
+};
+
+static PyTypeObject AdapterCounter_Type = {
+    .tp_name = "_qc.AdapterCounter",
+    .tp_basicsize = sizeof(AdapterCounter),
+    .tp_dealloc = (destructor)AdapterCounter_dealloc,
+    .tp_new = (newfunc)AdapterCounter__new__, 
+    .tp_members = AdapterCounter_members,
+    .tp_methods = AdapterCounter_methods,
+};
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
@@ -676,6 +702,16 @@ PyInit__qc(void)
     if (PyModule_AddObject(m, "QCMetrics", (PyObject *)&QCMetrics_Type) != 0) {
         return NULL;
     }
+
+    if (PyType_Ready(&AdapterCounter_Type) != 0) {
+        return NULL;
+    }
+    Py_INCREF(&AdapterCounter_Type);
+    if (PyModule_AddObject(m, "AdapterCounter", 
+                           (PyObject *)&AdapterCounter_Type) != 0) {
+        return NULL;
+    }
+
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
     PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
