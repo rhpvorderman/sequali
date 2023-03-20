@@ -581,6 +581,7 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         bitmask_t init_mask = matcher->init_mask;
         bitmask_t R = init_mask;
         bitmask_t *bitmask = self->bitmasks + matcher->bitmask_offset;
+        bitmask_t already_found = 0;
         for (size_t j=0; j<sequence_length; j++) {
             R &= bitmask[sequence[j]];
             R <<= 1;
@@ -590,9 +591,15 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                 size_t number_of_adapters = matcher->number_of_sequences;
                 for (size_t k=0; k < number_of_adapters; k++) {
                     AdapterSequence *adapter = matcher->sequences + k;
-                    if (R & adapter->found_mask) {
+                    bitmask_t adapter_found_mask = adapter->found_mask;
+                    if (adapter_found_mask & already_found) {
+                        continue;
+                    }
+                    if (R & adapter_found_mask) {
                         size_t found_position = j - adapter->adapter_length + 1;
                         self->adapter_counter[adapter->adapter_index][found_position] += 1;
+                        // Make sure we only find the adapter once at the earliest position;
+                        already_found |= adapter_found_mask;
                     }
                 }
             }
