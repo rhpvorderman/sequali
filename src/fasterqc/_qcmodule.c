@@ -629,7 +629,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         PyObject *tup = PyTuple_New(2);
         PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
         Py_buffer buf = {
-            .buf = self->adapter_counter + i,
+            .buf = self->adapter_counter[i],
             .obj = NULL,
             .len = self->max_length * sizeof(counter_t),
             .readonly = 1,
