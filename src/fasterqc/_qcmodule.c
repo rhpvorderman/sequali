@@ -463,6 +463,7 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         self->bitmasks = bitmask_tmp;
         memset(self->bitmasks + bitmask_offset, 0, BITMASK_INDEX_SIZE * sizeof(bitmask_t));
         self->matchers[matcher_index].bitmask_offset = bitmask_offset;
+        bitmask_offset += BITMASK_INDEX_SIZE;
         bitmask_t found_mask = 0;
         bitmask_t init_mask = 0;
         size_t adapter_in_word_index = 0; 
@@ -511,6 +512,25 @@ error:
     return NULL;
 }
 
+static int 
+AdapterCounter_resize(AdapterCounter *self, size_t new_size)
+{
+    if (self->max_length >= new_size) {
+        return 0;
+    }
+    for (size_t i=0; i < self->number_of_adapters; i++) {
+        counter_t *tmp = PyMem_Realloc(self->adapter_counter + i,
+                                       new_size * sizeof(counter_t));
+        if (tmp == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        self->adapter_counter[i] = tmp;
+    }
+    self->max_length = new_size;
+    return 0;
+}
+
 
 PyDoc_STRVAR(AdapterCounter_add_sequence__doc__,
 "add_sequence($self, sequence, /)\n"
@@ -539,6 +559,39 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                      "Sequence should only contain ASCII characters: %R",
                      sequence_obj);
         return NULL;
+    }
+    uint8_t *sequence = PyUnicode_DATA(sequence_obj);
+    size_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+
+    if (sequence_length > self->max_length) {
+        int ret = AdapterCounter_resize(self, sequence_length);
+        if (ret != 0) {
+            return NULL;
+        }
+    }
+
+    for (size_t i=0; i<self->number_of_matchers; i++){
+        MachineWordPatternMatcher *matcher = self->matchers + i;
+        bitmask_t found_mask = matcher->found_mask;
+        bitmask_t init_mask = matcher->init_mask;
+        bitmask_t R = init_mask;
+        bitmask_t *bitmask = self->bitmasks + matcher->bitmask_offset;
+        for (size_t j=0; j<sequence_length; j++) {
+            R &= bitmask[sequence[j]];
+            R <<= 1;
+            R |= init_mask;
+            if (R & found_mask) {
+                /* Check which adapter was found */
+                size_t number_of_adapters = matcher->number_of_sequences;
+                for (size_t k; k < number_of_adapters; k++) {
+                    AdapterSequence *adapter = matcher->sequences + k;
+                    if (R & adapter->found_mask) {
+                        size_t found_position = j - adapter->adapter_length + 1;
+                        self->adapter_counter[adapter->adapter_index][found_position] += 1;
+                    }
+                }
+            }
+        }
     }
     Py_RETURN_NONE;
 }
