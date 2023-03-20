@@ -649,9 +649,37 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
     return counts_list;
 }
 
+PyDoc_STRVAR(AdapterCounter__get_bitmatrices__doc__,
+"get_counts($self, /)\n"
+"--\n"
+"\n"
+"Return the bitmatrices. Debug function\n"
+);
+
+#define ADAPTERCOUNTER__GET_BITMATRICES_METHODDEF    \
+    {"_get_bitmatrices", (PyCFunction)(void(*)(void))AdapterCounter__get_bitmatrices, \
+    METH_NOARGS, AdapterCounter__get_bitmatrices__doc__}
+
+static PyObject *
+AdapterCounter__get_bitmatrices(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
+{
+
+    Py_buffer buf = {
+        .buf = self->bitmasks,
+        .obj = NULL,
+        .len = self->number_of_matchers * sizeof(counter_t) * BITMASK_INDEX_SIZE,
+        .readonly = 1,
+        .itemsize = sizeof(counter_t),
+        .format = "Q",
+        .ndim = 1,
+    };
+    return PyMemoryView_FromBuffer(&buf);
+}
+
 static PyMethodDef AdapterCounter_methods[] = {
     ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF,
     ADAPTERCOUNTER_GET_COUNTS_METHODDEF,
+    ADAPTERCOUNTER__GET_BITMATRICES_METHODDEF,
     {NULL},
 };
 
