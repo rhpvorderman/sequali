@@ -358,7 +358,6 @@ class QCMetricsReport:
 def main():
     metrics = QCMetrics()
     sequence_counter = defaultdict(lambda: 0)
-    adapter_counter = defaultdict(lambda: defaultdict(lambda: 0))
     adapters = {
         "Illumina Universal Adapter": "AGATCGGAAGAG",
         "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
@@ -367,7 +366,7 @@ def main():
         "PolyA": "AAAAAAAAAAAA",
         "PolyG": "GGGGGGGGGGGG",
     }
-    adapter_list = tuple(adapters.values())
+    adapter_counter = AdapterCounter(adapters.values())
     overrepresentation_limit = 100_000
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
@@ -378,11 +377,7 @@ def main():
                 sequence_counter[shortened_sequence] += 1
             elif shortened_sequence in sequence_counter:
                 sequence_counter[shortened_sequence] += 1
-            for adapter in adapter_list:
-                adapter_index = sequence.find(adapter)
-                if adapter_index == -1:
-                    continue
-                adapter_counter[adapter][adapter_index] += 1
+            adapter_counter.add_sequence(sequence)
     report = QCMetricsReport(metrics)
     print(report.html_report())
 
