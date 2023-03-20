@@ -463,8 +463,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
         self->bitmasks = bitmask_tmp;
         memset(self->bitmasks + bitmask_offset, 0, BITMASK_INDEX_SIZE * sizeof(bitmask_t));
-        self->matchers[matcher_index].bitmask_offset = bitmask_offset;
-        bitmask_offset += BITMASK_INDEX_SIZE;
         bitmask_t found_mask = 0;
         bitmask_t init_mask = 0;
         size_t adapter_in_word_index = 0; 
@@ -497,12 +495,14 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             word_index += 1;
             adapter_in_word_index += 1;
             adapter_index += 1;
-       }
-       populate_bitmask(self->bitmasks + bitmask_offset, machine_word, word_index);
-       matcher->found_mask = found_mask;
-       matcher->init_mask = init_mask;
-       matcher->number_of_sequences = adapter_in_word_index + 1;
-       matcher_index += 1;
+        }
+        populate_bitmask(self->bitmasks + bitmask_offset, machine_word, word_index);
+        matcher->found_mask = found_mask;
+        matcher->init_mask = init_mask;
+        matcher->number_of_sequences = adapter_in_word_index + 1;
+        matcher->bitmask_offset = bitmask_offset;
+        matcher_index += 1;
+        bitmask_offset += BITMASK_INDEX_SIZE;
     }
     self->adapters = adapters;
     return (PyObject *)self;
