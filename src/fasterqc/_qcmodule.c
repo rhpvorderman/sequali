@@ -376,8 +376,8 @@ populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length)
             continue;
         }
         /* Match both upper and lowercase */
-        bitmask[toupper(c)] = 1 << i;
-        bitmask[tolower(c)] = 1 << i;
+        bitmask[(uint8_t)toupper(c)] |= (bitmask_t)1ULL << i;
+        bitmask[(uint8_t)tolower(c)] |= (bitmask_t)1ULL << i;
     }
 }
 
