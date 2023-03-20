@@ -560,6 +560,7 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                      sequence_obj);
         return NULL;
     }
+    self->number_of_sequences += 1;
     uint8_t *sequence = PyUnicode_DATA(sequence_obj);
     size_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
 
@@ -594,6 +595,47 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         }
     }
     Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
+"get_counts($self, /)\n"
+"--\n"
+"\n"
+"Return the counts as a list of tuples. Each tuple contains the adapter, \n"
+"and a memoryview to the counts per position. \n"
+);
+
+#define ADAPTERCOUNTER_GET_COUNTS_METHODDEF    \
+    {"get_counts", (PyCFunction)(void(*)(void))AdapterCounter_get_counts, \
+    METH_NOARGS, AdapterCounter_get_counts__doc__}
+
+static PyObject *
+AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *counts_list = PyList_New(self->number_of_adapters);
+    if (counts_list == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    for (size_t i=0; i < self->number_of_adapters; i++) {
+        PyObject *tup = PyTuple_New(2);
+        PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
+        Py_buffer buf = {
+            .buf = self->adapter_counter + i,
+            .obj = NULL,
+            .len = self->max_length * sizeof(counter_t),
+            .readonly = 1,
+            .itemsize = sizeof(counter_t),
+            .format = "Q",
+            .ndim = 1,
+        };
+        PyObject *view = PyMemoryView_FromBuffer(&buf);
+        Py_INCREF(adapter);
+        PyTuple_SET_ITEM(tup, 0, adapter);
+        PyTyple_SET_ITEM(tup, 1, view);
+        PyList_SET_ITEM(counts_list, i, tup);
+    }
+    return counts_list;
 }
 
 static struct PyModuleDef _qc_module = {
