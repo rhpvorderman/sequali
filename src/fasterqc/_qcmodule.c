@@ -432,7 +432,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     memset(counter_tmp, 0, sizeof(counter_t *) * number_of_adapters);
     self->adapter_counter = counter_tmp;
-    self->adapter_counter = NULL;
     self->adapters = NULL;
     self->matchers = NULL;
     self->bitmasks = NULL;
