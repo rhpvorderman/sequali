@@ -18,7 +18,7 @@ import array
 import math
 import sys
 from collections import defaultdict
-from typing import Dict, Iterator, List, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
 
 import dnaio
 
@@ -65,6 +65,14 @@ def base_weighted_categories(
     if start != len(base_counts):
         yield start, len(base_counts)
 
+
+def cumulative_percentages(counts: Iterable[int], total: int):
+    cumalitive_percentages = []
+    count_sum = 0
+    for count in counts:
+        count_sum += count
+        cumalitive_percentages.append(count_sum / total)
+    return cumalitive_percentages
 
 class QCMetricsReport:
     raw_count_matrix: array.ArrayType
