@@ -69,3 +69,34 @@ def test_adapter_counter_matcher():
     assert sum(rain_list) == 1
     train_list = counts[2][1].tolist()
     assert sum(train_list) == 0
+
+
+def test_adapter_counter_add_sequence_no_string():
+    counter = AdapterCounter(["GATTACA"])
+    with pytest.raises(TypeError) as error:
+        counter.add_sequence(b"GATATATACCACA")  # type: ignore
+    error.match("str")
+    error.match("bytes")
+
+
+def test_adapter_counter_add_sequence_no_ascii():
+    counter = AdapterCounter(["GATTACA"])
+    with pytest.raises(ValueError) as error:
+        counter.add_sequence("GÅTTAÇA")
+    error.match("GÅTTAÇA")
+    error.match("ASCII")
+
+
+def test_adapter_counter_matcher_multiple_machine_words():
+    adapters = [
+        "A" * 31,
+        "C" * 31,
+        "G" * 31,
+        "T" * 31,
+    ]
+    sequence = ("GATTACA" * 20).join(adapters)
+    counter = AdapterCounter(adapters)
+    counter.add_sequence(sequence)
+    for adapter, countview in counter.get_counts():
+        assert countview[sequence.find(adapter)] == 1
+        assert sum(countview) == 1
