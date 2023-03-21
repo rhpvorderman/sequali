@@ -17,14 +17,17 @@
 import array
 import math
 import sys
-from typing import Iterator, List, Sequence, Tuple
+from collections import defaultdict
+from typing import Iterable, Iterator, List, Sequence, Tuple
 
 import dnaio
 
 import pygal  # type: ignore
 
-from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE, QCMetrics
-from ._qc import A, C, G, N, T 
+from ._qc import A, C, G, N, T
+from ._qc import AdapterCounter
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from ._qc import QCMetrics
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -64,6 +67,15 @@ def base_weighted_categories(
         yield start, len(base_counts)
 
 
+def cumulative_percentages(counts: Iterable[int], total: int):
+    cumalitive_percentages = []
+    count_sum = 0
+    for count in counts:
+        count_sum += count
+        cumalitive_percentages.append(count_sum / total)
+    return cumalitive_percentages
+
+
 class QCMetricsReport:
     raw_count_matrix: array.ArrayType
     aggregated_count_matrix: array.ArrayType
@@ -99,7 +111,7 @@ class QCMetricsReport:
         # All reads have at least 0 bases
         raw_base_counts[0] = self.total_reads
         for i in range(self.max_length):
-            table = matrix[i * 60 : (i + 1) * 60]
+            table = matrix[i * 60:(i + 1) * 60]
             raw_base_counts[i + 1] = sum(table)
 
         previous_count = 0
@@ -138,17 +150,17 @@ class QCMetricsReport:
         table_size = TABLE_SIZE
         for cat_index, (start, stop) in enumerate(self._data_ranges):
             cat_offset = cat_index * table_size
-            cat_view = categories_view[cat_offset : cat_offset + table_size]
+            cat_view = categories_view[cat_offset: cat_offset + table_size]
             for table_index in range(start, stop):
                 offset = table_index * table_size
-                table = matrix[offset : offset + table_size]
+                table = matrix[offset: offset + table_size]
                 for i, count in enumerate(table):
                     cat_view[i] += count
 
     def _tables(self) -> Iterator[memoryview]:
         category_view = memoryview(self.aggregated_count_matrix)
         for i in range(0, len(category_view), TABLE_SIZE):
-            yield category_view[i : i + TABLE_SIZE]
+            yield category_view[i: i + TABLE_SIZE]
 
     def base_content(self) -> List[List[float]]:
         content = [
@@ -167,7 +179,7 @@ class QCMetricsReport:
         total_nucs = [
             sum(
                 self.aggregated_count_matrix[
-                    i : len(self.aggregated_count_matrix) : NUMBER_OF_NUCS
+                    i: len(self.aggregated_count_matrix): NUMBER_OF_NUCS
                 ]
             )
             for i in range(NUMBER_OF_NUCS)
@@ -179,13 +191,13 @@ class QCMetricsReport:
     def q20_bases(self):
         q20s = 0
         for table in self._tables():
-            q20s += sum(table[NUMBER_OF_NUCS * 5 :])
+            q20s += sum(table[NUMBER_OF_NUCS * 5:])
         return q20s
 
     def q28_bases(self):
         q28s = 0
         for table in self._tables():
-            q28s += sum(table[NUMBER_OF_NUCS * 7 :])
+            q28s += sum(table[NUMBER_OF_NUCS * 7:])
         return q28s
 
     def min_length(self) -> int:
@@ -210,7 +222,7 @@ class QCMetricsReport:
             for phred_p_value, offset in zip(
                 PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
             ):
-                nucs = table[offset : offset + NUMBER_OF_NUCS]
+                nucs = table[offset: offset + NUMBER_OF_NUCS]
                 count = sum(nucs)
                 total += count
                 total_prob += count * phred_p_value
@@ -230,7 +242,7 @@ class QCMetricsReport:
             for phred_p_value, offset in zip(
                 PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
             ):
-                nucs = table[offset : offset + NUMBER_OF_NUCS]
+                nucs = table[offset: offset + NUMBER_OF_NUCS]
                 for i, count in enumerate(nucs):
                     nuc_counts[i] += count
                     nuc_probs[i] += phred_p_value * count
@@ -301,8 +313,8 @@ class QCMetricsReport:
         )
         plot.add("", self.gc_content)
         return plot.render(is_unicode=True)
-    
-    def per_sequence_quality_scores_plot(self) -> str: 
+
+    def per_sequence_quality_scores_plot(self) -> str:
         plot = pygal.Bar(
             title="Per sequence quality scores",
             x_labels=range(PHRED_MAX + 1),
@@ -312,7 +324,6 @@ class QCMetricsReport:
         )
         plot.add("", self.phred_scores)
         return plot.render(is_unicode=True)
-
 
     def html_report(self):
         return f"""
@@ -324,19 +335,27 @@ class QCMetricsReport:
         <h1>fasterqc report</h1>
         <h2>Summary</h2>
         <table>
-        <tr><td>Mean length</td><td align="right">{self.mean_length():.2f}</td></tr>
-        <tr><td>Length range (min-max)</td><td align="right">{self.min_length()}-{self.max_length}</td></tr>
+        <tr><td>Mean length</td><td align="right">
+            {self.mean_length():.2f}</td></tr>
+        <tr><td>Length range (min-max)</td><td align="right">
+            {self.min_length()}-{self.max_length}</td></tr>
         <tr><td>total reads</td><td align="right">{self.total_reads}</td></tr>
         <tr><td>total bases</td><td align="right">{self.total_bases}</td></tr>
         <tr>
             <td>Q20 bases</td>
-            <td align="right">{self.q20_bases()} ({self.q20_bases() * 100 / self.total_bases:.2f}%)</td>
+            <td align="right">
+                {self.q20_bases()} ({self.q20_bases() * 100 / self.total_bases:.2f}%)
+            </td>
         </tr>
         <tr>
             <td>Q28 bases</td>
-            <td align="right">{self.q28_bases()} ({self.q28_bases() * 100 / self.total_bases:.2f}%)</td>
+            <td align="right">
+                {self.q28_bases()} ({self.q28_bases() * 100 / self.total_bases:.2f}%)
+            </td>
         </tr>
-        <tr><td>GC content</td><td align="right">{self.total_gc_fraction() * 100:.2f}%</td></tr>
+        <tr><td>GC content</td><td align="right">
+            {self.total_gc_fraction() * 100:.2f}%
+        </td></tr>
         </table>
         <h2>Quality scores</h2>
         {self.per_base_quality_plot()}
@@ -355,9 +374,27 @@ class QCMetricsReport:
 
 def main():
     metrics = QCMetrics()
+    sequence_counter = defaultdict(lambda: 0)
+    adapters = {
+        "Illumina Universal Adapter": "AGATCGGAAGAG",
+        "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
+        "Illumina Small RNA 5' Adapter": "GATCGTCGGACT",
+        "Nextera Transposase Sequence": "CTGTCTCTTATA",
+        "PolyA": "AAAAAAAAAAAA",
+        "PolyG": "GGGGGGGGGGGG",
+    }
+    adapter_counter = AdapterCounter(adapters.values())
+    overrepresentation_limit = 100_000
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
+            sequence = read.sequence
+            shortened_sequence = sequence[:50]
+            if len(sequence_counter) < overrepresentation_limit:
+                sequence_counter[shortened_sequence] += 1
+            elif shortened_sequence in sequence_counter:
+                sequence_counter[shortened_sequence] += 1
+            adapter_counter.add_sequence(sequence)
     report = QCMetricsReport(metrics)
     print(report.html_report())
 
