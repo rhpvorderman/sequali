@@ -1,6 +1,6 @@
-import pytest
-
 from fasterqc import AdapterCounter
+
+import pytest
 
 
 def test_adapter_counter_basic_init():
