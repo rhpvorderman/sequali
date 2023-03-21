@@ -50,7 +50,7 @@ setup(
         "dnaio",
         "pygal>=3.0.0"
     ],
-    package_data={'fastqsplitter': ['*.pyx', '*.pyi', 'py.typed']},
+    package_data={'fasterqc': ['*.c', '*.h', '*.pyi', 'py.typed']},
     ext_modules=[Extension("fasterqc._qc", ["src/fasterqc/_qcmodule.c"])],
     entry_points={"console_scripts": ['fasterqc=fasterqc:main']},
 )
