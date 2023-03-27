@@ -315,14 +315,19 @@ class QCMetricsReport:
         return plot.render(is_unicode=True)
 
     def per_sequence_quality_scores_plot(self) -> str:
-        plot = pygal.Bar(
+        plot = pygal.Line(
             title="Per sequence quality scores",
             x_labels=range(PHRED_MAX + 1),
             width=1000,
             explicit_size=True,
             disable_xml_declaration=True,
         )
-        plot.add("", self.phred_scores)
+        total = 0
+        cumalative_scores = [0.0 for _ in range(PHRED_MAX + 1)]
+        for i in range(0, PHRED_MAX + 1):
+            total += self.phred_scores[i]
+            cumalative_scores[i] = total * 100 / self.total_reads
+        plot.add("%", cumalative_scores)
         return plot.render(is_unicode=True)
 
     def html_report(self):
