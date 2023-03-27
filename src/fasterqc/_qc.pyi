@@ -27,6 +27,7 @@ C: int
 G: int 
 T: int 
 N: int 
+MAX_SEQUENCE_SIZE: int
 
 class QCMetrics:
     number_of_reads: int
