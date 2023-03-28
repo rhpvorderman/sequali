@@ -317,10 +317,13 @@ static PyTypeObject QCMetrics_Type = {
     .tp_methods = QCMetrics_methods,
 };
 
-#define MAX_SEQUENCE_SIZE 63
+
 /* ASCII only so max index is 127 */
 #define BITMASK_INDEX_SIZE 128
+
 typedef uint64_t bitmask_t;
+#define MACHINE_WORD_BITS (sizeof(bitmask_t) * 8)
+#define MAX_SEQUENCE_SIZE (MACHINE_WORD_BITS - 1)
 
 typedef struct AdapterSequenceStruct {
     size_t adapter_index;
@@ -417,7 +420,7 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                          adapter);
             goto error;
         }
-        if (PyUnicode_GET_LENGTH(adapter) > MAX_SEQUENCE_SIZE) {
+        if ((size_t)PyUnicode_GET_LENGTH(adapter) > MAX_SEQUENCE_SIZE) {
             PyErr_Format(PyExc_ValueError, 
                          "Maximum adapter size is %d, got %zd for %R", 
                          MAX_SEQUENCE_SIZE, PyUnicode_GET_LENGTH(adapter), adapter);
@@ -443,7 +446,7 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     size_t matcher_index = 0;
     PyObject *adapter;
     Py_ssize_t adapter_length;
-    char machine_word[64];
+    char machine_word[MACHINE_WORD_BITS];
     matcher_index = 0;
     size_t bitmask_offset = 0;
     while(adapter_index < number_of_adapters) {
@@ -468,11 +471,11 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         size_t adapter_in_word_index = 0; 
         size_t word_index = 0;
         MachineWordPatternMatcher *matcher = self->matchers + matcher_index;
-        memset(machine_word, 0, 64);
+        memset(machine_word, 0, MACHINE_WORD_BITS);
         while (adapter_index < number_of_adapters) {
             adapter = PyTuple_GET_ITEM(adapters, adapter_index); 
             adapter_length = PyUnicode_GET_LENGTH(adapter);
-            if ((word_index + adapter_length + 1) > 64) {
+            if ((word_index + adapter_length + 1) > MACHINE_WORD_BITS) {
                 break;
             }
             memcpy(machine_word + word_index, PyUnicode_DATA(adapter), adapter_length);
@@ -677,7 +680,6 @@ AdapterCounter__get_bitmatrices(AdapterCounter *self, PyObject *Py_UNUSED(ignore
         .len = self->number_of_matchers * sizeof(counter_t) * BITMASK_INDEX_SIZE,
         .readonly = 1,
         .itemsize = sizeof(counter_t),
-        .format = "Q",
         .ndim = 1,
     };
     return PyMemoryView_FromBuffer(&buf);
@@ -767,5 +769,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, T);
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
+    PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     return m;
 }

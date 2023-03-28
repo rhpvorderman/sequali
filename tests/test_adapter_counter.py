@@ -1,4 +1,5 @@
 from fasterqc import AdapterCounter
+from fasterqc._qc import MAX_SEQUENCE_SIZE
 
 import pytest
 
@@ -44,9 +45,9 @@ def test_adapter_count_init_non_ascii():
 
 def test_adapter_count_init_too_long():
     with pytest.raises(ValueError) as error:
-        AdapterCounter(["A" * 31, "A" * 64])
-    error.match("64")
-    error.match("63")
+        AdapterCounter(["A" * 31, "A" * (MAX_SEQUENCE_SIZE + 1)])
+    error.match(str(MAX_SEQUENCE_SIZE + 1))
+    error.match(str(MAX_SEQUENCE_SIZE))
 
 
 def test_adapter_counter_matcher():
@@ -89,10 +90,10 @@ def test_adapter_counter_add_sequence_no_ascii():
 
 def test_adapter_counter_matcher_multiple_machine_words():
     adapters = [
-        "A" * 31,
-        "C" * 31,
-        "G" * 31,
-        "T" * 31,
+        "A" * MAX_SEQUENCE_SIZE,
+        "C" * MAX_SEQUENCE_SIZE,
+        "G" * MAX_SEQUENCE_SIZE,
+        "T" * MAX_SEQUENCE_SIZE,
     ]
     sequence = ("GATTACA" * 20).join(adapters)
     counter = AdapterCounter(adapters)
