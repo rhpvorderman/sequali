@@ -649,6 +649,10 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     return 0;
 }
 
+static inline uint64_t __m128i_is_true(__m128i vector) {
+    uint64_t *packed_ints = (uint64_t *)(&vector);
+    return packed_ints[0] | packed_ints[1];
+}
 
 PyDoc_STRVAR(AdapterCounter_add_sequence__doc__,
 "add_sequence($self, sequence, /)\n"
@@ -728,7 +732,6 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         __m128i R = init_mask;
         __m128i *bitmask = matcher->bitmasks;
         __m128i already_found = _mm_setzero_si128();
-        __m128i all_zero = _mm_setzero_si128();
 
         for (size_t j=0; j<sequence_length; j++) {
             uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
@@ -737,18 +740,18 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
             R = _mm_slli_epi64(R, 1);
             R = _mm_or_si128(R, init_mask);
             __m128i found = _mm_and_si128(R, found_mask);
-            if (_mm_movemask_epi8(_mm_cmpeq_epi8(found, all_zero))) {
+            if (__m128i_is_true(found)) {
                 /* Check which adapter was found */
                 size_t number_of_adapters = matcher->number_of_sequences;
                 for (size_t k=0; k < number_of_adapters; k++) {
                     AdapterSequenceSSE2 *adapter = matcher->sequences + k;
                     __m128i adapter_found_mask = adapter->found_mask;
                     __m128i adapter_already_found = _mm_and_si128(adapter_found_mask, already_found);
-                    if (_mm_movemask_epi8(_mm_cmpeq_epi8(adapter_already_found, all_zero))) {
+                    if (__m128i_is_true(adapter_already_found)) {
                         continue;
                     }
                     __m128i this_adapter_found = _mm_and_si128(R, adapter_found_mask);
-                    if (_mm_movemask_epi8(_mm_cmpeq_epi8(this_adapter_found, all_zero))) {
+                    if (__m128i_is_true(this_adapter_found)) {
                         size_t found_position = j - adapter->adapter_length + 1;
                         self->adapter_counter[adapter->adapter_index][found_position] += 1;
                         // Make sure we only find the adapter once at the earliest position;
