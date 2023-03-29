@@ -318,9 +318,6 @@ static PyTypeObject QCMetrics_Type = {
 };
 
 
-/* ASCII only so max index is 127 */
-#define BITMASK_INDEX_SIZE 128
-
 typedef uint64_t bitmask_t;
 #define MACHINE_WORD_BITS (sizeof(bitmask_t) * 8)
 #define MAX_SEQUENCE_SIZE (MACHINE_WORD_BITS - 1)
@@ -334,7 +331,7 @@ typedef struct AdapterSequenceStruct {
 typedef struct MachineWordPatternMatcherStruct {
     bitmask_t init_mask;
     bitmask_t found_mask;
-    size_t bitmask_offset;
+    bitmask_t bitmasks[NUC_TABLE_SIZE];
     size_t number_of_sequences;
     AdapterSequence *sequences;
 } MachineWordPatternMatcher;
@@ -353,7 +350,6 @@ typedef struct AdapterCounterStruct {
     PyObject *adapters;
     size_t number_of_matchers;
     MachineWordPatternMatcher *matchers;
-    bitmask_t *bitmasks;
 } AdapterCounter;
 
 static void AdapterCounter_dealloc(AdapterCounter *self) {
@@ -378,9 +374,9 @@ populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length)
         if (c == 0) {
             continue;
         }
+        uint8_t index = NUCLEOTIDE_TO_INDEX[(uint8_t)c];
         /* Match both upper and lowercase */
-        bitmask[(uint8_t)toupper(c)] |= (bitmask_t)1ULL << i;
-        bitmask[(uint8_t)tolower(c)] |= (bitmask_t)1ULL << i;
+        bitmask[index] |= (bitmask_t)1ULL << i;
     }
 }
 
@@ -437,7 +433,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->adapter_counter = counter_tmp;
     self->adapters = NULL;
     self->matchers = NULL;
-    self->bitmasks = NULL;
     self->max_length = 0;
     self->number_of_adapters = number_of_adapters;
     self->number_of_matchers = 0;
@@ -448,7 +443,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     Py_ssize_t adapter_length;
     char machine_word[MACHINE_WORD_BITS];
     matcher_index = 0;
-    size_t bitmask_offset = 0;
     while(adapter_index < number_of_adapters) {
         self->number_of_matchers += 1; 
         MachineWordPatternMatcher *tmp = PyMem_Realloc(
@@ -459,13 +453,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
         self->matchers = tmp;
         memset(self->matchers + matcher_index, 0, sizeof(MachineWordPatternMatcher));
-        bitmask_t *bitmask_tmp = PyMem_Realloc(self->bitmasks, sizeof(bitmask_t) * BITMASK_INDEX_SIZE * self->number_of_matchers);
-        if (bitmask_tmp == NULL) {
-            PyErr_NoMemory();
-            goto error;
-        }
-        self->bitmasks = bitmask_tmp;
-        memset(self->bitmasks + bitmask_offset, 0, BITMASK_INDEX_SIZE * sizeof(bitmask_t));
         bitmask_t found_mask = 0;
         bitmask_t init_mask = 0;
         size_t adapter_in_word_index = 0; 
@@ -499,13 +486,11 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             adapter_in_word_index += 1;
             adapter_index += 1;
         }
-        populate_bitmask(self->bitmasks + bitmask_offset, machine_word, word_index);
+        populate_bitmask(matcher->bitmasks, machine_word, word_index);
         matcher->found_mask = found_mask;
         matcher->init_mask = init_mask;
         matcher->number_of_sequences = adapter_in_word_index;
-        matcher->bitmask_offset = bitmask_offset;
         matcher_index += 1;
-        bitmask_offset += BITMASK_INDEX_SIZE;
     }
     self->adapters = adapters;
     return (PyObject *)self;
@@ -583,10 +568,11 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         bitmask_t found_mask = matcher->found_mask;
         bitmask_t init_mask = matcher->init_mask;
         bitmask_t R = init_mask;
-        bitmask_t *bitmask = self->bitmasks + matcher->bitmask_offset;
+        bitmask_t *bitmask = matcher->bitmasks;
         bitmask_t already_found = 0;
         for (size_t j=0; j<sequence_length; j++) {
-            R &= bitmask[sequence[j]];
+            uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
+            R &= bitmask[index];
             R <<= 1;
             R |= init_mask;
             if (R & found_mask) {
@@ -659,36 +645,10 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
     return counts_list;
 }
 
-PyDoc_STRVAR(AdapterCounter__get_bitmatrices__doc__,
-"get_counts($self, /)\n"
-"--\n"
-"\n"
-"Return the bitmatrices. Debug function\n"
-);
-
-#define ADAPTERCOUNTER__GET_BITMATRICES_METHODDEF    \
-    {"_get_bitmatrices", (PyCFunction)(void(*)(void))AdapterCounter__get_bitmatrices, \
-    METH_NOARGS, AdapterCounter__get_bitmatrices__doc__}
-
-static PyObject *
-AdapterCounter__get_bitmatrices(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
-{
-
-    Py_buffer buf = {
-        .buf = self->bitmasks,
-        .obj = NULL,
-        .len = self->number_of_matchers * sizeof(counter_t) * BITMASK_INDEX_SIZE,
-        .readonly = 1,
-        .itemsize = sizeof(counter_t),
-        .ndim = 1,
-    };
-    return PyMemoryView_FromBuffer(&buf);
-}
 
 static PyMethodDef AdapterCounter_methods[] = {
     ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF,
     ADAPTERCOUNTER_GET_COUNTS_METHODDEF,
-    ADAPTERCOUNTER__GET_BITMATRICES_METHODDEF,
     {NULL},
 };
 
