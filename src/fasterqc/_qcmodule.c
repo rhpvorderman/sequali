@@ -442,6 +442,7 @@ int AdapterCounter_SSE2_convert(AdapterCounter *self) {
             PyErr_NoMemory();
             return -1;
         }
+        sse2_matcher->sequences = seq_tmp;
         for (size_t j = 0; j < normal_matcher1->number_of_sequences; j++) {
             AdapterSequenceSSE2 *sse2_adapter = sse2_matcher->sequences + j;
             AdapterSequence *normal_adapter = normal_matcher1->sequences + j; 
