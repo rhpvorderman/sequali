@@ -23,6 +23,10 @@ along with fasterqc.  If not, see <https://www.gnu.org/licenses/
 #include "math.h"
 #include "score_to_error_rate.h"
 
+#ifdef __SSE2__
+#include "emmintrin.h"
+#endif
+
 static PyTypeObject *SequenceRecord;
 
 /* Nice trick from fastp: A,C, G, T, N all have different last three
@@ -347,6 +351,28 @@ MachineWordPatternMatcher_destroy(MachineWordPatternMatcher *matcher) {
     PyMem_Free(matcher->sequences);
 }
 
+#ifdef __SSE2__
+typedef struct AdapterSequenceSSE2Struct {
+    size_t adapter_index;
+    size_t adapter_length;
+    __m128i found_mask;
+} AdapterSequenceSSE2; 
+
+typedef struct MachineWordPatternMatcherSSE2Struct {
+    __m128i init_mask;
+    __m128i found_mask;
+    __m128i bitmasks[NUC_TABLE_SIZE];
+    size_t number_of_sequences;
+    AdapterSequenceSSE2 *sequences;
+} MachineWordPatternMatcherSSE2;
+
+static void 
+MachineWordPatternMatcherSSE2_destroy(MachineWordPatternMatcherSSE2 *matcher) {
+    PyMem_Free(matcher->sequences);
+}
+#endif
+
+
 typedef struct AdapterCounterStruct {
     PyObject_HEAD
     size_t number_of_adapters;
@@ -356,6 +382,10 @@ typedef struct AdapterCounterStruct {
     PyObject *adapters;
     size_t number_of_matchers;
     MachineWordPatternMatcher *matchers;
+#ifdef __SSE2__
+    size_t number_of_sse2_matchers;
+    MachineWordPatternMatcherSSE2 *sse2_matchers;
+#endif
 } AdapterCounter;
 
 static void AdapterCounter_dealloc(AdapterCounter *self) {
@@ -370,7 +400,66 @@ static void AdapterCounter_dealloc(AdapterCounter *self) {
         MachineWordPatternMatcher_destroy(self->matchers + i);
     }
     PyMem_Free(self->matchers);
+    
+    #ifdef __SSE2__
+    for (size_t i=0; i < self->number_of_sse2_matchers; i++) {
+        MachineWordPatternMatcherSSE2_destroy(self->sse2_matchers + i);
+    }
+    PyMem_Free(self->sse2_matchers);
+    #endif
 }
+
+#ifdef __SSE2__
+int AdapterCounter_SSE2_convert(AdapterCounter *self) {
+    self->number_of_sse2_matchers = self->number_of_matchers / 2;
+    if (self->number_of_sse2_matchers == 0) {
+        return 0;
+    } 
+    MachineWordPatternMatcherSSE2 *tmp = PyMem_Malloc(
+        self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    self->sse2_matchers = tmp;
+    memset(self->sse2_matchers, 0, self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
+    for (size_t i=0; i < self->number_of_sse2_matchers; i++) {
+        MachineWordPatternMatcherSSE2 *sse2_matcher = self->sse2_matchers + i; 
+        MachineWordPatternMatcher *normal_matcher1 = self->matchers + (i * 2);
+        MachineWordPatternMatcher *normal_matcher2 = self->matchers + (i * 2 + 1);
+        sse2_matcher->init_mask = _mm_set_epi64x(normal_matcher1->init_mask, 
+                                                 normal_matcher2->init_mask);
+        sse2_matcher->found_mask = _mm_set_epi64x(normal_matcher1->found_mask, 
+                                                  normal_matcher2->found_mask);
+        for (size_t j=0; j < NUC_TABLE_SIZE; j++) {
+            sse2_matcher->bitmasks[j] = _mm_set_epi64x(
+                normal_matcher1->bitmasks[j], normal_matcher2->bitmasks[j]);
+        }
+        sse2_matcher->number_of_sequences = normal_matcher1->number_of_sequences + normal_matcher2->number_of_sequences;
+        AdapterSequenceSSE2 *seq_tmp = PyMem_Malloc(sse2_matcher->number_of_sequences * sizeof(AdapterSequenceSSE2));
+        if (seq_tmp == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        for (size_t j = 0; j < normal_matcher1->number_of_sequences; j++) {
+            AdapterSequenceSSE2 *sse2_adapter = sse2_matcher->sequences + j;
+            AdapterSequence *normal_adapter = normal_matcher1->sequences + j; 
+            sse2_adapter->adapter_index = normal_adapter->adapter_index;
+            sse2_adapter->adapter_length = normal_adapter->adapter_length;
+            sse2_adapter->found_mask = _mm_set_epi64x(normal_adapter->found_mask, 0);
+        };
+        for (size_t j = 0; j < normal_matcher2->number_of_sequences; j++) {
+            size_t offset = normal_matcher1->number_of_sequences;
+            AdapterSequenceSSE2 *sse2_adapter = sse2_matcher->sequences + j + offset;
+            AdapterSequence *normal_adapter = normal_matcher2->sequences + j; 
+            sse2_adapter->adapter_index = normal_adapter->adapter_index;
+            sse2_adapter->adapter_length = normal_adapter->adapter_length;
+            sse2_adapter->found_mask = _mm_set_epi64x(0, normal_adapter->found_mask);
+        };
+    }
+
+}
+#endif
 
 static void
 populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length) 
@@ -443,6 +532,10 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->number_of_adapters = number_of_adapters;
     self->number_of_matchers = 0;
     self->number_of_sequences = 0;
+    #ifdef __SSE2__ 
+    self->number_of_sse2_matchers = 0;
+    self->sse2_matchers = NULL;
+    #endif
     size_t adapter_index = 0;
     size_t matcher_index = 0;
     PyObject *adapter;
