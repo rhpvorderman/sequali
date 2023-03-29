@@ -328,6 +328,12 @@ typedef struct AdapterSequenceStruct {
     bitmask_t found_mask;    
 } AdapterSequence; 
 
+/* Because we use NUCLEOTIDE_TO_INDEX we can save the bitmasks in the struct
+   itself. There are only 5 nucleotides (ACGTN) so this uses 40 bytes. With
+   init_mask and found_mask costing 8 bytes each the entire struct up to
+   number of sequences fits on one cache line of 64 bytes. Except for the 
+   sequences pointer, but that is only used in case of a match. That makes 
+   accessing the bitmasks very quick memorywise. */
 typedef struct MachineWordPatternMatcherStruct {
     bitmask_t init_mask;
     bitmask_t found_mask;
