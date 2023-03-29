@@ -739,19 +739,16 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
             R = _mm_and_si128(R, mask);
             R = _mm_slli_epi64(R, 1);
             R = _mm_or_si128(R, init_mask);
-            __m128i found = _mm_and_si128(R, found_mask);
-            if (test_non_zero_si128(found)) {
+            if (test_non_zero_si128(_mm_and_si128(R, found_mask))) {
                 /* Check which adapter was found */
                 size_t number_of_adapters = matcher->number_of_sequences;
                 for (size_t k=0; k < number_of_adapters; k++) {
                     AdapterSequenceSSE2 *adapter = matcher->sequences + k;
                     __m128i adapter_found_mask = adapter->found_mask;
-                    __m128i adapter_already_found = _mm_and_si128(adapter_found_mask, already_found);
-                    if (test_non_zero_si128(adapter_already_found)) {
+                    if (test_non_zero_si128(_mm_and_si128(adapter_found_mask, already_found))) {
                         continue;
                     }
-                    __m128i this_adapter_found = _mm_and_si128(R, adapter_found_mask);
-                    if (test_non_zero_si128(this_adapter_found)) {
+                    if (test_non_zero_si128(_mm_and_si128(R, adapter_found_mask))) {
                         size_t found_position = j - adapter->adapter_length + 1;
                         self->adapter_counter[adapter->adapter_index][found_position] += 1;
                         // Make sure we only find the adapter once at the earliest position;
