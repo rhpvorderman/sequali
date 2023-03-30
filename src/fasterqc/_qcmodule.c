@@ -652,7 +652,7 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
 #ifdef __SSE2__
 static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
     __m128i and = _mm_and_si128(vector1, vector2);
-    __m128i eq = _mm_cmpgt_epi8(_mm_setzero_si128(), and);
+    __m128i eq = _mm_cmpgt_epi8(and, _mm_setzero_si128());
     return _mm_movemask_epi8(eq);
 }
 #endif
