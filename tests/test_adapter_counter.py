@@ -6,11 +6,11 @@ import pytest
 
 def test_adapter_counter_basic_init():
     adapters = [
-        "IF I SHOULD STAY",
-        "I WILL ONLY BE IN YOUR WAY",
-        "SO I'LL GO, BUT I KNOW",
-        "I'LL THINK OF YOU EVERY STEP OF THE WAY",
-        "AND I WILL ALWAYS LOVE YOU"
+        "GATTTAGAGACATA",
+        "TATACCCGTACCACAGAT",
+        "GCCCGGGAAATTAGGCACGATT",
+        "GCAGAGAGATATAGAGATACACACAGAGAGAGAT",
+        "GGGCACCACAGAGACCACACAGAGACA"
     ]
     counter = AdapterCounter(adapters)
     assert counter.adapters == tuple(adapters)
@@ -32,15 +32,15 @@ def test_adapter_count_init_no_adapters():
 
 def test_adapter_count_init_contains_non_str():
     with pytest.raises(TypeError) as error:
-        AdapterCounter(["correct", b'incorrect'])
-    error.match("b'incorrect'")
+        AdapterCounter(["GATTACA", b'GATTACA'])
+    error.match("b'GATTACA'")
 
 
 def test_adapter_count_init_non_ascii():
     with pytest.raises(ValueError) as error:
-        AdapterCounter(["correct", "íncørrect"])
+        AdapterCounter(["GATTACA", "Gättaca"])
     error.match("ASCII")
-    error.match("'íncørrect'")
+    error.match("'Gättaca'")
 
 
 def test_adapter_count_init_too_long():
@@ -51,25 +51,24 @@ def test_adapter_count_init_too_long():
 
 
 def test_adapter_counter_matcher():
-    counter = AdapterCounter(["singing", "rain", "train"])
+    counter = AdapterCounter(["GATTACA", "GGGG", "TTTTT"])
     # Only first match should be counted.
-    sequence = ("I'm singing in the rain, just singing in the rain\n"
-                "What a glorious feeling, I'm happy again")
+    sequence = ("AAGATTACAAAAAGATTACAGGGGAACGAGGGG")
     counter.add_sequence(sequence)
     counts = counter.get_counts()
-    assert counts[0][0] == "singing"
-    assert counts[1][0] == "rain"
-    assert counts[2][0] == "train"
-    singing_list = counts[0][1].tolist()
-    assert len(singing_list) == len(sequence)
-    assert singing_list[sequence.find("singing")] == 1
-    rain_list = counts[1][1].tolist()
-    assert len(rain_list) == len(sequence)
-    assert rain_list[sequence.find("rain")] == 1
-    assert sum(singing_list) == 1
-    assert sum(rain_list) == 1
-    train_list = counts[2][1].tolist()
-    assert sum(train_list) == 0
+    assert counts[0][0] == "GATTACA"
+    assert counts[1][0] == "GGGG"
+    assert counts[2][0] == "TTTTT"
+    gattaca_list = counts[0][1].tolist()
+    assert len(gattaca_list) == len(sequence)
+    assert gattaca_list[sequence.find("GATTACA")] == 1
+    gggg_list = counts[1][1].tolist()
+    assert len(gggg_list) == len(sequence)
+    assert gggg_list[sequence.find("GGGG")] == 1
+    assert sum(gattaca_list) == 1
+    assert sum(gggg_list) == 1
+    ttttt_list = counts[2][1].tolist()
+    assert sum(ttttt_list) == 0
 
 
 def test_adapter_counter_add_sequence_no_string():
@@ -101,3 +100,30 @@ def test_adapter_counter_matcher_multiple_machine_words():
     for adapter, countview in counter.get_counts():
         assert countview[sequence.find(adapter)] == 1
         assert sum(countview) == 1
+
+
+def test_adapter_counter_mixed_lengths():
+    adapters = [
+        "TATAAATATAAATATAAA",
+        "GATTACAGATTACAGATTACA",
+        "AAAAAAAAAAAA",
+        "TTTTTTTTTTTT",
+        "CACGTCAGTTACCGGATAGA",
+        "GGTCAAGGGGTAAATGATAT",
+        "AGGTAGATTTATTTTATTTAT",
+        "GGGTGGGAGGCC"
+    ]
+    sequences = [
+        "NNNNN".join(adapters[i] for i in range(8)),
+        "NNNNNNN".join(adapters[i] for i in (1, 2, 4, 5, 6, 7)),
+        "NNN".join(adapters[i] for i in (7, 2, 6, 3, 4, 7)),
+    ]
+    counter = AdapterCounter(adapters)
+    for sequence in sequences:
+        counter.add_sequence(sequence)
+    for sequence in sequences:
+        for adapter, counts in counter.get_counts():
+            counts = counts.tolist()
+            index = sequence.find(adapter)
+            if index != -1:
+                assert counts[index] > 0
