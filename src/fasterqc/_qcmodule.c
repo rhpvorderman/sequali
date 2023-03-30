@@ -655,13 +655,13 @@ static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
     /* There is no way to directly check if an entire vector is set to 0
        so some trickery needs to be done to ascertain if one of the bits is
        set.
-       Comparing greater than zero works, except that the comparison is
-       signed so the most significant unsigned bit is undetected. So
-       a _mm_movemask epi8 is done to catch all the significant bits, and
-       a mm_cmpgt_epi8 and a _mm_movemask_epi8 are done to catch all the
-       other bits.*/
+       _mm_movemask_epi8 only catches the most significant bit. So we need to
+       set that bit. Comparison works, but is signed so when the most significant
+       bit is set, this returns 0. By using bitwise OR we can ensure also the
+       most significant bits are counted .*/
     __m128i gt = _mm_cmpgt_epi8(and, _mm_setzero_si128());
-    return _mm_movemask_epi8(gt) | _mm_movemask_epi8(and);
+    __m128i res = _mm_or_si128(and, gt);
+    return _mm_movemask_epi8(res);
 }
 #endif
 
