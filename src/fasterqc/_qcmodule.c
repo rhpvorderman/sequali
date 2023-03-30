@@ -652,8 +652,16 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
 #ifdef __SSE2__
 static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
     __m128i and = _mm_and_si128(vector1, vector2);
-    __m128i eq = _mm_cmpgt_epi8(and, _mm_setzero_si128());
-    return _mm_movemask_epi8(eq);
+    /* There is no way to directly check if an entire vector is set to 0
+       so some trickery needs to be done to ascertain if one of the bits is
+       set.
+       Comparing greater than zero works, except that the comparison is
+       signed so the most significant unsigned bit is undetected. So
+       a _mm_movemask epi8 is done to catch all the significant bits, and
+       a mm_cmpgt_epi8 and a _mm_movemask_epi8 are done to catch all the
+       other bits.*/
+    __m128i gt = _mm_cmpgt_epi8(and, _mm_setzero_si128());
+    return _mm_movemask_epi8(gt) | _mm_movemask_epi8(and);
 }
 #endif
 
