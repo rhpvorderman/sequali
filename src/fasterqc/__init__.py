@@ -88,10 +88,13 @@ class QCMetricsReport:
     total_reads: int
     total_bases: int
 
-    def __init__(self, metrics: QCMetrics, graph_resolution: int = 100):
+    def __init__(self, metrics: QCMetrics, adapter_counter: AdapterCounter,
+                 graph_resolution: int = 100):
         """Aggregate all data from a QCMetrics counter"""
 
+        self.adapter_counter = adapter_counter
         self.total_reads = metrics.number_of_reads
+        assert metrics.number_of_reads == adapter_counter.number_of_sequences
         self.max_length = metrics.max_length
         self.raw_count_matrix = array.array("Q")
         # Python will treat the memoryview as an iterable in the array constructor
@@ -330,6 +333,28 @@ class QCMetricsReport:
         plot.add("%", cumalative_scores)
         return plot.render(is_unicode=True)
 
+    def adapter_content_plot(self) -> str:
+        plot = pygal.Line(
+            title="Adapter content",
+            x_labels=self.data_categories,
+            y_lables=range(101),
+            width=1000,
+            explicit_size=True,
+            disable_xml_declaration=True,
+        )
+        for adapter, countview in self.adapter_counter.get_counts():
+            adapter_counts = [sum(countview[start:stop])
+                              for start, stop in self._data_ranges]
+            total = 0
+            accumulated_counts = []
+            for count in adapter_counts:
+                total += count
+                accumulated_counts.append(total)
+            adapter_content = [count * 100 / self.total_reads for
+                               count in accumulated_counts]
+            plot.add(adapter, adapter_content)
+        return plot.render(is_unicode=True)
+
     def html_report(self):
         return f"""
         <html>
@@ -373,6 +398,8 @@ class QCMetricsReport:
         {self.per_sequence_gc_content_plot()}
         <h2>Per sequence quality scores</h2>
         {self.per_sequence_quality_scores_plot()}
+        <h2>Adapter content plot</h2>
+        {self.adapter_content_plot()}
         </html>
         """
 
@@ -400,7 +427,7 @@ def main():
             elif shortened_sequence in sequence_counter:
                 sequence_counter[shortened_sequence] += 1
             adapter_counter.add_sequence(sequence)
-    report = QCMetricsReport(metrics)
+    report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
 
 
