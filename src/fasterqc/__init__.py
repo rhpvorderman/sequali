@@ -335,9 +335,9 @@ class QCMetricsReport:
 
     def adapter_content_plot(self) -> str:
         plot = pygal.Line(
-            title="Adapter content",
+            title="Adapter content (%)",
             x_labels=self.data_categories,
-            y_lables=range(101),
+            range=(0.0, 100.0),
             width=1000,
             explicit_size=True,
             disable_xml_declaration=True,
