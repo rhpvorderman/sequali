@@ -66,6 +66,10 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
 
+/**************
+ * QC METRICS *
+ **************/
+
 typedef uint64_t counter_t;
 
 /* Illumina reads often use a limited set of phreds rather than the full range
@@ -321,6 +325,10 @@ static PyTypeObject QCMetrics_Type = {
     .tp_methods = QCMetrics_methods,
 };
 
+
+/*******************
+ * ADAPTER COUNTER *
+ *******************/
 
 typedef uint64_t bitmask_t;
 #define MACHINE_WORD_BITS (sizeof(bitmask_t) * 8)
@@ -850,6 +858,12 @@ static PyTypeObject AdapterCounter_Type = {
     .tp_members = AdapterCounter_members,
     .tp_methods = AdapterCounter_methods,
 };
+
+
+/*************************
+ * MODULE INITIALIZATION *
+ *************************/
+
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
