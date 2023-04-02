@@ -1,5 +1,5 @@
-from fasterqc import AdapterCounter
-from fasterqc._qc import MAX_SEQUENCE_SIZE
+from sequali import AdapterCounter
+from sequali._qc import MAX_SEQUENCE_SIZE
 
 import pytest
 
