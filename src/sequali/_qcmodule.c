@@ -860,6 +860,224 @@ static PyTypeObject AdapterCounter_Type = {
 };
 
 
+/********************
+ * Per Tile Quality *
+ ********************/
+
+typedef struct _BaseQualityStruct {
+    counter_t total_bases;
+    double total_error;  /* double for now, fixed point might be better */ 
+} BaseQuality;
+
+typedef struct _PerTileQualityStruct {
+    PyObject_HEAD
+    PyObject *header_name;
+    PyObject *qual_name;
+    uint8_t phred_offset;
+    BaseQuality **base_qualities;
+    size_t number_of_tiles;
+    Py_ssize_t max_length;
+    size_t number_of_reads;
+} PerTileQuality;
+
+static void
+PerTileQuality_dealloc(PerTileQuality *self) {
+    Py_DECREF(self->header_name);
+    Py_DECREF(self->qual_name);
+    for (size_t i=0; i < self->number_of_tiles; i++) {
+        BaseQuality *tile_quals = self->base_qualities[i];
+        PyMem_Free(tile_quals);
+    }
+    PyMem_Free(self->base_qualities);
+}
+
+static PyObject *
+PerTileQuality__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
+    static char *kwargnames[] = {NULL};
+    static char *format = ":PerTileQuality";
+    uint8_t phred_offset = 33;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+        return NULL;
+    }
+    PyObject *header_name = PyUnicode_FromString("name");
+    if (header_name == NULL) {
+        return NULL;
+    }
+    PyObject *qual_name = PyUnicode_FromString("qualities");
+    if (qual_name == NULL) {
+        return NULL;
+    }
+
+    PerTileQuality *self = PyObject_New(PerTileQuality, type);
+    self->max_length = 0;
+    self->phred_offset = phred_offset;
+    self->base_qualities = NULL;
+    self->number_of_reads = 0;
+    self->header_name = header_name;
+    self->qual_name = qual_name;
+    self->number_of_tiles = 0;
+    return (PyObject *)self;
+}
+
+static int 
+PerTileQuality_resize_tile_array(PerTileQuality *self, size_t highest_tile) 
+{
+    if (highest_tile < self->number_of_tiles) {
+        return 0;
+    }
+    BaseQuality **new_qualites = PyMem_Realloc(
+        self->base_qualities, highest_tile * sizeof(BaseQuality *));
+    if (new_qualites == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    size_t previous_number_of_tiles = self->number_of_tiles;
+    memset(new_qualites + previous_number_of_tiles, 0, 
+           (highest_tile - previous_number_of_tiles) * sizeof(BaseQuality *));
+    self->base_qualities = new_qualites;
+    self->number_of_tiles = highest_tile;
+    return 0;
+};
+
+static int
+PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length) 
+{
+    if (new_length < self->max_length) {
+        return 0;
+    }
+    BaseQuality **base_qualities = self->base_qualities;
+    size_t number_of_tiles = self->number_of_tiles; 
+    size_t old_length = self->max_length;
+    for (size_t i=0; i<number_of_tiles; i++) {
+        BaseQuality *tile_quals = base_qualities[i];
+        if (tile_quals == NULL) {
+            continue;
+        }
+        BaseQuality *tmp_quals = PyMem_Realloc(tile_quals, new_length * sizeof(BaseQuality));
+        if (tmp_quals == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp_quals + old_length, 0, (new_length - old_length) * sizeof(BaseQuality));
+        base_qualities[i] = tmp_quals;
+    }
+    self->max_length = new_length;
+    return 0;
+}
+
+
+long illumina_header_to_tile_id(const uint8_t *header, size_t header_length);
+
+PyDoc_STRVAR(PerTileQuality_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the PerTileQuality Metrics. \n"
+"\n"
+"  read\n"
+"    A dnaio.SequenceRecord object.\n"
+);
+
+#define PERTILEQUALITY_ADD_READ_METHODDEF    \
+    {"add_read", (PyCFunction)(void(*)(void))PerTileQuality_add_read, METH_O, \
+     PerTileQuality_add_read__doc__}
+
+static PyObject *
+PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
+{
+    if (Py_TYPE(read) != SequenceRecord) {
+        PyErr_Format(PyExc_TypeError,
+                     "Read should be a dnaio.SequenceRecord object, got %s",
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    /* PyObject_GetAttrString creates a new unicode object every single time.
+       Use PyObject_GetAttr to prevent this. */
+    PyObject *header_obj = PyObject_GetAttr(read, self->header_name);
+    PyObject *qualities_obj = PyObject_GetAttr(read, self->qual_name);
+    /* Dnaio guarantees ASCII strings */
+    const uint8_t *header = PyUnicode_DATA(header_obj);
+    Py_ssize_t header_length = PyUnicode_GET_LENGTH(header_obj);
+    const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
+    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(qualities_obj);
+    size_t i;
+    uint8_t phred_offset = self->phred_offset;
+    uint8_t q;
+
+    if (sequence_length > self->max_length) {
+        if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
+            goto error;
+        }
+    }
+
+    long tile_id = illumina_header_to_tile_id(header, header_length);
+    if (tile_id == -1) {
+        PyErr_Format(PyExc_ValueError,  "Can not parse header: %s", (char *)header); 
+        goto error;
+    }
+    if ((size_t)tile_id > self->number_of_tiles) {
+        if (PerTileQuality_resize_tile_array(self, tile_id) != 0) {
+            goto error;
+        }
+    }
+    
+    BaseQuality *tile_qualities = self->base_qualities[tile_id];
+    if (tile_qualities == NULL) {
+        tile_qualities = PyMem_Malloc(self->max_length * sizeof(BaseQuality));
+        if (tile_qualities == NULL) {
+            PyErr_NoMemory();
+            goto error;
+        }
+        self->base_qualities[tile_id] = tile_qualities;
+    }
+
+    self->number_of_reads += 1;
+    for (i=0; i < (size_t)sequence_length; i+=1) {
+        q = qualities[i] - phred_offset;
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError,
+                "Not a valid phred character: %c", qualities[i]
+            );
+            goto error;
+        }
+        tile_qualities[i].total_bases += 1;
+        tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
+    }
+
+    Py_DECREF(header_obj);
+    Py_DECREF(qualities_obj);
+    Py_RETURN_NONE;
+error:
+    Py_DECREF(header_obj);
+    Py_DECREF(qualities_obj);
+    return NULL;
+}
+
+static PyMethodDef PerTileQuality_methods[] = {
+    PERTILEQUALITY_ADD_READ_METHODDEF,
+    {NULL},
+};
+
+static PyMemberDef PerTileQuality_members[] = {
+    {"max_length", T_PYSSIZET, offsetof(PerTileQuality, max_length), READONLY, 
+     "The length of the longest read"},
+    {"number_of_reads", T_ULONGLONG, offsetof(PerTileQuality, number_of_reads), 
+     READONLY, "The total amount of reads counted"},
+    {NULL},
+};
+
+static PyTypeObject PerTileQuality_Type = {
+    .tp_name = "_qc.PerTileQuality",
+    .tp_basicsize = sizeof(PerTileQuality),
+    .tp_dealloc = (destructor)PerTileQuality_dealloc,
+    .tp_new = (newfunc)PerTileQuality__new__,
+    .tp_members = PerTileQuality_members, 
+    .tp_methods = PerTileQuality_methods,
+};
+
+
+
 /*************************
  * MODULE INITIALIZATION *
  *************************/
@@ -910,6 +1128,15 @@ PyInit__qc(void)
     Py_INCREF(&AdapterCounter_Type);
     if (PyModule_AddObject(m, "AdapterCounter", 
                            (PyObject *)&AdapterCounter_Type) != 0) {
+        return NULL;
+    }
+    
+    if (PyType_Ready(&PerTileQuality_Type) != 0) {
+        return NULL;
+    }
+    Py_INCREF(&PerTileQuality_Type);
+    if (PyModule_AddObject(m, "PerTileQuality", 
+                           (PyObject *)&PerTileQuality_Type) != 0) {
         return NULL;
     }
 
