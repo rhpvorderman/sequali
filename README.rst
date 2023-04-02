@@ -25,6 +25,13 @@ Usage
 
     sequali /path/to/fastq/file > result.html
 
+Acknowledgements
+================
++ `FastQC <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>`_ for
+  its excellent selection of relevant metrics.
++ Wouter de Coster for his `excellent post on how to correctly average phred
+  scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
+
 License
 =======
 
