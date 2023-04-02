@@ -28,7 +28,8 @@ Usage
 Acknowledgements
 ================
 + `FastQC <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>`_ for
-  its excellent selection of relevant metrics.
+  its excellent selection of relevant metrics. For this reason these metrics
+  are also gathered by sequali.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
 
