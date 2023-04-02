@@ -1,7 +1,7 @@
+import pytest
+
 from sequali import AdapterCounter
 from sequali._qc import MAX_SEQUENCE_SIZE
-
-import pytest
 
 
 def test_adapter_counter_basic_init():
