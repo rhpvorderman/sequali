@@ -25,9 +25,8 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter
+from ._qc import AdapterCounter, PerTileQuality, QCMetrics
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
-from ._qc import QCMetrics
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -417,6 +416,7 @@ def main():
     }
     adapter_counter = AdapterCounter(adapters.values())
     overrepresentation_limit = 100_000
+    per_tile_quality = PerTileQuality()
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
@@ -427,6 +427,7 @@ def main():
             elif shortened_sequence in sequence_counter:
                 sequence_counter[shortened_sequence] += 1
             adapter_counter.add_sequence(sequence)
+            per_tile_quality.add_read(read);
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
 
