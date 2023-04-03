@@ -1053,8 +1053,11 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
         PyErr_Format(PyExc_ValueError,  "Can not parse header: %s", (char *)header); 
         goto error;
     }
-    if ((size_t)tile_id > self->number_of_tiles) {
-        if (PerTileQuality_resize_tile_array(self, tile_id) != 0) {
+    
+    /* Tile index must be one less than the highest number of tiles otherwise 
+       the index is not in the tile array. */
+    if (((size_t)tile_id + 1) > self->number_of_tiles) {
+        if (PerTileQuality_resize_tile_array(self, tile_id + 1) != 0) {
             goto error;
         }
     }
