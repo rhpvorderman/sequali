@@ -996,11 +996,10 @@ long illumina_header_to_tile_id(const char *header, size_t header_length) {
         return -1;
     }
     const char *tile_start = header + tile_number_offset;
-    char **tile_end_ptr = NULL;
-    long tile_id = strtol(tile_start, tile_end_ptr, 10);
-    char *tile_end = *tile_end_ptr;
+    char *tile_end = NULL;
+    long tile_id = strtol(tile_start, &tile_end, 10);
     /* tile_end must point to a colon (the one before x-pos) after tile_start */
-    if (tile_end == tile_start || *tile_end != ':') {
+    if (tile_end == NULL || tile_end == tile_start || *tile_end != ':') {
         errno = 0;  /* Clear errno because there might be a parse error set by strtol*/
         return -1;
     }
