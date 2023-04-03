@@ -965,8 +965,47 @@ PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length)
     return 0;
 }
 
+/**
+ * @brief Parse illumina header and return the tile ID
+ * 
+ * @param header A string pointing to the header
+ * @param header_length length of the header string
+ * @return long the tile_id or -1 if there was a parse error.
+ */
+static
+long illumina_header_to_tile_id(const char *header, size_t header_length) {
 
-long illumina_header_to_tile_id(const uint8_t *header, size_t header_length);
+    /* The following link contains the header format:
+       https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
+       It reports the following format:
+       @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
+       The tile ID is after the fourth colon.
+    */
+    size_t colon_count = 0;
+    size_t tile_number_offset = -1; 
+    for (size_t i=0; i < header_length; i++) {
+        if (header[i] == ':') {
+            colon_count += 1;
+            if (colon_count == 4) {
+                tile_number_offset = i + 1;
+                break;
+            }
+        }
+    }
+    if (colon_count != 4) {
+        return -1;
+    }
+    const char *tile_start = header + tile_number_offset;
+    char **tile_end_ptr = NULL;
+    long tile_id = strtol(tile_start, tile_end_ptr, 10);
+    char *tile_end = *tile_end_ptr;
+    /* tile_end must point to a colon (the one before x-pos) after tile_start */
+    if (tile_end == tile_start || *tile_end != ':') {
+        errno = 0;  /* Clear errno because there might be a parse error set by strtol*/
+        return -1;
+    }
+    return tile_id;
+}
 
 PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 "add_read($self, read, /)\n"
@@ -996,7 +1035,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
     PyObject *header_obj = PyObject_GetAttr(read, self->header_name);
     PyObject *qualities_obj = PyObject_GetAttr(read, self->qual_name);
     /* Dnaio guarantees ASCII strings */
-    const uint8_t *header = PyUnicode_DATA(header_obj);
+    const char *header = PyUnicode_DATA(header_obj);
     Py_ssize_t header_length = PyUnicode_GET_LENGTH(header_obj);
     const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
     Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(qualities_obj);
