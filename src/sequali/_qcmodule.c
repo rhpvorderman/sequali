@@ -871,6 +871,8 @@ typedef struct _BaseQualityStruct {
 
 typedef struct _PerTileQualityStruct {
     PyObject_HEAD
+    char skipped;
+    PyObject *skipped_reason;
     PyObject *header_name;
     PyObject *qual_name;
     uint8_t phred_offset;
@@ -884,6 +886,7 @@ static void
 PerTileQuality_dealloc(PerTileQuality *self) {
     Py_DECREF(self->header_name);
     Py_DECREF(self->qual_name);
+    Py_XDECREF(self->skipped_reason);
     for (size_t i=0; i < self->number_of_tiles; i++) {
         BaseQuality *tile_quals = self->base_qualities[i];
         PyMem_Free(tile_quals);
@@ -916,6 +919,8 @@ PerTileQuality__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->header_name = header_name;
     self->qual_name = qual_name;
     self->number_of_tiles = 0;
+    self->skipped = 0;
+    self->skipped_reason = NULL;
     return (PyObject *)self;
 }
 
@@ -1023,6 +1028,9 @@ PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 static PyObject *
 PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
 {
+    if (self->skipped) {
+        Py_RETURN_NONE;
+    }
     if (Py_TYPE(read) != SequenceRecord) {
         PyErr_Format(PyExc_TypeError,
                      "Read should be a dnaio.SequenceRecord object, got %s",
@@ -1050,8 +1058,10 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
 
     long tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
-        PyErr_Format(PyExc_ValueError,  "Can not parse header: %s", (char *)header); 
-        goto error;
+        self->skipped_reason = PyUnicode_FromFormat(
+            "Can not parse header: %s", (char *)header); 
+        self->skipped = 1;
+        goto success;
     }
     
     /* Tile index must be one less than the highest number of tiles otherwise 
@@ -1086,6 +1096,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
         tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
     }
 
+success:
     Py_DECREF(header_obj);
     Py_DECREF(qualities_obj);
     Py_RETURN_NONE;
