@@ -427,7 +427,7 @@ def main():
             elif shortened_sequence in sequence_counter:
                 sequence_counter[shortened_sequence] += 1
             adapter_counter.add_sequence(sequence)
-            per_tile_quality.add_read(read);
+            per_tile_quality.add_read(read)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
 
