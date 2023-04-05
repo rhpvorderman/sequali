@@ -1106,8 +1106,68 @@ error:
     return NULL;
 }
 
+
+PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
+"add_read($self, /)\n"
+"--\n"
+"\n"
+"Get a list of tuples with the tile IDs and a list of their averages. \n"
+);
+
+#define PERTILEQUALITY_GET_TILE_AVERAGES_METHODDEF    \
+    {"get_tile_averages", (PyCFunction)(void(*)(void))PerTileQuality_get_tile_averages, \
+    METH_NOARGS, PerTileQuality_get_tile_averages__doc__}
+
+static PyObject *
+PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *read)
+{
+    BaseQuality **base_qualities = self->base_qualities;
+    size_t maximum_tile = self->number_of_tiles;
+    size_t tile_length = self->max_length;
+    PyObject *result = PyList_New(0);
+    if (result == NULL) {
+        return PyErr_NoMemory();
+    }
+
+    for (size_t i=0; i<maximum_tile; i++) {
+        BaseQuality *quals = base_qualities[i];
+        if (quals == NULL) {
+            continue;
+        }
+        PyObject *entry = PyTuple_New(2);
+        PyObject *tile_id = PyLong_FromSize_t(i);
+        PyObject *averages_list = PyList_New(tile_length);
+        if (entry == NULL || tile_id == NULL || averages_list == NULL) {
+            Py_DECREF(result);
+            return PyErr_NoMemory();
+        }
+        for (size_t j=0; j<tile_length; j++) {
+            BaseQuality qual_entry = quals[j];
+            double average = qual_entry.total_error / 
+                ((double)qual_entry.total_bases);
+            PyObject *average_obj = PyFloat_FromDouble(average);
+            if (average_obj == NULL) {
+                Py_DECREF(result);
+                return PyErr_NoMemory();
+            }
+            PyList_SET_ITEM(averages_list, j, average_obj);
+        }
+        PyTuple_SET_ITEM(entry, 0, tile_id);
+        PyTuple_SET_ITEM(entry, 1, averages_list);
+        int ret = PyList_Append(result, entry);
+        if (ret != 0) {
+            Py_DECREF(result);
+            return NULL;
+        }
+        Py_DECREF(entry);
+    }
+    return result;
+}
+
+
 static PyMethodDef PerTileQuality_methods[] = {
     PERTILEQUALITY_ADD_READ_METHODDEF,
+    PERTILEQUALITY_GET_TILE_AVERAGES_METHODDEF,
     {NULL},
 };
 
