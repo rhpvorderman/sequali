@@ -1079,6 +1079,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
             PyErr_NoMemory();
             goto error;
         }
+        memset(tile_qualities, 0, self->max_length * sizeof(BaseQuality));
         self->base_qualities[tile_id] = tile_qualities;
     }
 
