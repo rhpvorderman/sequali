@@ -591,7 +591,7 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         while (adapter_index < number_of_adapters) {
             adapter = PyTuple_GET_ITEM(adapters, adapter_index); 
             adapter_length = PyUnicode_GET_LENGTH(adapter);
-            if ((word_index + adapter_length + 1) > MACHINE_WORD_BITS) {
+            if ((word_index + adapter_length) > MACHINE_WORD_BITS) {
                 break;
             }
             memcpy(machine_word + word_index, PyUnicode_DATA(adapter), adapter_length);
