@@ -332,7 +332,7 @@ static PyTypeObject QCMetrics_Type = {
 
 typedef uint64_t bitmask_t;
 #define MACHINE_WORD_BITS (sizeof(bitmask_t) * 8)
-#define MAX_SEQUENCE_SIZE (MACHINE_WORD_BITS - 1)
+#define MAX_SEQUENCE_SIZE MACHINE_WORD_BITS
 
 typedef struct AdapterSequenceStruct {
     size_t adapter_index;
@@ -591,17 +591,16 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         while (adapter_index < number_of_adapters) {
             adapter = PyTuple_GET_ITEM(adapters, adapter_index); 
             adapter_length = PyUnicode_GET_LENGTH(adapter);
-            if ((word_index + adapter_length + 1) > MACHINE_WORD_BITS) {
+            if ((word_index + adapter_length) > MACHINE_WORD_BITS) {
                 break;
             }
             memcpy(machine_word + word_index, PyUnicode_DATA(adapter), adapter_length);
             init_mask |= (1ULL << word_index);
-            word_index += adapter_length; 
-            machine_word[word_index] = 0;
+            word_index += adapter_length;
             AdapterSequence adapter_sequence = {
                 .adapter_index = adapter_index,
                 .adapter_length = adapter_length,
-                .found_mask = 1ULL << word_index,
+                .found_mask = 1ULL << (word_index - 1),  /* Last character */
             };
             AdapterSequence *adapt_tmp = PyMem_Realloc(matcher->sequences, (adapter_in_word_index + 1) * sizeof(AdapterSequence)); 
             if (adapt_tmp == NULL) {
@@ -611,7 +610,6 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             matcher->sequences = adapt_tmp;
             matcher->sequences[adapter_in_word_index] = adapter_sequence;
             found_mask |= adapter_sequence.found_mask;
-            word_index += 1;
             adapter_in_word_index += 1;
             adapter_index += 1;
         }
@@ -725,8 +723,6 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         for (size_t j=0; j<sequence_length; j++) {
             uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
             R &= bitmask[index];
-            R <<= 1;
-            R |= init_mask;
             if (R & found_mask) {
                 /* Check which adapter was found */
                 size_t number_of_adapters = matcher->number_of_sequences;
@@ -744,6 +740,8 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                     }
                 }
             }
+            R <<= 1;
+            R |= init_mask;
         }
     }
     #ifdef __SSE2__
@@ -759,8 +757,6 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
             uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
             __m128i mask = bitmask[index];
             R = _mm_and_si128(R, mask);
-            R = _mm_slli_epi64(R, 1);
-            R = _mm_or_si128(R, init_mask);
             if (bitwise_and_nonzero_si128(R, found_mask)) {
                 /* Check which adapter was found */
                 size_t number_of_adapters = matcher->number_of_sequences;
@@ -778,6 +774,8 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                     }
                 }
             }
+            R = _mm_slli_epi64(R, 1);
+            R = _mm_or_si128(R, init_mask);            
         }
     }
     #endif
