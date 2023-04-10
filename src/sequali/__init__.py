@@ -75,6 +75,23 @@ def cumulative_percentages(counts: Iterable[int], total: int):
     return cumalitive_percentages
 
 
+def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
+    tile_averages = per_tile_quality.get_tile_averages()
+    max_length = per_tile_quality.max_length
+    scatter_plot = pygal.XY(
+        title="Sequence length distribution",
+        x_labels=range(max_length),
+        truncate_label=-1,
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+        stroke=False,
+    )
+    for tile, averages in tile_averages:
+        scatter_plot.add(str(tile), list(zip(range(max_length), averages)))
+    return scatter_plot.render(is_unicode=True)
+
+
 class QCMetricsReport:
     raw_count_matrix: array.ArrayType
     aggregated_count_matrix: array.ArrayType
@@ -430,7 +447,7 @@ def main():
             per_tile_quality.add_read(read)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
-
+    print(per_tile_graph(per_tile_quality))
 
 if __name__ == "__main__":  # pragma: no cover
     main()
