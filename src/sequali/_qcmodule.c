@@ -717,10 +717,12 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         MachineWordPatternMatcher *matcher = self->matchers + i;
         bitmask_t found_mask = matcher->found_mask;
         bitmask_t init_mask = matcher->init_mask;
-        bitmask_t R = init_mask;
+        bitmask_t R = 0;
         bitmask_t *bitmask = matcher->bitmasks;
         bitmask_t already_found = 0;
         for (size_t j=0; j<sequence_length; j++) {
+            R <<= 1;
+            R |= init_mask;
             uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
             R &= bitmask[index];
             if (R & found_mask) {
@@ -740,8 +742,6 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                     }
                 }
             }
-            R <<= 1;
-            R |= init_mask;
         }
     }
     #ifdef __SSE2__
@@ -749,11 +749,13 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
         MachineWordPatternMatcherSSE2 *matcher = self->sse2_matchers + i;
         __m128i found_mask = matcher->found_mask;
         __m128i init_mask = matcher->init_mask;
-        __m128i R = init_mask;
+        __m128i R = _mm_setzero_si128();
         __m128i *bitmask = matcher->bitmasks;
         __m128i already_found = _mm_setzero_si128();
 
         for (size_t j=0; j<sequence_length; j++) {
+            R = _mm_slli_epi64(R, 1);
+            R = _mm_or_si128(R, init_mask);
             uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
             __m128i mask = bitmask[index];
             R = _mm_and_si128(R, mask);
@@ -774,8 +776,6 @@ AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj)
                     }
                 }
             }
-            R = _mm_slli_epi64(R, 1);
-            R = _mm_or_si128(R, init_mask);            
         }
     }
     #endif
