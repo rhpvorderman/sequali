@@ -657,7 +657,6 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
 
 #ifdef __SSE2__
 static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
-    __m128i and = _mm_and_si128(vector1, vector2);
     /* There is no way to directly check if an entire vector is set to 0
        so some trickery needs to be done to ascertain if one of the bits is
        set.
@@ -665,10 +664,15 @@ static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
        set that bit. Comparison for larger than 0 does not work since only
        signed comparisons are available. So the most significant bit makes
        integers smaller than 0. Instead we do a saturated add of 127.
-       _mm_ads_epu8 works on unsigned integers. So 0b10000000 (128) will become
+       _mm_adds_epu8 works on unsigned integers. So 0b10000000 (128) will become
        255. Also everything above 0 will trigger the last bit to be set. 0
        itself results in 0b01111111 so the most significant bit will not be
-       set.*/
+       set.
+       The sequence of instructions below is faster than 
+       return (!_mm_test_all_zeros(vector1, vector2)); 
+       which is available in SSE4.1. So there is no value in moving up one
+       instruction set. */
+    __m128i and = _mm_and_si128(vector1, vector2);
     __m128i res = _mm_adds_epu8(and, _mm_set1_epi8(127));
     return _mm_movemask_epi8(res);
 }
