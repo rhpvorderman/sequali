@@ -78,17 +78,40 @@ def cumulative_percentages(counts: Iterable[int], total: int):
 def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
     tile_averages = per_tile_quality.get_tile_averages()
     max_length = per_tile_quality.max_length
+    ranges = list(equidistant_ranges(max_length, 50))
+
+    average_phreds = []
+    per_category_totals = [0.0 for i in range(len(ranges))]
+    for tile, averages in tile_averages:
+        range_averages = [sum(averages[start:stop]) / (stop - start)
+                          for start, stop in ranges]
+        range_phreds = []
+        for i, average in enumerate(range_averages):
+            phred = -10 * math.log10(average)
+            range_phreds.append(phred)
+            # Averaging phreds takes geometric mean.
+            per_category_totals[i] += phred
+        average_phreds.append((tile, range_phreds))
+    number_of_tiles = len(tile_averages)
+    averages_per_category= [total / number_of_tiles
+                            for total in per_category_totals]
     scatter_plot = pygal.XY(
         title="Sequence length distribution",
-        x_labels=range(max_length),
+        x_labels=[f"{start}-{stop}" for start, stop in ranges],
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
         stroke=False,
     )
-    for tile, averages in tile_averages:
-        scatter_plot.add(str(tile), list(zip(range(max_length), averages)))
+
+    for tile, tile_phreds in average_phreds:
+        normalized_tile_phreds = [
+            tile_phred - average
+            for tile_phred, average in zip(tile_phreds, averages_per_category)
+        ]
+        scatter_plot.add(str(tile), list(zip(range(len(ranges)), normalized_tile_phreds)))
+
     return scatter_plot.render(is_unicode=True)
 
 
