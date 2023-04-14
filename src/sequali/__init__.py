@@ -95,7 +95,7 @@ def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
     number_of_tiles = len(tile_averages)
     averages_per_category= [total / number_of_tiles
                             for total in per_category_totals]
-    scatter_plot = pygal.XY(
+    scatter_plot = pygal.Line(
         title="Sequence length distribution",
         x_labels=[f"{start}-{stop}" for start, stop in ranges],
         truncate_label=-1,
@@ -110,7 +110,7 @@ def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
             tile_phred - average
             for tile_phred, average in zip(tile_phreds, averages_per_category)
         ]
-        scatter_plot.add(str(tile), list(zip(range(len(ranges)), normalized_tile_phreds)))
+        scatter_plot.add(str(tile),  normalized_tile_phreds)
 
     return scatter_plot.render(is_unicode=True)
 
