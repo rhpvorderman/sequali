@@ -9,6 +9,7 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Add a per tile sequence quality module
 + Count adapters using a fast shift-AND algorithm.
 + Create diverse graphs using pygal based on the count matrix.
 + Implement base module using an optimised count matrix.
