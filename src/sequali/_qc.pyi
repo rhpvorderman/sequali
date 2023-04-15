@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from dnaio import SequenceRecord
 
@@ -50,6 +50,7 @@ class AdapterCounter:
 class PerTileQuality:
     max_length: int 
     number_of_reads: int 
+    skipped_reason: Optional[str]
     def __init__(self): ...
     def add_read(self, __read: SequenceRecord): ... 
     def get_tile_averages(self) -> List[Tuple[int, List[float]]]: ...

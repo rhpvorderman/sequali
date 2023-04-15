@@ -873,15 +873,15 @@ typedef struct _BaseQualityStruct {
 
 typedef struct _PerTileQualityStruct {
     PyObject_HEAD
-    char skipped;
-    PyObject *skipped_reason;
     PyObject *header_name;
     PyObject *qual_name;
     uint8_t phred_offset;
+    char skipped;
     BaseQuality **base_qualities;
     size_t number_of_tiles;
     Py_ssize_t max_length;
     size_t number_of_reads;
+    PyObject *skipped_reason;
 } PerTileQuality;
 
 static void
@@ -1052,12 +1052,6 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
     uint8_t phred_offset = self->phred_offset;
     uint8_t q;
 
-    if (sequence_length > self->max_length) {
-        if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
-            goto error;
-        }
-    }
-
     long tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
         self->skipped_reason = PyUnicode_FromFormat(
@@ -1065,7 +1059,13 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
         self->skipped = 1;
         goto success;
     }
-    
+
+    if (sequence_length > self->max_length) {
+        if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
+            goto error;
+        }
+    }
+
     /* Tile index must be one less than the highest number of tiles otherwise 
        the index is not in the tile array. */
     if (((size_t)tile_id + 1) > self->number_of_tiles) {
@@ -1179,6 +1179,9 @@ static PyMemberDef PerTileQuality_members[] = {
      "The length of the longest read"},
     {"number_of_reads", T_ULONGLONG, offsetof(PerTileQuality, number_of_reads), 
      READONLY, "The total amount of reads counted"},
+    {"skipped_reason", T_OBJECT, offsetof(PerTileQuality, skipped_reason),
+     READONLY, "What the reason is for skipping the module if skipped." 
+               "Set to None if not skipped."},
     {NULL},
 };
 
