@@ -25,9 +25,8 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter
+from ._qc import AdapterCounter, PerTileQuality, QCMetrics
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
-from ._qc import QCMetrics
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -74,6 +73,46 @@ def cumulative_percentages(counts: Iterable[int], total: int):
         count_sum += count
         cumalitive_percentages.append(count_sum / total)
     return cumalitive_percentages
+
+
+def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
+    tile_averages = per_tile_quality.get_tile_averages()
+    max_length = per_tile_quality.max_length
+    ranges = list(equidistant_ranges(max_length, 50))
+
+    average_phreds = []
+    per_category_totals = [0.0 for i in range(len(ranges))]
+    for tile, averages in tile_averages:
+        range_averages = [sum(averages[start:stop]) / (stop - start)
+                          for start, stop in ranges]
+        range_phreds = []
+        for i, average in enumerate(range_averages):
+            phred = -10 * math.log10(average)
+            range_phreds.append(phred)
+            # Averaging phreds takes geometric mean.
+            per_category_totals[i] += phred
+        average_phreds.append((tile, range_phreds))
+    number_of_tiles = len(tile_averages)
+    averages_per_category = [total / number_of_tiles
+                             for total in per_category_totals]
+    scatter_plot = pygal.Line(
+        title="Sequence length distribution",
+        x_labels=[f"{start}-{stop}" for start, stop in ranges],
+        truncate_label=-1,
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+        stroke=False,
+    )
+
+    for tile, tile_phreds in average_phreds:
+        normalized_tile_phreds = [
+            tile_phred - average
+            for tile_phred, average in zip(tile_phreds, averages_per_category)
+        ]
+        scatter_plot.add(str(tile),  normalized_tile_phreds)
+
+    return scatter_plot.render(is_unicode=True)
 
 
 class QCMetricsReport:
@@ -417,6 +456,7 @@ def main():
     }
     adapter_counter = AdapterCounter(adapters.values())
     overrepresentation_limit = 100_000
+    per_tile_quality = PerTileQuality()
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
@@ -427,8 +467,10 @@ def main():
             elif shortened_sequence in sequence_counter:
                 sequence_counter[shortened_sequence] += 1
             adapter_counter.add_sequence(sequence)
+            per_tile_quality.add_read(read)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
+    print(per_tile_graph(per_tile_quality))
 
 
 if __name__ == "__main__":  # pragma: no cover
