@@ -1194,6 +1194,127 @@ static PyTypeObject PerTileQuality_Type = {
     .tp_methods = PerTileQuality_methods,
 };
 
+/*************************
+ * SEQUENCE DUPLICATION *
+ *************************/
+
+typedef struct _SequenceDuplicationStruct {
+    PyObject_HEAD 
+    size_t number_of_sequences;
+    PyObject *sequence_dict;
+    PyObject *one; 
+} SequenceDuplication;
+
+static void 
+SequenceDuplication_dealloc(SequenceDuplication *self)
+{
+    Py_XDECREF(self->sequence_dict);
+    Py_XDECREF(self->one);
+}
+
+static PyObject *
+SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    static char *kwargnames[] = {NULL};
+    static char *format = ":SequenceDuplication";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+        return NULL;
+    }
+    PyObject *sequence_dict = PyDict_New();
+    PyObject *one = PyLong_FromLong(1);
+    if ((sequence_dict == NULL) | (one == NULL)) {
+        Py_XDECREF(sequence_dict);
+        Py_XDECREF(one);
+        return PyErr_NoMemory();
+    }
+    SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->sequence_dict = sequence_dict;
+    self->one = one;
+    return (PyObject *)self;
+}
+
+
+PyDoc_STRVAR(SequenceDuplication_add_sequence__doc__,
+"add_sequence($self, sequence, /)\n"
+"--\n"
+"\n"
+"Add a sequence to the duplication module. \n"
+"\n"
+"  sequence\n"
+"    An ASCII string containing the sequence.\n"
+);
+
+#define SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF    \
+    {"add_sequence", (PyCFunction)(void(*)(void))SequenceDuplication_add_sequence, \
+    METH_O, SequenceDuplication_add_sequence__doc__}
+
+static PyObject *
+SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_obj) 
+{
+    if (!PyUnicode_CheckExact(sequence_obj)) {
+        PyErr_Format(PyExc_TypeError, "sequence should be a str, got %s", 
+                     Py_TYPE(sequence_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "Sequence should only contain ASCII characters: %R",
+                     sequence_obj);
+        return NULL;
+    }
+    self->number_of_sequences += 1;
+    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    PyObject *shortened_sequence = NULL;
+    if (sequence_length > 50) {
+        shortened_sequence = PyUnicode_New(50, 127);
+        if (shortened_sequence == NULL) {
+            return PyErr_NoMemory();
+        }
+        memcpy(PyUnicode_DATA(shortened_sequence), PyUnicode_DATA(sequence_obj), 50);
+    } else {
+        shortened_sequence = sequence_obj;
+        Py_INCREF(shortened_sequence);
+    }
+    PyObject *sequence_dict = self->sequence_dict;
+    PyObject *entry = PyDict_GetItem(sequence_dict, shortened_sequence);
+    if (entry != NULL) {
+        PyObject *new_entry = PyNumber_Add(entry, self->one);
+        PyDict_SetItem(sequence_dict, shortened_sequence, new_entry);
+        Py_DECREF(new_entry);
+    } else if (PyDict_GET_SIZE(sequence_dict) < 100000) {
+        PyDict_SetItem(sequence_dict, shortened_sequence, self->one);
+    }
+    Py_DECREF(shortened_sequence);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef SequenceDuplication_methods[] = {
+    SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF,
+    {NULL},
+};
+
+static PyMemberDef SequenceDuplication_members[] = {
+    {"number_of_sequences", T_ULONGLONG, 
+     offsetof(SequenceDuplication, number_of_sequences), READONLY,
+     "The total number of sequences processed"},
+    {"sequence_counts", T_OBJECT_EX, 
+     offsetof(SequenceDuplication, sequence_dict), READONLY, 
+     "The first 100_000 unique sequences at length 50 with a count for how "
+     "much they occurred."},
+    {NULL},
+};
+
+static PyTypeObject SequenceDuplication_Type = {
+    .tp_name = "_qc.SequenceDuplication",
+    .tp_basicsize = sizeof(SequenceDuplication),
+    .tp_dealloc = (destructor)(SequenceDuplication_dealloc),
+    .tp_new = (newfunc)SequenceDuplication__new__,
+    .tp_members = SequenceDuplication_members,
+    .tp_methods = SequenceDuplication_methods,
+};
 
 
 /*************************
@@ -1255,6 +1376,15 @@ PyInit__qc(void)
     Py_INCREF(&PerTileQuality_Type);
     if (PyModule_AddObject(m, "PerTileQuality", 
                            (PyObject *)&PerTileQuality_Type) != 0) {
+        return NULL;
+    }
+
+    if (PyType_Ready(&SequenceDuplication_Type) != 0) {
+        return NULL;
+    } 
+    Py_INCREF(&SequenceDuplication_Type);
+    if (PyModule_AddObject(m, "SequenceDuplication",
+                          (PyObject *)&SequenceDuplication_Type) != 0) {
         return NULL;
     }
 
