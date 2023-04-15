@@ -93,8 +93,8 @@ def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
             per_category_totals[i] += phred
         average_phreds.append((tile, range_phreds))
     number_of_tiles = len(tile_averages)
-    averages_per_category= [total / number_of_tiles
-                            for total in per_category_totals]
+    averages_per_category = [total / number_of_tiles
+                             for total in per_category_totals]
     scatter_plot = pygal.Line(
         title="Sequence length distribution",
         x_labels=[f"{start}-{stop}" for start, stop in ranges],
@@ -471,6 +471,7 @@ def main():
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
+
 
 if __name__ == "__main__":  # pragma: no cover
     main()

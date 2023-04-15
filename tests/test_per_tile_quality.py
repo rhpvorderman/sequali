@@ -1,4 +1,5 @@
 import dnaio
+
 import pytest
 
 from sequali import PerTileQuality
