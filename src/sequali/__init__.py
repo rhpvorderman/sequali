@@ -17,7 +17,6 @@
 import array
 import math
 import sys
-from collections import defaultdict
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
 import dnaio
@@ -25,7 +24,7 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, PerTileQuality, QCMetrics
+from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
@@ -445,7 +444,6 @@ class QCMetricsReport:
 
 def main():
     metrics = QCMetrics()
-    sequence_counter = defaultdict(lambda: 0)
     adapters = {
         "Illumina Universal Adapter": "AGATCGGAAGAG",
         "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
@@ -455,17 +453,13 @@ def main():
         "PolyG": "GGGGGGGGGGGG",
     }
     adapter_counter = AdapterCounter(adapters.values())
-    overrepresentation_limit = 100_000
     per_tile_quality = PerTileQuality()
+    sequence_duplication = SequenceDuplication()
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
             sequence = read.sequence
-            shortened_sequence = sequence[:50]
-            if len(sequence_counter) < overrepresentation_limit:
-                sequence_counter[shortened_sequence] += 1
-            elif shortened_sequence in sequence_counter:
-                sequence_counter[shortened_sequence] += 1
+            sequence_duplication.add_sequence(sequence)
             adapter_counter.add_sequence(sequence)
             per_tile_quality.add_read(read)
     report = QCMetricsReport(metrics, adapter_counter)
