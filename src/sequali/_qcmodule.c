@@ -1225,9 +1225,21 @@ static PyTypeObject PerTileQuality_Type = {
    should be optimized.
 */
 
+#define MAX_UNIQUE_SEQUENCES 100000
+#define UNIQUE_SEQUENCE_LENGTH 50
+#define HASH_TABLE_SIZE (1 << 18)
+
+static inline size_t hash_to_index(Py_hash_t hash) {
+    /* No modulo required because HASH_TABLE_SIZE is a power of 2 */
+    return hash & (HASH_TABLE_SIZE - 1);
+}
+
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     size_t number_of_sequences;
+    size_t number_of_uniques;
+    Py_hash_t *hash_table; 
+    Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
     PyObject *sequence_dict;
     PyObject *one; 
 } SequenceDuplication;
@@ -1237,6 +1249,7 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 {
     Py_XDECREF(self->sequence_dict);
     Py_XDECREF(self->one);
+    PyMem_Free(self->hash_table);
 }
 
 static PyObject *
@@ -1247,11 +1260,14 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
         return NULL;
     }
+    Py_hash_t *hash_table = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
     PyObject *sequence_dict = PyDict_New();
     PyObject *one = PyLong_FromLong(1);
-    if ((sequence_dict == NULL) | (one == NULL)) {
+    PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
+    if ((sequence_dict == NULL) | (one == NULL) | (hash_table == NULL)) {
         Py_XDECREF(sequence_dict);
         Py_XDECREF(one);
+        PyMem_Free(hash_table);
         return PyErr_NoMemory();
     }
     SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
@@ -1260,6 +1276,10 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     self->sequence_dict = sequence_dict;
     self->one = one;
+    self->number_of_sequences = 0;
+    self->number_of_uniques = 0;
+    self->hash_table = hash_table;
+    self->hashfunc = hashfuncdef->hash;
     return (PyObject *)self;
 }
 
@@ -1294,8 +1314,31 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
     }
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    char *sequence = PyUnicode_DATA(sequence_obj);
+    Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
+    Py_hash_t hash = self->hashfunc(sequence, hash_length);
+    Py_hash_t *hash_table = self->hash_table;
+    size_t index = hash_to_index(hash);
+    while (1) {
+        Py_hash_t entry = hash_table[index];
+        if (entry == 0) {
+            if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
+                hash_table[index] = hash;
+                break;
+            } else {
+                Py_RETURN_NONE;
+            }
+        } else if (entry == hash) {
+            break;
+        }
+        index += 1;
+        if (index >= HASH_TABLE_SIZE) {
+            index = 0;
+        }
+    }
+
     PyObject *shortened_sequence = NULL;
-    if (sequence_length > 50) {
+    if (sequence_length > UNIQUE_SEQUENCE_LENGTH) {
         shortened_sequence = PyUnicode_New(50, 127);
         if (shortened_sequence == NULL) {
             return PyErr_NoMemory();
@@ -1311,7 +1354,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
         PyObject *new_entry = PyNumber_Add(entry, self->one);
         PyDict_SetItem(sequence_dict, shortened_sequence, new_entry);
         Py_DECREF(new_entry);
-    } else if (PyDict_GET_SIZE(sequence_dict) < 100000) {
+    } else if (PyDict_GET_SIZE(sequence_dict) < MAX_UNIQUE_SEQUENCES) {
         PyDict_SetItem(sequence_dict, shortened_sequence, self->one);
     }
     Py_DECREF(shortened_sequence);
