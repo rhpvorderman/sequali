@@ -1198,6 +1198,33 @@ static PyTypeObject PerTileQuality_Type = {
  * SEQUENCE DUPLICATION *
  *************************/
 
+/* A module to use the first 50 bp of reads and collect the first 100_000 
+   unique sequences and see how often
+   they occur to estimate the duplication rate and overrepresented sequences. 
+   The idea to take the first 100_000 with 50 bp comes from FastQC. Below 
+   some typical figures:
+   For a 5 million read illumina library:
+   13038 Found before
+   100000 Inserted
+   4886962 Not present
+   
+   100_000 Unique sequences were added. 13.038 sequences belonged to one of 
+   these 100_000. The vast majority of the sequences did not belong to the first
+   100_000.
+
+   A highly duplicated RNA library:
+   1975437 Found before
+   100000 Inserted
+   5856349 Not present
+ 
+   Almost 2 million sequences were found that were identical tot the first 
+   100_000 unique reads. 
+
+   As is visible, the most common case is that a read is not present in the
+   first 100_000 unique sequences, even in the pathological case, so that case 
+   should be optimized.
+*/
+
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     size_t number_of_sequences;
