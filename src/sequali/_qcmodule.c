@@ -1324,6 +1324,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
         if (entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hash_table[index] = hash;
+                self->number_of_uniques += 1;
                 break;
             } else {
                 Py_RETURN_NONE;
