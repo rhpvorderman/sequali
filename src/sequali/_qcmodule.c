@@ -1319,6 +1319,12 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
     Py_hash_t *hash_table = self->hash_table;
     size_t index = hash_to_index(hash);
+
+    /* Small pre-check to see if we have seen the hash before. Unlike using 
+       a python dict, this does not require the use of a shortened sequence
+       object, so this prevents allocating memory in the most common case.
+    */
+    
     while (1) {
         Py_hash_t entry = hash_table[index];
         if (entry == 0) {
