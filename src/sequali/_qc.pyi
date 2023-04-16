@@ -57,6 +57,6 @@ class PerTileQuality:
 
 class SequenceDuplication:
     number_of_sequences: int
-    sequence_dict: Dict[str, int]
+    sequence_counts: Dict[str, int]
     def __init__(self): ...
     def add_sequence(self, __sequence: str) -> None: ...
