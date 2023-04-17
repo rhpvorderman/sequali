@@ -1227,7 +1227,7 @@ static PyTypeObject PerTileQuality_Type = {
 
 #define MAX_UNIQUE_SEQUENCES 100000
 #define UNIQUE_SEQUENCE_LENGTH 50
-#define HASH_TABLE_SIZE (1 << 18)
+#define HASH_TABLE_SIZE (1ULL << 18)
 
 static inline size_t hash_to_index(Py_hash_t hash) {
     /* No modulo required because HASH_TABLE_SIZE is a power of 2 */
@@ -1339,9 +1339,9 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
             break;
         }
         index += 1;
-        if (index >= HASH_TABLE_SIZE) {
-            index = 0;
-        }
+        /* Make sure the index round trips when it reaches HASH_TABLE_SIZE. 
+           The &= works for hash table sizes that are a power of 2. */
+        index &= (HASH_TABLE_SIZE - 1);
     }
 
     PyObject *shortened_sequence = NULL;
