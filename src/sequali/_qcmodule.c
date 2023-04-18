@@ -1378,16 +1378,20 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
     PyObject **keys = self->keys; 
 
     for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
-        PyObject *count = PyLong_FromUnsignedLongLong(counts[i]);
-        if (count == NULL) {
+        counter_t count = counts[i];
+        if (count == 0) {
+            continue;
+        }
+        PyObject *count_obj = PyLong_FromUnsignedLongLong(count);
+        if (count_obj == NULL) {
             PyErr_NoMemory();
             goto error;
         }
         PyObject *key = keys[i];
-        if (PyDict_SetItem(count_dict, key, count) != 0) {
+        if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
-        Py_DECREF(count);
+        Py_DECREF(count_obj);
     }
     return count_dict;
 
