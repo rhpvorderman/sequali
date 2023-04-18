@@ -1240,16 +1240,20 @@ typedef struct _SequenceDuplicationStruct {
     size_t number_of_uniques;
     Py_hash_t *hash_table; 
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
-    PyObject *sequence_dict;
-    PyObject *one; 
+    counter_t *counts;
+    PyObject **keys;
 } SequenceDuplication;
 
 static void 
 SequenceDuplication_dealloc(SequenceDuplication *self)
 {
-    Py_XDECREF(self->sequence_dict);
-    Py_XDECREF(self->one);
     PyMem_Free(self->hash_table);
+    PyMem_Free(self->counts);
+    PyObject **keys = self->keys;
+    for (size_t i=0; i < HASH_TABLE_SIZE; i++) {
+        Py_XDECREF(keys[i]);
+    }
+    PyMem_Free(self->keys);
 }
 
 static PyObject *
@@ -1261,24 +1265,24 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     Py_hash_t *hash_table = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
-    PyObject *sequence_dict = PyDict_New();
-    PyObject *one = PyLong_FromLong(1);
+    counter_t *counts = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(counter_t));
+    PyObject **keys = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(PyObject *));
     PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
-    if ((sequence_dict == NULL) | (one == NULL) | (hash_table == NULL)) {
-        Py_XDECREF(sequence_dict);
-        Py_XDECREF(one);
+    if ((hash_table == NULL) | (counts == NULL) | (keys == NULL)) {
         PyMem_Free(hash_table);
+        PyMem_Free(keys);
+        PyMem_Free(counts);
         return PyErr_NoMemory();
     }
     SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    self->sequence_dict = sequence_dict;
-    self->one = one;
     self->number_of_sequences = 0;
     self->number_of_uniques = 0;
     self->hash_table = hash_table;
+    self->counts = counts; 
+    self->keys = keys;
     self->hashfunc = hashfuncdef->hash;
     return (PyObject *)self;
 }
@@ -1330,46 +1334,72 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
         if (entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hash_table[index] = hash;
+                self->counts[index] = 1;
+                PyObject *key = PyUnicode_DecodeASCII(sequence, hash_length, NULL);
+                if (key == NULL) {
+                    return NULL;
+                }
+                self->keys[index] = key; 
                 self->number_of_uniques += 1;
                 break;
             } else {
                 Py_RETURN_NONE;
             }
         } else if (entry == hash) {
-            break;
+            self->counts[index] += 1;
         }
         index += 1;
         /* Make sure the index round trips when it reaches HASH_TABLE_SIZE. 
            The &= works for hash table sizes that are a power of 2. */
         index &= (HASH_TABLE_SIZE - 1);
     }
-
-    PyObject *shortened_sequence = NULL;
-    if (sequence_length > UNIQUE_SEQUENCE_LENGTH) {
-        shortened_sequence = PyUnicode_New(50, 127);
-        if (shortened_sequence == NULL) {
-            return PyErr_NoMemory();
-        }
-        memcpy(PyUnicode_DATA(shortened_sequence), PyUnicode_DATA(sequence_obj), 50);
-    } else {
-        shortened_sequence = sequence_obj;
-        Py_INCREF(shortened_sequence);
-    }
-    PyObject *sequence_dict = self->sequence_dict;
-    PyObject *entry = PyDict_GetItem(sequence_dict, shortened_sequence);
-    if (entry != NULL) {
-        PyObject *new_entry = PyNumber_Add(entry, self->one);
-        PyDict_SetItem(sequence_dict, shortened_sequence, new_entry);
-        Py_DECREF(new_entry);
-    } else if (PyDict_GET_SIZE(sequence_dict) < MAX_UNIQUE_SEQUENCES) {
-        PyDict_SetItem(sequence_dict, shortened_sequence, self->one);
-    }
-    Py_DECREF(shortened_sequence);
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
+"sequence_counts($self, /)\n"
+"--\n"
+"\n"
+"Get a dictionary with sequence counts \n"
+);
+
+#define SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF    \
+    {"sequence_counts", (PyCFunction)(void(*)(void))SequenceDuplication_sequence_counts, \
+    METH_NOARGS, SequenceDuplication_sequence_counts__doc__}
+
+static PyObject *
+SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *count_dict = PyDict_New();
+    if (count_dict == NULL) {
+        return PyErr_NoMemory();
+    }
+    counter_t *counts = self->counts;
+    PyObject **keys = self->keys; 
+
+    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+        PyObject *count = PyLong_FromUnsignedLongLong(counts[i]);
+        if (count == NULL) {
+            PyErr_NoMemory();
+            goto error;
+        }
+        PyObject *key = keys[i];
+        if (PyDict_SetItem(count_dict, key, count) != 0) {
+            goto error;
+        }
+        Py_DECREF(count);
+    }
+    return count_dict;
+
+error:
+    Py_DECREF(count_dict);
+    return NULL;
+}
+
+
 static PyMethodDef SequenceDuplication_methods[] = {
     SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF,
+    SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF,
     {NULL},
 };
 
@@ -1377,10 +1407,6 @@ static PyMemberDef SequenceDuplication_members[] = {
     {"number_of_sequences", T_ULONGLONG, 
      offsetof(SequenceDuplication, number_of_sequences), READONLY,
      "The total number of sequences processed"},
-    {"sequence_counts", T_OBJECT_EX, 
-     offsetof(SequenceDuplication, sequence_dict), READONLY, 
-     "The first 100_000 unique sequences at length 50 with a count for how "
-     "much they occurred."},
     {NULL},
 };
 

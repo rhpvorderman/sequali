@@ -12,12 +12,13 @@ def test_sequence_duplication():
     for combo in itertools.product(*(("ACGT",) * 9)):
         seqdup.add_sequence("".join(combo) + 91 * "A")
     assert seqdup.number_of_sequences == 4 ** 9
-    assert len(seqdup.sequence_counts) == 100_000
-    for sequence, count in seqdup.sequence_counts.items():
+    sequence_counts = seqdup.sequence_counts()
+    assert len(sequence_counts) == 100_000
+    for sequence, count in sequence_counts.items():
         assert len(sequence) == 50
         assert count == 1
     seqdup.add_sequence(100 * "A")  # Should already exist
-    assert seqdup.sequence_counts[50 * "A"] == 2
+    assert seqdup.sequence_counts()[50 * "A"] == 2
 
 
 def test_sequence_duplication_add_sequence_no_string():
