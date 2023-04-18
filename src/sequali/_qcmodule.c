@@ -1341,8 +1341,14 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
                 Py_RETURN_NONE;
             }
         } else if (entry == hash) {
-            self->counts[index] += 1;
-            Py_RETURN_NONE;
+            PyObject *key = self->keys[index];
+            /* There is a very small chance of a hash collision, check to make 
+               sure. */
+            if (PyUnicode_GET_LENGTH(key) == hash_length && 
+                memcmp(PyUnicode_DATA(key), sequence, hash_length) == 0) {
+                self->counts[index] += 1;
+                Py_RETURN_NONE;
+            }
         }
         index += 1;
         /* Make sure the index round trips when it reaches HASH_TABLE_SIZE. 
