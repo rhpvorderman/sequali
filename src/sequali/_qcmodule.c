@@ -1234,26 +1234,25 @@ static inline size_t hash_to_index(Py_hash_t hash) {
     return hash & (HASH_TABLE_SIZE - 1);
 }
 
+typedef struct _HashTableEntry {
+    counter_t count;
+    char key[56];
+} HashTableEntry;
+
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     size_t number_of_sequences;
     size_t number_of_uniques;
     Py_hash_t *hash_table; 
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
-    counter_t *counts;
-    PyObject **keys;
+    HashTableEntry *entries;
 } SequenceDuplication;
 
 static void 
 SequenceDuplication_dealloc(SequenceDuplication *self)
 {
     PyMem_Free(self->hash_table);
-    PyMem_Free(self->counts);
-    PyObject **keys = self->keys;
-    for (size_t i=0; i < HASH_TABLE_SIZE; i++) {
-        Py_XDECREF(keys[i]);
-    }
-    PyMem_Free(self->keys);
+    PyMem_Free(self->entries);
 }
 
 static PyObject *
@@ -1265,13 +1264,11 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     Py_hash_t *hash_table = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
-    counter_t *counts = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(counter_t));
-    PyObject **keys = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(PyObject *));
+    HashTableEntry *entries = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(HashTableEntry));
     PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
-    if ((hash_table == NULL) | (counts == NULL) | (keys == NULL)) {
+    if ((hash_table == NULL) | (entries == NULL)) {
         PyMem_Free(hash_table);
-        PyMem_Free(keys);
-        PyMem_Free(counts);
+        PyMem_Free(entries);
         return PyErr_NoMemory();
     }
     SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
@@ -1281,8 +1278,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->number_of_sequences = 0;
     self->number_of_uniques = 0;
     self->hash_table = hash_table;
-    self->counts = counts; 
-    self->keys = keys;
+    self->entries = entries;
     self->hashfunc = hashfuncdef->hash;
     return (PyObject *)self;
 }
@@ -1329,24 +1325,21 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
         if (entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hash_table[index] = hash;
-                self->counts[index] = 1;
-                PyObject *key = PyUnicode_DecodeASCII(sequence, hash_length, NULL);
-                if (key == NULL) {
-                    return NULL;
-                }
-                self->keys[index] = key; 
+                HashTableEntry *entry = self->entries + index;
+                entry->count = 1;
+                memcpy(entry->key, sequence, hash_length);
                 self->number_of_uniques += 1;
                 break;
             } else {
                 Py_RETURN_NONE;
             }
         } else if (entry == hash) {
-            PyObject *key = self->keys[index];
+                HashTableEntry *entry = self->entries + index;
             /* There is a very small chance of a hash collision, check to make 
                sure. */
-            if (PyUnicode_GET_LENGTH(key) == hash_length && 
-                memcmp(PyUnicode_DATA(key), sequence, hash_length) == 0) {
-                self->counts[index] += 1;
+            if (strlen(entry->key) == hash_length && 
+                memcmp(entry->key, sequence, hash_length) == 0) {
+                entry->count += 1;
                 Py_RETURN_NONE;
             }
         }
@@ -1376,24 +1369,26 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
     if (count_dict == NULL) {
         return PyErr_NoMemory();
     }
-    counter_t *counts = self->counts;
-    PyObject **keys = self->keys; 
+    HashTableEntry *entries = self->entries;
 
     for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
-        counter_t count = counts[i];
-        if (count == 0) {
+        HashTableEntry *entry = entries + i;
+        if (entry->count == 0) {
             continue;
         }
-        PyObject *count_obj = PyLong_FromUnsignedLongLong(count);
+        PyObject *count_obj = PyLong_FromUnsignedLongLong(entry->count);
         if (count_obj == NULL) {
-            PyErr_NoMemory();
             goto error;
         }
-        PyObject *key = keys[i];
+        PyObject *key = PyUnicode_FromString(entry->key);
+        if (key == NULL) {
+            goto error;
+        }
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
         Py_DECREF(count_obj);
+        Py_DECREF(key);
     }
     return count_dict;
 
