@@ -1315,8 +1315,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
        setting the most significant bit, this does not affect the resulting index. */
     hash |= (1ULL << 63);  
     Py_hash_t *hashes = self->hashes;
-    /* No modulo required because HASH_TABLE_SIZE is a power of 2 */
-    size_t index = hash & (HASH_TABLE_SIZE - 1);
+    size_t index = hash % HASH_TABLE_SIZE;
  
     while (1) {
         Py_hash_t hash_entry = hashes[index];
@@ -1342,7 +1341,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
         }
         index += 1;
         /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
-        index &= (HASH_TABLE_SIZE - 1);
+        index %= HASH_TABLE_SIZE;
     }
     Py_RETURN_NONE;
 }
