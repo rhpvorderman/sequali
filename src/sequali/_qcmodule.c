@@ -1235,8 +1235,9 @@ static inline size_t hash_to_index(Py_hash_t hash) {
 }
 
 typedef struct _HashTableEntry {
-    counter_t count;
-    char key[56];
+    uint64_t count;
+    uint8_t key_length;
+    char key[55];  // 55 to align at 64 bytes. Only 50 is needed.
 } HashTableEntry;
 
 typedef struct _SequenceDuplicationStruct {
@@ -1327,6 +1328,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
                 hash_table[index] = hash;
                 HashTableEntry *entry = self->entries + index;
                 entry->count = 1;
+                entry->key_length = hash_length;
                 memcpy(entry->key, sequence, hash_length);
                 self->number_of_uniques += 1;
             }
@@ -1335,7 +1337,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
                 HashTableEntry *entry = self->entries + index;
             /* There is a very small chance of a hash collision, check to make 
                sure. If not equal we simply go to the next hash_entry. */
-            if (strlen(entry->key) == hash_length && 
+            if (entry->key_length == hash_length && 
                 memcmp(entry->key, sequence, hash_length) == 0) {
                 entry->count += 1;
                 break;
@@ -1378,10 +1380,11 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         if (count_obj == NULL) {
             goto error;
         }
-        PyObject *key = PyUnicode_FromString(entry->key);
+        PyObject *key = PyUnicode_New(entry->key_length, 127);
         if (key == NULL) {
             goto error;
         }
+        memcpy(PyUnicode_DATA(key), entry->key, entry->key_length);
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
