@@ -1229,11 +1229,6 @@ static PyTypeObject PerTileQuality_Type = {
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define HASH_TABLE_SIZE (1ULL << 18)
 
-static inline size_t hash_to_index(Py_hash_t hash) {
-    /* No modulo required because HASH_TABLE_SIZE is a power of 2 */
-    return hash & (HASH_TABLE_SIZE - 1);
-}
-
 typedef struct _HashTableEntry {
     uint64_t count;
     uint8_t key_length;
@@ -1322,7 +1317,8 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
        not affect the resulting index. */
     hash |= (1ULL << 63);  
     Py_hash_t *hash_table = self->hash_table;
-    size_t index = hash_to_index(hash);
+    /* No modulo required because HASH_TABLE_SIZE is a power of 2 */
+    size_t index = hash & (HASH_TABLE_SIZE - 1);
  
     while (1) {
         Py_hash_t hash_entry = hash_table[index];
@@ -1347,8 +1343,7 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
             }
         }
         index += 1;
-        /* Make sure the index round trips when it reaches HASH_TABLE_SIZE. 
-           The &= works for hash table sizes that are a power of 2. */
+        /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
         index &= (HASH_TABLE_SIZE - 1);
     }
     Py_RETURN_NONE;
