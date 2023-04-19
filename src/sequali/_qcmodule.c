@@ -1318,6 +1318,9 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
     char *sequence = PyUnicode_DATA(sequence_obj);
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
+    /* Ensure hash is never 0. By setting the most significant bit, this does 
+       not affect the resulting index. */
+    hash |= (1ULL << 63);  
     Py_hash_t *hash_table = self->hash_table;
     size_t index = hash_to_index(hash);
  
