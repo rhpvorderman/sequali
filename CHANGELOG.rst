@@ -9,6 +9,7 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Count overrepresented sequences using a hash table implemented in C.
 + Add a per tile sequence quality module
 + Count adapters using a fast shift-AND algorithm.
 + Create diverse graphs using pygal based on the count matrix.
