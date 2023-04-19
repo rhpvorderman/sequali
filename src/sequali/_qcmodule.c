@@ -1321,26 +1321,24 @@ SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_o
     size_t index = hash_to_index(hash);
  
     while (1) {
-        Py_hash_t entry = hash_table[index];
-        if (entry == 0) {
+        Py_hash_t hash_entry = hash_table[index];
+        if (hash_entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hash_table[index] = hash;
                 HashTableEntry *entry = self->entries + index;
                 entry->count = 1;
                 memcpy(entry->key, sequence, hash_length);
                 self->number_of_uniques += 1;
-                break;
-            } else {
-                Py_RETURN_NONE;
             }
-        } else if (entry == hash) {
+            break;
+        } else if (hash_entry == hash) {
                 HashTableEntry *entry = self->entries + index;
             /* There is a very small chance of a hash collision, check to make 
-               sure. */
+               sure. If not equal we simply go to the next hash_entry. */
             if (strlen(entry->key) == hash_length && 
                 memcmp(entry->key, sequence, hash_length) == 0) {
                 entry->count += 1;
-                Py_RETURN_NONE;
+                break;
             }
         }
         index += 1;
