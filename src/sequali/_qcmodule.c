@@ -1223,6 +1223,8 @@ static PyTypeObject PerTileQuality_Type = {
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define HASH_TABLE_SIZE (1ULL << 18)
 
+/* This struct contains count, key_length and key on one single cache line 
+   (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
 typedef struct _HashTableEntry {
     uint64_t count;
     uint8_t key_length;
