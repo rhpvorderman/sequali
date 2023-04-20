@@ -879,7 +879,7 @@ typedef struct _PerTileQualityStruct {
     char skipped;
     BaseQuality **base_qualities;
     size_t number_of_tiles;
-    Py_ssize_t max_length;
+    size_t max_length;
     size_t number_of_reads;
     PyObject *skipped_reason;
 } PerTileQuality;
@@ -1047,8 +1047,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
     const char *header = PyUnicode_DATA(header_obj);
     Py_ssize_t header_length = PyUnicode_GET_LENGTH(header_obj);
     const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
-    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(qualities_obj);
-    size_t i;
+    size_t sequence_length = (size_t)PyUnicode_GET_LENGTH(qualities_obj);
     uint8_t phred_offset = self->phred_offset;
     uint8_t q;
 
@@ -1086,7 +1085,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
     }
 
     self->number_of_reads += 1;
-    for (i=0; i < (size_t)sequence_length; i+=1) {
+    for (size_t i=0; i < sequence_length; i+=1) {
         q = qualities[i] - phred_offset;
         if (q > PHRED_MAX) {
             PyErr_Format(
@@ -1122,7 +1121,7 @@ PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
     METH_NOARGS, PerTileQuality_get_tile_averages__doc__}
 
 static PyObject *
-PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *read)
+PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
 {
     BaseQuality **base_qualities = self->base_qualities;
     size_t maximum_tile = self->number_of_tiles;
