@@ -458,10 +458,10 @@ def main():
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
         for read in reader:
             metrics.add_read(read)
-            sequence = read.sequence
-            sequence_duplication.add_sequence(sequence)
-            adapter_counter.add_sequence(sequence)
             per_tile_quality.add_read(read)
+            sequence = read.sequence
+            adapter_counter.add_sequence(sequence)
+            sequence_duplication.add_sequence(sequence)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
