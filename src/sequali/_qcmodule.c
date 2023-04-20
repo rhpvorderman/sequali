@@ -1194,6 +1194,230 @@ static PyTypeObject PerTileQuality_Type = {
     .tp_methods = PerTileQuality_methods,
 };
 
+/*************************
+ * SEQUENCE DUPLICATION *
+ *************************/
+
+/* A module to use the first 50 bp of reads and collect the first 100_000 
+   unique sequences and see how often they occur to estimate the duplication 
+   rate and overrepresented sequences. The idea to take the first 100_000 with 
+   50 bp comes from FastQC. 
+   
+   Below some typical figures:
+   For a 5 million read illumina library:
+    100000  Unique sequences recorded
+     13038  Duplicates of one of the 100_000
+   4886962  Not a duplicate of one of the 100_000
+
+   A highly duplicated RNA library:
+    100000  Unique sequences recorded
+   1975437  Duplicates of one of the 100_000
+   5856349  Not a duplicate of one of the 100_000
+ 
+   As is visible, the most common case is that a read is not present in the
+   first 100_000 unique sequences, even in the pathological case, so that case 
+   should be optimized.
+*/
+
+#define MAX_UNIQUE_SEQUENCES 100000
+#define UNIQUE_SEQUENCE_LENGTH 50
+/* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
+   bitwise AND by the compiler. Also this size (~262K entries) seems to work 
+   well with a 100_000 slots in use. */
+#define HASH_TABLE_SIZE (1ULL << 18)
+
+/* This struct contains count, key_length and key on one single cache line 
+   (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
+typedef struct _HashTableEntry {
+    uint64_t count;
+    uint8_t key_length;
+    char key[55];  // 55 to align at 64 bytes. Only 50 is needed.
+} HashTableEntry;
+
+typedef struct _SequenceDuplicationStruct {
+    PyObject_HEAD 
+    size_t number_of_sequences;
+    size_t number_of_uniques;
+    Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
+    /* Store hashes and entries separately as in the most common case only
+       the hash is needed. */
+    Py_hash_t *hashes; 
+    HashTableEntry *entries;
+} SequenceDuplication;
+
+static void 
+SequenceDuplication_dealloc(SequenceDuplication *self)
+{
+    PyMem_Free(self->hashes);
+    PyMem_Free(self->entries);
+}
+
+static PyObject *
+SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    static char *kwargnames[] = {NULL};
+    static char *format = ":SequenceDuplication";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+        return NULL;
+    }
+    Py_hash_t *hashes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
+    HashTableEntry *entries = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(HashTableEntry));
+    PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
+    if ((hashes == NULL) | (entries == NULL)) {
+        PyMem_Free(hashes);
+        PyMem_Free(entries);
+        return PyErr_NoMemory();
+    }
+    SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->number_of_sequences = 0;
+    self->number_of_uniques = 0;
+    self->hashes = hashes;
+    self->entries = entries;
+    self->hashfunc = hashfuncdef->hash;
+    return (PyObject *)self;
+}
+
+
+PyDoc_STRVAR(SequenceDuplication_add_sequence__doc__,
+"add_sequence($self, sequence, /)\n"
+"--\n"
+"\n"
+"Add a sequence to the duplication module. \n"
+"\n"
+"  sequence\n"
+"    An ASCII string containing the sequence.\n"
+);
+
+#define SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF    \
+    {"add_sequence", (PyCFunction)(void(*)(void))SequenceDuplication_add_sequence, \
+    METH_O, SequenceDuplication_add_sequence__doc__}
+
+static PyObject *
+SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_obj) 
+{
+    if (!PyUnicode_CheckExact(sequence_obj)) {
+        PyErr_Format(PyExc_TypeError, "sequence should be a str, got %s", 
+                     Py_TYPE(sequence_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "Sequence should only contain ASCII characters: %R",
+                     sequence_obj);
+        return NULL;
+    }
+    self->number_of_sequences += 1;
+    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    char *sequence = PyUnicode_DATA(sequence_obj);
+    Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
+    Py_hash_t hash = self->hashfunc(sequence, hash_length);
+    /* Ensure hash is never 0, because that is reserved for empty slots. By 
+       setting the most significant bit, this does not affect the resulting index. */
+    hash |= (1ULL << 63);  
+    Py_hash_t *hashes = self->hashes;
+    size_t index = hash % HASH_TABLE_SIZE;
+ 
+    while (1) {
+        Py_hash_t hash_entry = hashes[index];
+        if (hash_entry == 0) {
+            if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
+                hashes[index] = hash;
+                HashTableEntry *entry = self->entries + index;
+                entry->count = 1;
+                entry->key_length = hash_length;
+                memcpy(entry->key, sequence, hash_length);
+                self->number_of_uniques += 1;
+            }
+            break;
+        } else if (hash_entry == hash) {
+                HashTableEntry *entry = self->entries + index;
+            /* There is a very small chance of a hash collision, check to make 
+               sure. If not equal we simply go to the next hash_entry. */
+            if (entry->key_length == hash_length && 
+                memcmp(entry->key, sequence, hash_length) == 0) {
+                entry->count += 1;
+                break;
+            }
+        }
+        index += 1;
+        /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
+        index %= HASH_TABLE_SIZE;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
+"sequence_counts($self, /)\n"
+"--\n"
+"\n"
+"Get a dictionary with sequence counts \n"
+);
+
+#define SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF    \
+    {"sequence_counts", (PyCFunction)(void(*)(void))SequenceDuplication_sequence_counts, \
+    METH_NOARGS, SequenceDuplication_sequence_counts__doc__}
+
+static PyObject *
+SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *count_dict = PyDict_New();
+    if (count_dict == NULL) {
+        return PyErr_NoMemory();
+    }
+    HashTableEntry *entries = self->entries;
+
+    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+        HashTableEntry *entry = entries + i;
+        if (entry->count == 0) {
+            continue;
+        }
+        PyObject *count_obj = PyLong_FromUnsignedLongLong(entry->count);
+        if (count_obj == NULL) {
+            goto error;
+        }
+        PyObject *key = PyUnicode_New(entry->key_length, 127);
+        if (key == NULL) {
+            goto error;
+        }
+        memcpy(PyUnicode_DATA(key), entry->key, entry->key_length);
+        if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
+            goto error;
+        }
+        Py_DECREF(count_obj);
+        Py_DECREF(key);
+    }
+    return count_dict;
+
+error:
+    Py_DECREF(count_dict);
+    return NULL;
+}
+
+
+static PyMethodDef SequenceDuplication_methods[] = {
+    SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF,
+    SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF,
+    {NULL},
+};
+
+static PyMemberDef SequenceDuplication_members[] = {
+    {"number_of_sequences", T_ULONGLONG, 
+     offsetof(SequenceDuplication, number_of_sequences), READONLY,
+     "The total number of sequences processed"},
+    {NULL},
+};
+
+static PyTypeObject SequenceDuplication_Type = {
+    .tp_name = "_qc.SequenceDuplication",
+    .tp_basicsize = sizeof(SequenceDuplication),
+    .tp_dealloc = (destructor)(SequenceDuplication_dealloc),
+    .tp_new = (newfunc)SequenceDuplication__new__,
+    .tp_members = SequenceDuplication_members,
+    .tp_methods = SequenceDuplication_methods,
+};
 
 
 /*************************
@@ -1255,6 +1479,15 @@ PyInit__qc(void)
     Py_INCREF(&PerTileQuality_Type);
     if (PyModule_AddObject(m, "PerTileQuality", 
                            (PyObject *)&PerTileQuality_Type) != 0) {
+        return NULL;
+    }
+
+    if (PyType_Ready(&SequenceDuplication_Type) != 0) {
+        return NULL;
+    } 
+    Py_INCREF(&SequenceDuplication_Type);
+    if (PyModule_AddObject(m, "SequenceDuplication",
+                          (PyObject *)&SequenceDuplication_Type) != 0) {
         return NULL;
     }
 
