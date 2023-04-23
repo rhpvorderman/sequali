@@ -42,11 +42,17 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
     if (array == NULL) {
         return NULL;
     } 
-    /* frombytes works in-place, but may return an error. So catch the result. 
-       y# creates a bytes object from a pointer and a length. */
-    PyObject *result = PyObject_CallMethod(array, "frombytes", 
-                                           "y#", buffer, buffersize);
+    /* We cannot paste into the array directly, so use a temporary memoryview */
+    PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, READONLY);
+    if (tmp == NULL) {
+        Py_DECREF(array);
+        return NULL;
+    }
+    /* frombytes works in-place, but may return an error. So catch the result. */
+    PyObject *result = PyObject_CallMethod(array, "frombytes", "O", tmp);
+    Py_DECREF(tmp);
     if (result == NULL) {
+        Py_DECREF(array);
         return NULL;
     }
     return array;
