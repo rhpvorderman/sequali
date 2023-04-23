@@ -36,7 +36,7 @@ static PyTypeObject *SequenceRecord;
 static PyTypeObject *PythonArray;
 
 static PyObject *
-python_array_from_buffer(char typecode, void *buffer, size_t buffersize) 
+PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize) 
 {
     PyObject *array = PyObject_CallFunction((PyObject *)PythonArray, "C", typecode);
     if (array == NULL) {
@@ -260,74 +260,73 @@ error:
     return NULL;
 }
 
-PyDoc_STRVAR(QCMetrics_count_table_view__doc__,
-"count_table_view($self, /)\n"
+PyDoc_STRVAR(QCMetrics_count_table__doc__,
+"count_table($self, /)\n"
 "--\n"
 "\n"
-"Return a memoryview on the produced count table. \n"
+"Return a array.array on the produced count table. \n"
 );
 
-#define QCMETRICS_COUNT_TABLE_VIEW_METHODDEF    \
-    {"count_table_view", (PyCFunction)(void(*)(void))QCMetrics_count_table_view, \
-     METH_NOARGS, QCMetrics_count_table_view__doc__}
+#define QCMETRICS_COUNT_TABLE_METHODDEF    \
+    {"count_table", (PyCFunction)(void(*)(void))QCMetrics_count_table, \
+     METH_NOARGS, QCMetrics_count_table__doc__}
 
 static PyObject *
-QCMetrics_count_table_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+QCMetrics_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
-    return PyMemoryView_FromMemory(
-        (char *)self->count_tables,
-        self->max_length * sizeof(counttable_t),
-        PyBUF_READ
+    return PythonArray_FromBuffer(
+        'Q', 
+        self->count_tables, 
+        self->max_length *sizeof(counttable_t));
+}
+
+PyDoc_STRVAR(QCMetrics_gc_content__doc__,
+"gc_content($self, /)\n"
+"--\n"
+"\n"
+"Return a array.array on the produced gc content counts. \n"
+);
+
+#define QCMETRICS_GC_CONTENT_METHODDEF    \
+    {"gc_content", (PyCFunction)(void(*)(void))QCMetrics_gc_content, \
+     METH_NOARGS, QCMetrics_gc_content__doc__}
+
+static PyObject *
+QCMetrics_gc_content(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PythonArray_FromBuffer(
+        'Q',
+        self->gc_content,
+        sizeof(self->gc_content)
     );
 }
 
-PyDoc_STRVAR(QCMetrics_gc_content_view__doc__,
-"gc_content_view($self, /)\n"
+PyDoc_STRVAR(QCMetrics_phred_scores__doc__,
+"phred_scores($self, /)\n"
 "--\n"
 "\n"
-"Return a memoryview on the produced gc content counts. \n"
+"Return a array.array on the produced average phred score counts. \n"
 );
 
-#define QCMETRICS_GC_CONTENT_VIEW_METHODDEF    \
-    {"gc_content_view", (PyCFunction)(void(*)(void))QCMetrics_gc_content_view, \
-     METH_NOARGS, QCMetrics_gc_content_view__doc__}
+#define QCMETRICS_PHRED_SCORES_METHODDEF    \
+    {"phred_scores", (PyCFunction)(void(*)(void))QCMetrics_phred_scores, \
+     METH_NOARGS, QCMetrics_phred_scores__doc__}
 
 static PyObject *
-QCMetrics_gc_content_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
-    return PyMemoryView_FromMemory(
-        (char *)self->gc_content,
-        101 * sizeof(counter_t),
-        PyBUF_READ
-    );
-}
-
-PyDoc_STRVAR(QCMetrics_phred_scores_view__doc__,
-"phred_scores_view($self, /)\n"
-"--\n"
-"\n"
-"Return a memoryview on the produced average phred score counts. \n"
-);
-
-#define QCMETRICS_PHRED_SCORES_VIEW_METHODDEF    \
-    {"phred_scores_view", (PyCFunction)(void(*)(void))QCMetrics_phred_scores_view, \
-     METH_NOARGS, QCMetrics_phred_scores_view__doc__}
-
-static PyObject *
-QCMetrics_phred_scores_view(QCMetrics *self, PyObject *Py_UNUSED(ignore))
-{
-    return PyMemoryView_FromMemory(
-        (char *)self->phred_scores,
-        (PHRED_MAX + 1) * sizeof(counter_t),
-        PyBUF_READ
+    return PythonArray_FromBuffer(
+        'Q',
+        self->phred_scores,
+        sizeof(self->phred_scores)
     );
 }
 
 static PyMethodDef QCMetrics_methods[] = {
     QCMETRICS_ADD_READ_METHODDEF,
-    QCMETRICS_COUNT_TABLE_VIEW_METHODDEF,
-    QCMETRICS_GC_CONTENT_VIEW_METHODDEF,
-    QCMETRICS_PHRED_SCORES_VIEW_METHODDEF,
+    QCMETRICS_COUNT_TABLE_METHODDEF,
+    QCMETRICS_GC_CONTENT_METHODDEF,
+    QCMETRICS_PHRED_SCORES_METHODDEF,
     {NULL},
 };
 
@@ -814,7 +813,7 @@ PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 "--\n"
 "\n"
 "Return the counts as a list of tuples. Each tuple contains the adapter, \n"
-"and a memoryview to the counts per position. \n"
+"and an array.array counts per position. \n"
 );
 
 #define ADAPTERCOUNTER_GET_COUNTS_METHODDEF    \
@@ -835,23 +834,18 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
     }
     for (size_t i=0; i < self->number_of_adapters; i++) {
         PyObject *tup = PyTuple_New(2);
-        Py_buffer buf = {
-            .buf = self->adapter_counter[i],
-            .obj = NULL,
-            .len = self->max_length * sizeof(counter_t),
-            .readonly = 1,
-            .itemsize = sizeof(counter_t),
-            .format = "Q",
-            .ndim = 1,
-        };
-        PyObject *view = PyMemoryView_FromBuffer(&buf);
-        if (view == NULL) {
+        PyObject *counts = PythonArray_FromBuffer(
+            'Q',
+            self->adapter_counter[i],
+            self->max_length * sizeof(counter_t)
+        );
+        if (counts == NULL) {
             return NULL;
         }
         PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
         Py_INCREF(adapter);
         PyTuple_SET_ITEM(tup, 0, adapter);
-        PyTuple_SET_ITEM(tup, 1, view);
+        PyTuple_SET_ITEM(tup, 1, counts);
         PyList_SET_ITEM(counts_list, i, tup);
     }
     return counts_list;

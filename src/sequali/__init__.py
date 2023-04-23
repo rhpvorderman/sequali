@@ -137,12 +137,9 @@ class QCMetricsReport:
         self.raw_count_matrix = array.array("Q")
         # Python will treat the memoryview as an iterable in the array constructor
         # use from_bytes instead for direct memcpy.
-        self.raw_count_matrix.frombytes(metrics.count_table_view())
-
-        self.gc_content = array.array("Q")
-        self.gc_content.frombytes(metrics.gc_content_view())
-        self.phred_scores = array.array("Q")
-        self.phred_scores.frombytes(metrics.phred_scores_view())
+        self.raw_count_matrix = metrics.count_table()
+        self.gc_content = metrics.gc_content()
+        self.phred_scores = metrics.phred_scores()
 
         matrix = memoryview(self.raw_count_matrix)
 
