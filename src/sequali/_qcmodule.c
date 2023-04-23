@@ -29,6 +29,33 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 static PyTypeObject *SequenceRecord;
 
+/*********
+ * Utils *
+ *********/
+
+static PyTypeObject *PythonArray;
+
+static PyObject *
+python_array_from_buffer(char typecode, void *buffer, size_t buffersize) 
+{
+    PyObject *array = PyObject_CallFunction((PyObject *)PythonArray, "C", typecode);
+    if (array == NULL) {
+        return NULL;
+    } 
+    /* frombytes works in-place, but may return an error. So catch the result. 
+       y# creates a bytes object from a pointer and a length. */
+    PyObject *result = PyObject_CallMethod(array, "frombytes", 
+                                           "y#", buffer, buffersize);
+    if (result == NULL) {
+        return NULL;
+    }
+    return array;
+}
+
+/**************
+ * QC METRICS *
+ **************/
+
 /* Nice trick from fastp: A,C, G, T, N all have different last three
    bits. So this requires only 8 entries per count array. Fastp performs
    a bitwise and of 0b111 on every character.
@@ -65,10 +92,6 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
-
-/**************
- * QC METRICS *
- **************/
 
 typedef uint64_t counter_t;
 
@@ -1453,6 +1476,20 @@ PyInit__qc(void)
             "SequenceRecord is not a type class but, %s", 
             Py_TYPE(SequenceRecord)->tp_name);
         return NULL;
+    }
+
+    PyObject *array_module = PyImport_ImportModule("array");
+    if (array_module == NULL) {
+        return NULL;
+    }
+    PythonArray = (PyTypeObject *)PyObject_GetAttrString(array_module, "array");
+    if (PythonArray == NULL) {
+        return NULL;
+    }
+    if (!PyType_CheckExact(PythonArray)) {
+        PyErr_Format(PyExc_RuntimeError, 
+            "array.array is not a type class but, %s",
+            Py_TYPE(PythonArray)->tp_name);
     }
 
     if (PyType_Ready(&QCMetrics_Type) != 0) {
