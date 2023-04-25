@@ -1409,6 +1409,41 @@ error:
     return NULL;
 }
 
+PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
+"overrepresented_sequences($self, threshold=0.001)\n"
+"--\n"
+"\n"
+"Return a list of tuples with the overrepresented sequences and their \n"
+"occurrence fraction.\n"
+"\n"
+"  threshold\n"
+"    The fraction at which a sequence is considered overrepresented.\n"
+);
+
+#define SequenceDuplication_overrepresented_sequences_method METH_O
+
+static PyObject *
+SequenceDuplication_overrepresented_sequences(SequenceDuplication *self, 
+                                              PyObject *threshold)
+{
+    double fraction = PyFloat_AsDouble(threshold);
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+    if ((fraction < 0.0) || (fraction > 1.0)) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "threshold must be between 0.0 and 1.0 got %R", 
+            threshold);
+        return NULL;
+    }
+    
+    PyObject *result = PyList_New(0);
+    if (result == NULL) {
+        return NULL;
+    }
+    return result;
+}
 
 static PyMethodDef SequenceDuplication_methods[] = {
     {"add_sequence", (PyCFunction)SequenceDuplication_add_sequence, 
@@ -1417,6 +1452,10 @@ static PyMethodDef SequenceDuplication_methods[] = {
     {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
      SequenceDuplication_sequence_counts_method, 
      SequenceDuplication_sequence_counts__doc__},
+    {"overrepresented_sequences", 
+     (PyCFunction)SequenceDuplication_overrepresented_sequences,
+      SequenceDuplication_overrepresented_sequences_method,
+      SequenceDuplication_overrepresented_sequences__doc__},
     {NULL},
 };
 
