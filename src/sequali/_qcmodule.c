@@ -1468,6 +1468,7 @@ static PyTypeObject *ImportClassFromModule(
         PyErr_Format(PyExc_RuntimeError, 
             "%s.%s is not a type class but, %s",
             module_name, class_name, Py_TYPE(type_object)->tp_name);
+        return NULL;
     }
     return type_object;
 }
