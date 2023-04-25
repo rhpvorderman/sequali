@@ -1437,12 +1437,49 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
             threshold);
         return NULL;
     }
-    
+
     PyObject *result = PyList_New(0);
     if (result == NULL) {
         return NULL;
     }
+
+    uint64_t total_sequences = self->number_of_sequences;
+    uint64_t minimum_hits = fraction * total_sequences;
+    HashTableEntry *entries = self->entries;
+
+    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+        HashTableEntry *entry = entries + i;
+        uint64_t count = entry->count;
+        if (count == 0) {
+            continue;
+        }
+        if (count > minimum_hits) {
+            PyObject *entry_fraction = PyFloat_FromDouble
+                ((double)count / (double)total_sequences);
+            if (entry_fraction == NULL) {
+                goto error;
+            }
+            PyObject *entry_sequence = PyUnicode_DecodeASCII(
+                entry->key, entry->key_length, NULL);
+            if (entry_sequence == NULL) {
+                goto error;
+            }
+            PyObject *entry_tuple = PyTuple_New(2);
+            if (entry_tuple == NULL) {
+                goto error;
+            }
+            PyTuple_SET_ITEM(entry_tuple, 0, entry_fraction);
+            PyTuple_SET_ITEM(entry_tuple, 1, entry_sequence);
+            if (PyList_Append(result, entry_tuple) != 0) {
+                goto error;
+            }
+            Py_DECREF(entry_tuple);
+        }
+    }
     return result;
+error: 
+    Py_DECREF(result);
+    return NULL;
 }
 
 static PyMethodDef SequenceDuplication_methods[] = {
