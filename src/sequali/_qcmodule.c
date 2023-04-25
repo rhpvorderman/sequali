@@ -27,13 +27,15 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #include "emmintrin.h"
 #endif
 
-static PyTypeObject *SequenceRecord;
+/* Pointers to types that will be imported in the module initialization section */
+
+static PyTypeObject *PythonArray;  // array.array
+static PyTypeObject *SequenceRecord;  // dnaio.SequenceRecord
+
 
 /*********
  * Utils *
  *********/
-
-static PyTypeObject *PythonArray;
 
 static PyObject *
 PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize) 
@@ -1455,6 +1457,48 @@ static struct PyModuleDef _qc_module = {
     NULL,  /* module methods */
 };
 
+/* A C implementation of from module_name import class_name*/
+static PyTypeObject *ImportClassFromModule(
+    const char *module_name, 
+    const char *class_name) 
+{
+    PyObject *module = PyImport_ImportModule(module_name);
+    if (module == NULL) {
+        return NULL;
+    }
+    PyTypeObject *type_object = (PyTypeObject *)PyObject_GetAttrString(
+        module, class_name);
+    if (type_object == NULL) {
+        return NULL;
+    }
+    if (!PyType_CheckExact(type_object)) {
+        PyErr_Format(PyExc_RuntimeError, 
+            "%s.%s is not a type class but, %s",
+            module_name, class_name, Py_TYPE(type_object)->tp_name);
+    }
+    return type_object;
+}
+
+/* Simple reimplementation of PyModule_AddType given that this is only available
+   from python 3.9 onwards*/
+static int 
+python_module_add_type(PyObject *module, PyTypeObject *type)
+{
+    if (PyType_Ready(type) != 0) {
+        return -1;
+    }
+    const char *class_name = strchr(type->tp_name, '.');
+    if (class_name == NULL) {
+        return -1;
+    }
+    class_name += 1; // Use the part after the dot.
+    Py_INCREF(type);
+    if (PyModule_AddObject(module, class_name, (PyObject *)type) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
 PyMODINIT_FUNC
 PyInit__qc(void)
 {
@@ -1462,70 +1506,25 @@ PyInit__qc(void)
     if (m == NULL) {
         return NULL;
     }
-    PyObject *dnaio = PyImport_ImportModule("dnaio");
-    if (dnaio == NULL) {
-        return NULL;
-    }
-    SequenceRecord = 
-        (PyTypeObject *)PyObject_GetAttrString(dnaio, "SequenceRecord");
-    if (SequenceRecord == NULL) {
-        return NULL;
-    }
-    if (!PyType_CheckExact(SequenceRecord)) {
-        PyErr_Format(PyExc_RuntimeError, 
-            "SequenceRecord is not a type class but, %s", 
-            Py_TYPE(SequenceRecord)->tp_name);
+
+    PythonArray = ImportClassFromModule("array", "array");
+    SequenceRecord = ImportClassFromModule("dnaio", "SequenceRecord");
+    if ((PythonArray == NULL) || (SequenceRecord == NULL)) {
         return NULL;
     }
 
-    PyObject *array_module = PyImport_ImportModule("array");
-    if (array_module == NULL) {
+    if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
     }
-    PythonArray = (PyTypeObject *)PyObject_GetAttrString(array_module, "array");
-    if (PythonArray == NULL) {
+    if (python_module_add_type(m, &AdapterCounter_Type) != 0) {
         return NULL;
     }
-    if (!PyType_CheckExact(PythonArray)) {
-        PyErr_Format(PyExc_RuntimeError, 
-            "array.array is not a type class but, %s",
-            Py_TYPE(PythonArray)->tp_name);
-    }
-
-    if (PyType_Ready(&QCMetrics_Type) != 0) {
+    if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
         return NULL;
     }
-    Py_INCREF(&QCMetrics_Type);
-    if (PyModule_AddObject(m, "QCMetrics", (PyObject *)&QCMetrics_Type) != 0) {
+    if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
         return NULL;
-    }
-
-    if (PyType_Ready(&AdapterCounter_Type) != 0) {
-        return NULL;
-    }
-    Py_INCREF(&AdapterCounter_Type);
-    if (PyModule_AddObject(m, "AdapterCounter", 
-                           (PyObject *)&AdapterCounter_Type) != 0) {
-        return NULL;
-    }
-    
-    if (PyType_Ready(&PerTileQuality_Type) != 0) {
-        return NULL;
-    }
-    Py_INCREF(&PerTileQuality_Type);
-    if (PyModule_AddObject(m, "PerTileQuality", 
-                           (PyObject *)&PerTileQuality_Type) != 0) {
-        return NULL;
-    }
-
-    if (PyType_Ready(&SequenceDuplication_Type) != 0) {
-        return NULL;
-    } 
-    Py_INCREF(&SequenceDuplication_Type);
-    if (PyModule_AddObject(m, "SequenceDuplication",
-                          (PyObject *)&SequenceDuplication_Type) != 0) {
-        return NULL;
-    }
+    }  
 
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
