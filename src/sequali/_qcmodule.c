@@ -193,9 +193,7 @@ PyDoc_STRVAR(QCMetrics_add_read__doc__,
 "    A dnaio.SequenceRecord object.\n"
 );
 
-#define QCMETRICS_ADD_READ_METHODDEF    \
-    {"add_read", (PyCFunction)(void(*)(void))QCMetrics_add_read, METH_O, \
-     QCMetrics_add_read__doc__}
+#define QCMetrics_add_read_method METH_O
 
 static PyObject * 
 QCMetrics_add_read(QCMetrics *self, PyObject *read) 
@@ -275,9 +273,7 @@ PyDoc_STRVAR(QCMetrics_count_table__doc__,
 "Return a array.array on the produced count table. \n"
 );
 
-#define QCMETRICS_COUNT_TABLE_METHODDEF    \
-    {"count_table", (PyCFunction)(void(*)(void))QCMetrics_count_table, \
-     METH_NOARGS, QCMetrics_count_table__doc__}
+#define QCMetrics_count_table_method METH_NOARGS
 
 static PyObject *
 QCMetrics_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
@@ -295,9 +291,7 @@ PyDoc_STRVAR(QCMetrics_gc_content__doc__,
 "Return a array.array on the produced gc content counts. \n"
 );
 
-#define QCMETRICS_GC_CONTENT_METHODDEF    \
-    {"gc_content", (PyCFunction)(void(*)(void))QCMetrics_gc_content, \
-     METH_NOARGS, QCMetrics_gc_content__doc__}
+#define QCMetrics_gc_content_method METH_NOARGS
 
 static PyObject *
 QCMetrics_gc_content(QCMetrics *self, PyObject *Py_UNUSED(ignore))
@@ -316,9 +310,7 @@ PyDoc_STRVAR(QCMetrics_phred_scores__doc__,
 "Return a array.array on the produced average phred score counts. \n"
 );
 
-#define QCMETRICS_PHRED_SCORES_METHODDEF    \
-    {"phred_scores", (PyCFunction)(void(*)(void))QCMetrics_phred_scores, \
-     METH_NOARGS, QCMetrics_phred_scores__doc__}
+#define QCMetrics_phred_scores_method METH_NOARGS
 
 static PyObject *
 QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
@@ -331,10 +323,14 @@ QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 }
 
 static PyMethodDef QCMetrics_methods[] = {
-    QCMETRICS_ADD_READ_METHODDEF,
-    QCMETRICS_COUNT_TABLE_METHODDEF,
-    QCMETRICS_GC_CONTENT_METHODDEF,
-    QCMETRICS_PHRED_SCORES_METHODDEF,
+    {"add_read",  (PyCFunction)QCMetrics_add_read, 
+     QCMetrics_add_read_method,  QCMetrics_add_read__doc__},
+    {"count_table", (PyCFunction)QCMetrics_count_table, 
+     QCMetrics_count_table_method, QCMetrics_count_table__doc__},
+    {"gc_content", (PyCFunction)QCMetrics_gc_content, 
+     QCMetrics_gc_content_method, QCMetrics_gc_content__doc__},
+    {"phred_scores", (PyCFunction)QCMetrics_phred_scores, 
+     QCMetrics_phred_scores_method, QCMetrics_phred_scores__doc__},
     {NULL},
 };
 
@@ -718,9 +714,7 @@ PyDoc_STRVAR(AdapterCounter_add_sequence__doc__,
 "    An ASCII string containing the sequence.\n"
 );
 
-#define ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF    \
-    {"add_sequence", (PyCFunction)(void(*)(void))AdapterCounter_add_sequence, \
-    METH_O, AdapterCounter_add_sequence__doc__}
+#define AdapterCounter_add_sequence_method METH_O
 
 static PyObject *
 AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj) 
@@ -824,9 +818,7 @@ PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 "and an array.array counts per position. \n"
 );
 
-#define ADAPTERCOUNTER_GET_COUNTS_METHODDEF    \
-    {"get_counts", (PyCFunction)(void(*)(void))AdapterCounter_get_counts, \
-    METH_NOARGS, AdapterCounter_get_counts__doc__}
+# define AdapterCounter_get_counts_method METH_NOARGS
 
 static PyObject *
 AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
@@ -861,8 +853,10 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 
 
 static PyMethodDef AdapterCounter_methods[] = {
-    ADAPTERCOUNTER_ADD_SEQUENCE_METHODDEF,
-    ADAPTERCOUNTER_GET_COUNTS_METHODDEF,
+    {"add_sequence", (PyCFunction)AdapterCounter_add_sequence,
+     AdapterCounter_add_sequence_method, AdapterCounter_add_sequence__doc__},
+    {"get_counts", (PyCFunction)AdapterCounter_get_counts, 
+     AdapterCounter_get_counts_method, AdapterCounter_get_counts__doc__},
     {NULL},
 };
 
@@ -1048,9 +1042,7 @@ PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 "    A dnaio.SequenceRecord object.\n"
 );
 
-#define PERTILEQUALITY_ADD_READ_METHODDEF    \
-    {"add_read", (PyCFunction)(void(*)(void))PerTileQuality_add_read, METH_O, \
-     PerTileQuality_add_read__doc__}
+#define PerTileQuality_add_read_method METH_O
 
 static PyObject *
 PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
@@ -1141,9 +1133,7 @@ PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
 "Get a list of tuples with the tile IDs and a list of their averages. \n"
 );
 
-#define PERTILEQUALITY_GET_TILE_AVERAGES_METHODDEF    \
-    {"get_tile_averages", (PyCFunction)(void(*)(void))PerTileQuality_get_tile_averages, \
-    METH_NOARGS, PerTileQuality_get_tile_averages__doc__}
+#define PerTileQuality_get_tile_averages_method METH_NOARGS
 
 static PyObject *
 PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
@@ -1193,8 +1183,11 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
 
 
 static PyMethodDef PerTileQuality_methods[] = {
-    PERTILEQUALITY_ADD_READ_METHODDEF,
-    PERTILEQUALITY_GET_TILE_AVERAGES_METHODDEF,
+    {"add_read", (PyCFunction)PerTileQuality_add_read, 
+     PerTileQuality_add_read_method, PerTileQuality_add_read__doc__},
+    {"get_tile_averages", (PyCFunction)PerTileQuality_get_tile_averages,
+     PerTileQuality_get_tile_averages_method, 
+     PerTileQuality_get_tile_averages__doc__},
     {NULL},
 };
 
@@ -1315,9 +1308,7 @@ PyDoc_STRVAR(SequenceDuplication_add_sequence__doc__,
 "    An ASCII string containing the sequence.\n"
 );
 
-#define SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF    \
-    {"add_sequence", (PyCFunction)(void(*)(void))SequenceDuplication_add_sequence, \
-    METH_O, SequenceDuplication_add_sequence__doc__}
+#define SequenceDuplication_add_sequence_method METH_O 
 
 static PyObject *
 SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_obj) 
@@ -1380,9 +1371,7 @@ PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
 "Get a dictionary with sequence counts \n"
 );
 
-#define SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF    \
-    {"sequence_counts", (PyCFunction)(void(*)(void))SequenceDuplication_sequence_counts, \
-    METH_NOARGS, SequenceDuplication_sequence_counts__doc__}
+#define SequenceDuplication_sequence_counts_method METH_NOARGS
 
 static PyObject *
 SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUSED(ignore))
@@ -1422,8 +1411,12 @@ error:
 
 
 static PyMethodDef SequenceDuplication_methods[] = {
-    SEQUENCEDUPLICATION_ADD_SEQUENCE_METHODDEF,
-    SEQUENCEDUPLICATION_SEQUENCE_COUNTS_METHODDEF,
+    {"add_sequence", (PyCFunction)SequenceDuplication_add_sequence, 
+     SequenceDuplication_add_sequence_method, 
+     SequenceDuplication_add_sequence__doc__},
+    {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
+     SequenceDuplication_sequence_counts_method, 
+     SequenceDuplication_sequence_counts__doc__},
     {NULL},
 };
 
