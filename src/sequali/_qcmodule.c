@@ -1458,11 +1458,11 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         if (count == 0) {
             continue;
         }
-        if (count > minimum_hits) {
+        if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
                 "(ds#)", 
                 ((double)count / (double)total_sequences),
-                 entry->key_length, entry->key);
+                 entry->key, entry->key_length);
             if (entry_tuple == NULL) {
                 goto error;
             }

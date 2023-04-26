@@ -58,7 +58,7 @@ def test_sequence_duplication_overrepresented_sequences():
     for i in range(10):
         seqdup.add_sequence("not overrepresented")
     seqdup.add_sequence("truly unique")
-    for i in range(100_000 - (100 + 200 + 2000 + 10)):
+    for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Saturate the unique sequences counter
         seqdup.add_sequence("SPAM")
     overrepresented = seqdup.overrepresented_sequences(threshold=0.001)
