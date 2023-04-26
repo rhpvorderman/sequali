@@ -1420,20 +1420,22 @@ PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
 "    The fraction at which a sequence is considered overrepresented.\n"
 );
 
-#define SequenceDuplication_overrepresented_sequences_method METH_O
+#define SequenceDuplication_overrepresented_sequences_method METH_VARARGS | METH_KEYWORDS
 
 static PyObject *
 SequenceDuplication_overrepresented_sequences(SequenceDuplication *self, 
-                                              PyObject *threshold)
+                                              PyObject *args, PyObject *kwargs)
 {
-    double fraction = PyFloat_AsDouble(threshold);
-    if (PyErr_Occurred()) {
+    double threshold = 0.001;  // 0.1 %
+    static char *kwargnames[] = {"threshold", NULL};
+    static char *format = "|d:SequenceDuplication.overrepresented_sequences";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold)) {
         return NULL;
     }
-    if ((fraction < 0.0) || (fraction > 1.0)) {
+    if ((threshold < 0.0) || (threshold > 1.0)) {
         PyErr_Format(
             PyExc_ValueError, 
-            "threshold must be between 0.0 and 1.0 got %R", 
+            "threshold must be between 0.0 and 1.0 got %f", 
             threshold);
         return NULL;
     }
@@ -1444,7 +1446,7 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     }
 
     uint64_t total_sequences = self->number_of_sequences;
-    uint64_t minimum_hits = fraction * total_sequences;
+    uint64_t minimum_hits = threshold * total_sequences;
     HashTableEntry *entries = self->entries;
 
     for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
@@ -1481,7 +1483,7 @@ static PyMethodDef SequenceDuplication_methods[] = {
      SequenceDuplication_sequence_counts_method, 
      SequenceDuplication_sequence_counts__doc__},
     {"overrepresented_sequences", 
-     (PyCFunction)SequenceDuplication_overrepresented_sequences,
+     (PyCFunction)(void(*)(void))SequenceDuplication_overrepresented_sequences,
       SequenceDuplication_overrepresented_sequences_method,
       SequenceDuplication_overrepresented_sequences__doc__},
     {NULL},
