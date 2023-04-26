@@ -1472,6 +1472,13 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
             Py_DECREF(entry_tuple);
         }
     }
+    /* Sort and reverse the list so the most common entries are at the top */
+    if (PyList_Sort(result) != 0) {
+        goto error;
+    }
+    if (PyList_Reverse(result) != 0) {
+        goto error;
+    }
     return result;
 error: 
     Py_DECREF(result);
