@@ -34,3 +34,15 @@ def test_sequence_duplication_add_sequence_not_ascii():
     with pytest.raises(ValueError) as error:
         seqdup.add_sequence("ÄCGT")
     error.match("ASCII")
+
+
+@pytest.mark.parametrize("threshold", [-0.1, 1.1])
+def test_sequence_duplication_overrepresented_sequences_faulty_threshold(threshold):
+    seqdup = SequenceDuplication()
+    with pytest.raises(ValueError) as error:
+        seqdup.overrepresented_sequences(threshold=threshold)
+    error.match(str(threshold))
+    error.match("between")
+    error.match("0.0")
+    error.match("1.0")
+

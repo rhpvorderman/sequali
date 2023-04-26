@@ -1433,10 +1433,13 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         return NULL;
     }
     if ((threshold < 0.0) || (threshold > 1.0)) {
+        // PyErr_Format has no direct way to represent floats
+        PyObject *threshold_obj = PyFloat_FromDouble(threshold);
         PyErr_Format(
             PyExc_ValueError, 
-            "threshold must be between 0.0 and 1.0 got %f", 
+            "threshold must be between 0.0 and 1.0 got, %R", threshold_obj, 
             threshold);
+        Py_XDECREF(threshold_obj);
         return NULL;
     }
 
