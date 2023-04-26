@@ -1454,22 +1454,13 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
             continue;
         }
         if (count > minimum_hits) {
-            PyObject *entry_fraction = PyFloat_FromDouble
-                ((double)count / (double)total_sequences);
-            if (entry_fraction == NULL) {
-                goto error;
-            }
-            PyObject *entry_sequence = PyUnicode_DecodeASCII(
-                entry->key, entry->key_length, NULL);
-            if (entry_sequence == NULL) {
-                goto error;
-            }
-            PyObject *entry_tuple = PyTuple_New(2);
+            PyObject *entry_tuple = Py_BuildValue(
+                "(ds#)", 
+                ((double)count / (double)total_sequences),
+                 entry->key_length, entry->key);
             if (entry_tuple == NULL) {
                 goto error;
             }
-            PyTuple_SET_ITEM(entry_tuple, 0, entry_fraction);
-            PyTuple_SET_ITEM(entry_tuple, 1, entry_sequence);
             if (PyList_Append(result, entry_tuple) != 0) {
                 goto error;
             }
