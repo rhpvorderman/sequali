@@ -71,3 +71,29 @@ def test_sequence_duplication_overrepresented_sequences():
     assert overrepresented[3][0] == 100 / 100_000
     # Assert no other sequences recorded as overrepresented.
     assert len(overrepresented) == 4
+
+
+def test_sequence_duplication_duplication_counts():
+    seqdup = SequenceDuplication()
+    for i in range(100):
+        seqdup.add_sequence("mildly overrepresented")
+    for i in range(200):
+        seqdup.add_sequence("slightly overrepresented")
+    for i in range(2000):
+        seqdup.add_sequence("Blatantly overrepresented")
+    for i in range(10):
+        seqdup.add_sequence("not overrepresented")
+    seqdup.add_sequence("truly unique")
+    seqdup.add_sequence("another unique")
+    for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
+        # Count up to 100_000 to get nice fractions for all the sequences
+        seqdup.add_sequence("SPAM")
+    dupcounts = seqdup.duplication_counts(max_count=50_000)
+    assert dupcounts[0] == 0
+    assert dupcounts[1] == 2
+    assert dupcounts[10] == 1
+    assert dupcounts[200] == 1
+    assert dupcounts[100] == 1
+    assert dupcounts[2000] == 1
+    assert dupcounts[50_001] == 1
+    assert len(dupcounts[50_001:]) == 1
