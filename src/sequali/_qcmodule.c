@@ -1586,6 +1586,7 @@ static struct PyModuleDef _qc_module = {
     NULL, /* module documentation, may be NULL */
     -1,
     NULL,  /* module methods */
+    .m_slots = NULL,
 };
 
 /* A C implementation of from module_name import class_name*/
