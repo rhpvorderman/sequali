@@ -1537,7 +1537,9 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
         }
         count_array[count] += 1;
     }
-    return PythonArray_FromBuffer('Q', count_array, (max_count + 2) * sizeof(uint64_t));
+    PyObject *result = PythonArray_FromBuffer('Q', count_array, (max_count + 2) * sizeof(uint64_t));
+    PyMem_Free(count_array);
+    return result;
 }
 
 static PyMethodDef SequenceDuplication_methods[] = {
