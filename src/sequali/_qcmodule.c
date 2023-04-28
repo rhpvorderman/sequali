@@ -1485,6 +1485,61 @@ error:
     return NULL;
 }
 
+PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
+"duplication_counts($self, max_count=50_000)\n"
+"--\n"
+"\n"
+"Return a count_array of values such that count_array[1] returns the count "
+"of sequences that were only seen once, count_array[5:10] returns those that "
+"were seen 5-9 times. count_array[max_count + 1] gives the number of "
+"sequences that were seen more than max_count.\n"
+"\n"
+"  threshold\n"
+"    The fraction at which a sequence is considered overrepresented.\n"
+);
+
+#define SequenceDuplication_duplication_counts_method METH_VARARGS | METH_KEYWORDS
+
+static PyObject *
+SequenceDuplication_duplication_counts(SequenceDuplication *self, 
+                                       PyObject *args, PyObject *kwargs)
+{
+    static char *kwargnames[] = {"max_count", NULL};
+    static char *format = "|n:SequenceDuplication.duplication_counts";
+    Py_ssize_t max_count_signed = 50000;
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
+            &max_count_signed)) {
+        return NULL;
+    }
+    if (max_count_signed < 1) {
+        PyErr_Format(PyExc_ValueError, 
+                     "Max count needs to be at least one, got %z", 
+                     max_count_signed);
+        return NULL;
+    }
+    size_t max_count = max_count_signed;
+    /* size of array = max_count + 2 because count_array[max_count] and 
+       count_array[max_count + 1] are valid indices. */
+    uint64_t *count_array = PyMem_Calloc(max_count + 2, sizeof(uint64_t));
+    if (count_array == NULL) {
+        return PyErr_NoMemory();
+    }
+    HashTableEntry *entries = self->entries;
+
+    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+        HashTableEntry *entry = entries + i;
+        uint64_t count = entry->count;
+        if (count == 0) {
+            continue;
+        }
+        if (count > max_count) {
+            count = max_count + 1;
+        }
+        count_array[count] += 1;
+    }
+    return PythonArray_FromBuffer('Q', count_array, (max_count + 2) * sizeof(uint64_t));
+}
+
 static PyMethodDef SequenceDuplication_methods[] = {
     {"add_sequence", (PyCFunction)SequenceDuplication_add_sequence, 
      SequenceDuplication_add_sequence_method, 
@@ -1496,6 +1551,10 @@ static PyMethodDef SequenceDuplication_methods[] = {
      (PyCFunction)(void(*)(void))SequenceDuplication_overrepresented_sequences,
       SequenceDuplication_overrepresented_sequences_method,
       SequenceDuplication_overrepresented_sequences__doc__},
+    {"duplication_counts", 
+     (PyCFunction)(void(*)(void))SequenceDuplication_duplication_counts,
+     SequenceDuplication_duplication_counts_method,
+     SequenceDuplication_duplication_counts__doc__},
     {NULL},
 };
 
