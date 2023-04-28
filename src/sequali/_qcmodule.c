@@ -1491,8 +1491,8 @@ PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
 "\n"
 "Return a count_array of values such that count_array[1] returns the count "
 "of sequences that were only seen once, count_array[5:10] returns those that "
-"were seen 5-9 times. count_array[max_count + 1] gives the number of "
-"sequences that were seen more than max_count.\n"
+"were seen 5-9 times. count_array[max_count] gives the number of "
+"sequences that were equal or more than max_count.\n"
 "\n"
 "  threshold\n"
 "    The fraction at which a sequence is considered overrepresented.\n"
@@ -1518,9 +1518,7 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
         return NULL;
     }
     size_t max_count = max_count_signed;
-    /* size of array = max_count + 2 because count_array[max_count] and 
-       count_array[max_count + 1] are valid indices. */
-    uint64_t *count_array = PyMem_Calloc(max_count + 2, sizeof(uint64_t));
+    uint64_t *count_array = PyMem_Calloc(max_count + 1, sizeof(uint64_t));
     if (count_array == NULL) {
         return PyErr_NoMemory();
     }
@@ -1533,11 +1531,11 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
             continue;
         }
         if (count > max_count) {
-            count = max_count + 1;
+            count = max_count;
         }
         count_array[count] += 1;
     }
-    PyObject *result = PythonArray_FromBuffer('Q', count_array, (max_count + 2) * sizeof(uint64_t));
+    PyObject *result = PythonArray_FromBuffer('Q', count_array, (max_count + 1) * sizeof(uint64_t));
     PyMem_Free(count_array);
     return result;
 }

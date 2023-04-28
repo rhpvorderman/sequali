@@ -95,5 +95,5 @@ def test_sequence_duplication_duplication_counts():
     assert dupcounts[200] == 1
     assert dupcounts[100] == 1
     assert dupcounts[2000] == 1
-    assert dupcounts[50_001] == 1
-    assert len(dupcounts[50_001:]) == 1
+    assert dupcounts[50_000] == 1
+    assert sum(dupcounts) == 7
