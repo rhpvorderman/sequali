@@ -176,7 +176,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
     self->record_start = buffer;
     self->name_length = name_length;
+    self->sequence_offset = 2 + name_length;
     self->sequence_length = sequence_length;
+    self->qualities_offset = 5 + name_length + sequence_length;
     self->qualities_length = qualities_length;
     self->obj = bytes_obj;
 
@@ -184,13 +186,11 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     memcpy(buffer + 1, name, name_length);
     size_t cursor = 1 + name_length;
     buffer[cursor] = '\n'; cursor +=1;
-    self->sequence_offset = cursor;
     memcpy(buffer + cursor, sequence, sequence_length); 
     cursor += sequence_length;
     buffer[cursor] = '\n'; cursor +=1; 
     buffer[cursor] = '+'; cursor += 1;
     buffer[cursor] = '\n'; cursor += 1;
-    self->qualities_offset = cursor;
     memcpy(buffer + cursor, qualities, qualities_length);
     cursor += qualities_length; 
     buffer[cursor] = '\n';
