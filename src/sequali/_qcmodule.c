@@ -60,6 +60,151 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
     return array;
 }
 
+/*********************
+ * FASTQ RECORD VIEW *
+ *********************/
+
+/* A structure that holds a pointer to a sequence in an immutable bytes-like
+   object. By using only one pointer (8 bytes) and using uint32_t offsets and 
+   lengths (4 bytes each) we can make the struct fit on a 64-byte cache line. 
+
+   The idea of FastqRecordView is that it can point to an input buffer instead 
+   of copying the information in the buffer. Thus improving memory use, 
+   cache locality etc.
+*/
+
+typedef struct _FastqRecordViewStruct {
+    PyObject_HEAD
+    uint8_t *record_start;
+    // name_offset is always 1, so no variable needed
+    uint32_t name_length;
+    uint32_t sequence_offset;
+    uint32_t sequence_length;
+    uint32_t qualities_offset;
+    uint32_t qualities_length; 
+    PyObject *obj;
+} FastqRecordView;
+
+static void 
+FastqRecordView_dealloc(FastqRecordView *self)
+{
+    Py_XDECREF(self->obj);
+}
+
+static PyObject *
+FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    PyObject *name_obj = NULL; 
+    PyObject *sequence_obj = NULL; 
+    PyObject *qualities_obj = NULL; 
+    static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
+    static char *format = "OOO|:FastqRecordView";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+        &name_obj, &sequence_obj, &qualities_obj)) {
+        return NULL;
+    }
+    if (!PyUnicode_CheckExact(name_obj)) {
+        PyErr_Format(PyExc_TypeError, 
+                    "name should be of type str, got %s.", 
+                    Py_TYPE(name_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(name_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "name should contain only ASCII characters: %R",
+                     name_obj);
+        return NULL;
+    }
+    if (!PyUnicode_CheckExact(sequence_obj)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "sequence should be of type str, got %s.", 
+                     Py_TYPE(sequence_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "sequence should contain only ASCII characters: %R",
+                     sequence_obj);
+        return NULL;
+    }
+    if (!PyUnicode_CheckExact(qualities_obj)) {
+        PyErr_Format(PyExc_TypeError, 
+                    "qualities should be of type str, got %s.", 
+                    Py_TYPE(qualities_obj)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(qualities_obj)) {
+        PyErr_Format(PyExc_ValueError, 
+                     "qualities should contain only ASCII characters: %R",
+                     qualities_obj); 
+        return NULL;
+    }
+    
+
+    uint8_t *name = PyUnicode_DATA(name_obj);
+    size_t name_length = PyUnicode_GET_LENGTH(name_obj);
+    uint8_t *sequence = PyUnicode_DATA(sequence_obj);
+    size_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    uint8_t *qualities = PyUnicode_DATA(qualities_obj);
+    size_t qualities_length = PyUnicode_GET_LENGTH(qualities_obj);
+
+    if (sequence_length != qualities_length) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "sequence and qualities have different lengths: %zd and %zd",
+            sequence_length, qualities_length);
+        return NULL;
+    }
+
+    size_t total_length = name_length + sequence_length + qualities_length + 6;
+    if (total_length > UINT32_MAX) {
+        // lengths are saved as uint32_t types so throw an error;
+        PyErr_Format(
+            PyExc_OverflowError, 
+            "Total length of FASTQ record exceeds 4 GiB. Record name: %R",
+            name_obj);
+    }
+    PyObject *bytes_obj = PyBytes_FromStringAndSize(NULL, total_length);
+    if (bytes_obj == NULL) {
+        return PyErr_NoMemory();
+    }
+    FastqRecordView *self = PyObject_New(FastqRecordView, type);
+    if (self == NULL) {
+        Py_DECREF(bytes_obj);
+        return PyErr_NoMemory();
+    }
+    uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
+    self->record_start = buffer;
+    self->name_length = name_length;
+    self->sequence_length = sequence_length;
+    self->qualities_length = qualities_length;
+    self->obj = bytes_obj;
+
+    buffer[0] = '@';
+    memcpy(buffer + 1, name, name_length);
+    size_t cursor = 1 + name_length;
+    buffer[cursor] = '\n'; cursor +=1;
+    self->sequence_offset = cursor;
+    memcpy(buffer + cursor, sequence, sequence_length); 
+    cursor += sequence_length;
+    buffer[cursor] = '\n'; cursor +=1; 
+    buffer[cursor] = '+'; cursor += 1;
+    buffer[cursor] = '\n'; cursor += 1;
+    self->qualities_offset = cursor;
+    memcpy(buffer + cursor, qualities, qualities_length);
+    cursor += qualities_length; 
+    buffer[cursor] = '\n';
+    return (PyObject *)self;
+}
+
+static PyTypeObject FastqRecordView_Type = {
+    .tp_name = "_qc.FastqRecordView",
+    .tp_basicsize = sizeof(FastqRecordView),
+    .tp_dealloc = (destructor)FastqRecordView_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_new = (newfunc)FastqRecordView__new__,
+};
+
 /**************
  * QC METRICS *
  **************/
@@ -1646,6 +1791,9 @@ PyInit__qc(void)
         return NULL;
     }
 
+    if (python_module_add_type(m, &FastqRecordView_Type) != 0) {
+        return NULL; 
+    }
     if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
     }
