@@ -338,11 +338,10 @@ QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
 {
     if (!FastqRecordView_CheckExact(read)) {
         PyErr_Format(PyExc_TypeError, 
-                     "Read should be a FastqRecordView object, got %s", 
+                     "read should be a FastqRecordView object, got %s", 
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    /* Dnaio guarantees ASCII strings */
     const uint8_t *record_start = read->record_start;
     size_t sequence_length = read->sequence_length;
     const uint8_t *sequence = record_start + read->sequence_offset;
@@ -829,35 +828,30 @@ static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
 }
 #endif
 
-PyDoc_STRVAR(AdapterCounter_add_sequence__doc__,
-"add_sequence($self, sequence, /)\n"
+PyDoc_STRVAR(AdapterCounter_add_read__doc__,
+"add_read($self, read, /)\n"
 "--\n"
 "\n"
-"Add a sequence to the adapter counter. \n"
+"Add a read to the adapter counter. \n"
 "\n"
-"  sequence\n"
-"    An ASCII string containing the sequence.\n"
+"  read\n"
+"    A FastqRecordView object.\n"
 );
 
-#define AdapterCounter_add_sequence_method METH_O
+#define AdapterCounter_add_read_method METH_O
 
 static PyObject *
-AdapterCounter_add_sequence(AdapterCounter *self, PyObject *sequence_obj) 
+AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read) 
 {
-    if (!PyUnicode_CheckExact(sequence_obj)) {
-        PyErr_Format(PyExc_TypeError, "sequence should be a str, got %s", 
-                     Py_TYPE(sequence_obj)->tp_name);
-        return NULL;
-    }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
-        PyErr_Format(PyExc_ValueError, 
-                     "Sequence should only contain ASCII characters: %R",
-                     sequence_obj);
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
         return NULL;
     }
     self->number_of_sequences += 1;
-    uint8_t *sequence = PyUnicode_DATA(sequence_obj);
-    size_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    uint8_t *sequence = read->record_start + read->sequence_offset;
+    size_t sequence_length = read->sequence_length;
 
     if (sequence_length > self->max_length) {
         int ret = AdapterCounter_resize(self, sequence_length);
@@ -978,8 +972,8 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 
 
 static PyMethodDef AdapterCounter_methods[] = {
-    {"add_sequence", (PyCFunction)AdapterCounter_add_sequence,
-     AdapterCounter_add_sequence_method, AdapterCounter_add_sequence__doc__},
+    {"add_read", (PyCFunction)AdapterCounter_add_read,
+     AdapterCounter_add_read_method, AdapterCounter_add_read__doc__},
     {"get_counts", (PyCFunction)AdapterCounter_get_counts, 
      AdapterCounter_get_counts_method, AdapterCounter_get_counts__doc__},
     {NULL},
@@ -1017,8 +1011,6 @@ typedef struct _BaseQualityStruct {
 
 typedef struct _PerTileQualityStruct {
     PyObject_HEAD
-    PyObject *header_name;
-    PyObject *qual_name;
     uint8_t phred_offset;
     char skipped;
     BaseQuality **base_qualities;
@@ -1030,8 +1022,6 @@ typedef struct _PerTileQualityStruct {
 
 static void
 PerTileQuality_dealloc(PerTileQuality *self) {
-    Py_DECREF(self->header_name);
-    Py_DECREF(self->qual_name);
     Py_XDECREF(self->skipped_reason);
     for (size_t i=0; i < self->number_of_tiles; i++) {
         BaseQuality *tile_quals = self->base_qualities[i];
@@ -1048,22 +1038,11 @@ PerTileQuality__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
         return NULL;
     }
-    PyObject *header_name = PyUnicode_FromString("name");
-    if (header_name == NULL) {
-        return NULL;
-    }
-    PyObject *qual_name = PyUnicode_FromString("qualities");
-    if (qual_name == NULL) {
-        return NULL;
-    }
-
     PerTileQuality *self = PyObject_New(PerTileQuality, type);
     self->max_length = 0;
     self->phred_offset = phred_offset;
     self->base_qualities = NULL;
     self->number_of_reads = 0;
-    self->header_name = header_name;
-    self->qual_name = qual_name;
     self->number_of_tiles = 0;
     self->skipped = 0;
     self->skipped_reason = NULL;
@@ -1170,40 +1149,35 @@ PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 #define PerTileQuality_add_read_method METH_O
 
 static PyObject *
-PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
+PerTileQuality_add_read(PerTileQuality *self, FastqRecordView *read)
 {
     if (self->skipped) {
         Py_RETURN_NONE;
     }
-    if (Py_TYPE(read) != SequenceRecord) {
-        PyErr_Format(PyExc_TypeError,
-                     "Read should be a dnaio.SequenceRecord object, got %s",
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    /* PyObject_GetAttrString creates a new unicode object every single time.
-       Use PyObject_GetAttr to prevent this. */
-    PyObject *header_obj = PyObject_GetAttr(read, self->header_name);
-    PyObject *qualities_obj = PyObject_GetAttr(read, self->qual_name);
-    /* Dnaio guarantees ASCII strings */
-    const char *header = PyUnicode_DATA(header_obj);
-    Py_ssize_t header_length = PyUnicode_GET_LENGTH(header_obj);
-    const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
-    size_t sequence_length = (size_t)PyUnicode_GET_LENGTH(qualities_obj);
+    uint8_t *record_start = read->record_start;
+    const char *header = (char *)(record_start + 1);
+    size_t header_length = read->name_length;
+    const uint8_t *qualities = record_start + read->qualities_offset;
+    size_t sequence_length = read->sequence_length;
     uint8_t phred_offset = self->phred_offset;
-    uint8_t q;
 
     long tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
         self->skipped_reason = PyUnicode_FromFormat(
-            "Can not parse header: %s", (char *)header); 
+            "Can not parse header: %s", header); 
         self->skipped = 1;
-        goto success;
+        Py_RETURN_NONE;
     }
 
     if (sequence_length > self->max_length) {
         if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
-            goto error;
+            return NULL;
         }
     }
 
@@ -1211,7 +1185,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
        the index is not in the tile array. */
     if (((size_t)tile_id + 1) > self->number_of_tiles) {
         if (PerTileQuality_resize_tile_array(self, tile_id + 1) != 0) {
-            goto error;
+            return NULL;
         }
     }
     
@@ -1220,7 +1194,7 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
         tile_qualities = PyMem_Malloc(self->max_length * sizeof(BaseQuality));
         if (tile_qualities == NULL) {
             PyErr_NoMemory();
-            goto error;
+            return NULL;
         }
         memset(tile_qualities, 0, self->max_length * sizeof(BaseQuality));
         self->base_qualities[tile_id] = tile_qualities;
@@ -1228,26 +1202,18 @@ PerTileQuality_add_read(PerTileQuality *self, PyObject *read)
 
     self->number_of_reads += 1;
     for (size_t i=0; i < sequence_length; i+=1) {
-        q = qualities[i] - phred_offset;
+        uint8_t q = qualities[i] - phred_offset;
         if (q > PHRED_MAX) {
             PyErr_Format(
                 PyExc_ValueError,
                 "Not a valid phred character: %c", qualities[i]
             );
-            goto error;
+            return NULL;
         }
         tile_qualities[i].total_bases += 1;
         tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
     }
-
-success:
-    Py_DECREF(header_obj);
-    Py_DECREF(qualities_obj);
     Py_RETURN_NONE;
-error:
-    Py_DECREF(header_obj);
-    Py_DECREF(qualities_obj);
-    return NULL;
 }
 
 
@@ -1423,35 +1389,30 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 }
 
 
-PyDoc_STRVAR(SequenceDuplication_add_sequence__doc__,
-"add_sequence($self, sequence, /)\n"
+PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
+"add_read($self, read, /)\n"
 "--\n"
 "\n"
-"Add a sequence to the duplication module. \n"
+"Add a read to the duplication module. \n"
 "\n"
-"  sequence\n"
-"    An ASCII string containing the sequence.\n"
+"  read\n"
+"    A FastqRecordView object.\n"
 );
 
-#define SequenceDuplication_add_sequence_method METH_O 
+#define SequenceDuplication_add_read_method METH_O 
 
 static PyObject *
-SequenceDuplication_add_sequence(SequenceDuplication *self, PyObject *sequence_obj) 
+SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read) 
 {
-    if (!PyUnicode_CheckExact(sequence_obj)) {
-        PyErr_Format(PyExc_TypeError, "sequence should be a str, got %s", 
-                     Py_TYPE(sequence_obj)->tp_name);
-        return NULL;
-    }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
-        PyErr_Format(PyExc_ValueError, 
-                     "Sequence should only contain ASCII characters: %R",
-                     sequence_obj);
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
         return NULL;
     }
     self->number_of_sequences += 1;
-    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
-    char *sequence = PyUnicode_DATA(sequence_obj);
+    Py_ssize_t sequence_length = read->sequence_length;
+    uint8_t *sequence = read->record_start + read->sequence_offset;
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
@@ -1666,9 +1627,9 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
 }
 
 static PyMethodDef SequenceDuplication_methods[] = {
-    {"add_sequence", (PyCFunction)SequenceDuplication_add_sequence, 
-     SequenceDuplication_add_sequence_method, 
-     SequenceDuplication_add_sequence__doc__},
+    {"add_sequence", (PyCFunction)SequenceDuplication_add_read, 
+     SequenceDuplication_add_read_method, 
+     SequenceDuplication_add_read__doc__},
     {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
      SequenceDuplication_sequence_counts_method, 
      SequenceDuplication_sequence_counts__doc__},
