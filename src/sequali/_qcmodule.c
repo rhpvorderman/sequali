@@ -225,6 +225,7 @@ typedef struct _FastqParserStruct {
     size_t buffer_size; 
     uint8_t *record_start;
     PyObject *buffer_obj;
+    size_t read_in_size;
     PyObject *file_obj;
 } FastqParser;
 
@@ -239,11 +240,18 @@ FastqParser_dealloc(FastqParser *self)
 static PyObject *
 FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
 {
-    static PyObject *file_obj = NULL;
-    static char *kwargnames[] = {"fileobj", NULL};
-    static char *format = "O|:FastqParser";
+    PyObject *file_obj = NULL;
+    size_t read_in_size = 8 * 1024;
+    static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
+    static char *format = "O|n:FastqParser";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-        &file_obj)) {
+        &file_obj, &read_in_size)) {
+        return NULL;
+    }
+    if (read_in_size < 1) {
+        PyErr_Format(PyExc_ValueError, 
+                     "initial_buffersize must be at least 1, got %zd",
+                     read_in_size);
         return NULL;
     }
     PyObject *buffer_obj = PyBytes_FromStringAndSize(NULL, 0);
@@ -259,6 +267,7 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->buffer_size = 0;
     self->record_start = self->buffer; 
     self->buffer_obj = buffer_obj;
+    self->read_in_size = read_in_size;
     self->file_obj = file_obj;
     return (PyObject *)self;
 }
@@ -270,12 +279,135 @@ FastqParser__iter__(PyObject *self)
     return self;
 }
 
+static PyObject *
+FastqParser__next__(FastqParser *self) 
+{
+    while (1) {
+        uint8_t *record_start = self->record_start;
+        uint8_t *buffer_end = self->buffer + self->buffer_size;
+        while (1) {
+            if (record_start + 2 >= buffer_end) {
+                break;
+            }
+            if (record_start[0] != '@') {
+                PyErr_Format(
+                    PyExc_ValueError,
+                    "Record does not start with @ but with %c", 
+                    record_start[0]
+                );
+                return NULL;
+            }
+            uint8_t *name_end = memchr(record_start, '\n', 
+                                       buffer_end - record_start);
+            if (name_end == NULL) {
+                break;
+            }
+            size_t name_length = name_end - (record_start + 1);
+            uint8_t *sequence_start = name_end + 1;
+            uint8_t *sequence_end = memchr(sequence_start, '\n', 
+                                           buffer_end - sequence_start);
+            if (sequence_end == NULL) {
+                break;
+            }
+            size_t sequence_length = sequence_end - sequence_start; 
+            uint8_t *second_header_start = sequence_end + 1; 
+            if (second_header_start[0] != '+') {
+                PyErr_Format(
+                    PyExc_ValueError,
+                    "Record second header does not start with + but with %c",
+                    second_header_start[0]
+                );
+                return NULL;
+            }
+            uint8_t *second_header_end = memchr(second_header_start, '\n', 
+                                               buffer_end - second_header_start);
+            if (second_header_end == NULL) {
+                break;
+            }
+            uint8_t *qualities_start = second_header_end + 1;
+            uint8_t *qualities_end = memchr(qualities_start, '\n',
+                                            buffer_end - qualities_start);
+            if (qualities_end == NULL) {
+                break;
+            }
+            size_t qualities_length = qualities_end - qualities_start;
+            if (sequence_length != qualities_length) {
+                PyErr_Format(
+                    PyExc_ValueError,
+                    "Record sequence and qualities do not have equal length, %R",
+                    PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL)
+                );
+            }
+            FastqRecordView *record = PyObject_New(FastqRecordView, &FastqRecordView_Type);
+            if (record == NULL) {
+                return NULL;
+            }
+            record->record_start = record_start;
+            record->name_length = name_length;
+            record->sequence_offset = sequence_start - record_start;
+            record->sequence_length = sequence_length;
+            record->qualities_offset = qualities_start - record_start;
+            Py_INCREF(self->buffer_obj);
+            record->obj = self->buffer_obj;
+            self->record_start = qualities_end + 1;
+            return (PyObject *)record;
+        }
+        if (record_start == self->buffer) {
+            // The FASTQ record is bigger than the current buffer_size
+            self->read_in_size *= 2;
+        }
+        uint8_t bytes_left = buffer_end - record_start;
+        size_t read_in_size = self->read_in_size - bytes_left;
+        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
+        if (new_bytes == NULL) {
+            return NULL;
+        }
+        if (!PyBytes_CheckExact(new_bytes)) {
+            PyErr_Format(
+                PyExc_TypeError,
+                "file_obj %R is not a binary IO type, got %s", 
+                self->file_obj, Py_TYPE(self->file_obj)->tp_name
+            );
+            return NULL;
+        }
+        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
+        size_t new_buffer_size = bytes_left + new_bytes_size;
+        if (new_buffer_size == 0) {
+            // Entire file is read
+            PyErr_SetNone(PyExc_StopIteration);
+        } else if (new_bytes_size == 0) {
+            // Incomplete record at the end of file;
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Incomplete record at the end of file %s", 
+                self->record_start);
+            return NULL;
+        }
+        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
+        if (new_buffer_obj == NULL) {
+            Py_DECREF(new_bytes);
+            return NULL;
+        }
+        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        memcpy(new_buffer, record_start, bytes_left);
+        memcpy(new_buffer + bytes_left, PyBytes_AS_STRING(new_bytes), new_bytes_size);
+        Py_DECREF(new_bytes);
+        PyObject *tmp = self->buffer_obj;
+        self->buffer_obj = new_buffer_obj;
+        self->buffer = new_buffer;
+        self->buffer_size = new_buffer_size;
+        self->record_start = new_buffer;
+        Py_DECREF(tmp);
+    }
+}
+
 PyTypeObject FastqParser_Type = {
     .tp_name = "_qc.FastqParser",
     .tp_basicsize = sizeof(FastqParser),
     .tp_dealloc = (destructor)FastqParser_dealloc,
     .tp_new = FastqParser__new__,
-    .tp_iter = FastqParser__iter__,
+    .tp_iter = (iternextfunc)FastqParser__iter__,
+    .tp_iternext = (iternextfunc)FastqParser__next__,
 };
 
 /**************
