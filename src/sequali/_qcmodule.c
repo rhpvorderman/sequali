@@ -92,6 +92,7 @@ static void
 FastqRecordView_dealloc(FastqRecordView *self)
 {
     Py_XDECREF(self->obj);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
@@ -282,6 +283,7 @@ typedef struct _QCMetricsStruct {
 static void
 QCMetrics_dealloc(QCMetrics *self) {
     PyMem_Free(self->count_tables);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
@@ -566,6 +568,7 @@ static void AdapterCounter_dealloc(AdapterCounter *self) {
     }
     PyMem_Free(self->sse2_matchers);
     #endif
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 #ifdef __SSE2__
@@ -1028,6 +1031,7 @@ PerTileQuality_dealloc(PerTileQuality *self) {
         PyMem_Free(tile_quals);
     }
     PyMem_Free(self->base_qualities);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
@@ -1358,6 +1362,7 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 {
     PyMem_Free(self->hashes);
     PyMem_Free(self->entries);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
