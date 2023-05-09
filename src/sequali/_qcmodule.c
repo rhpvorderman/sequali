@@ -79,9 +79,12 @@ typedef struct _FastqRecordViewStruct {
     // name_offset is always 1, so no variable needed
     uint32_t name_length;
     uint32_t sequence_offset;
-    uint32_t sequence_length;
+    // Sequence length and qualities length should be the same
+    union {
+        uint32_t sequence_length;
+        uint32_t qualities_length;
+    };
     uint32_t qualities_offset;
-    uint32_t qualities_length; 
     PyObject *obj;
 } FastqRecordView;
 
@@ -179,7 +182,6 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->sequence_offset = 2 + name_length;
     self->sequence_length = sequence_length;
     self->qualities_offset = 5 + name_length + sequence_length;
-    self->qualities_length = qualities_length;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -191,8 +193,8 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     buffer[cursor] = '\n'; cursor +=1; 
     buffer[cursor] = '+'; cursor += 1;
     buffer[cursor] = '\n'; cursor += 1;
-    memcpy(buffer + cursor, qualities, qualities_length);
-    cursor += qualities_length; 
+    memcpy(buffer + cursor, qualities, sequence_length);
+    cursor += sequence_length; 
     buffer[cursor] = '\n';
     return (PyObject *)self;
 }
@@ -204,6 +206,12 @@ static PyTypeObject FastqRecordView_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_new = (newfunc)FastqRecordView__new__,
 };
+
+static inline int 
+FastqRecordView_CheckExact(void *obj) 
+{
+    return Py_TYPE(obj) == &FastqRecordView_Type;
+} 
 
 /**************
  * QC METRICS *
@@ -263,8 +271,6 @@ static inline uint8_t phred_to_index(uint8_t phred) {
 
 typedef struct _QCMetricsStruct {
     PyObject_HEAD
-    PyObject *seq_name;
-    PyObject *qual_name;
     uint8_t phred_offset;
     counttable_t *count_tables;
     Py_ssize_t max_length;
@@ -275,8 +281,6 @@ typedef struct _QCMetricsStruct {
 
 static void
 QCMetrics_dealloc(QCMetrics *self) {
-    Py_DECREF(self->seq_name);
-    Py_DECREF(self->qual_name);
     PyMem_Free(self->count_tables);
 }
 
@@ -288,22 +292,11 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
         return NULL;
     }
-    PyObject *seq_name = PyUnicode_FromString("sequence");
-    if (seq_name == NULL) {
-        return NULL;
-    }
-    PyObject *qual_name = PyUnicode_FromString("qualities");
-    if (qual_name == NULL) {
-        return NULL;
-    }
-
     QCMetrics *self = PyObject_New(QCMetrics, type);
     self->max_length = 0;
     self->phred_offset = phred_offset;
     self->count_tables = NULL;
     self->number_of_reads = 0;
-    self->seq_name = seq_name; 
-    self->qual_name = qual_name;
     memset(self->gc_content, 0, 101 * sizeof(counter_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(counter_t));
     return (PyObject *)self;
@@ -335,54 +328,48 @@ PyDoc_STRVAR(QCMetrics_add_read__doc__,
 "Add a read to the count metrics. \n"
 "\n"
 "  read\n"
-"    A dnaio.SequenceRecord object.\n"
+"    A FastqRecordView object.\n"
 );
 
 #define QCMetrics_add_read_method METH_O
 
 static PyObject * 
-QCMetrics_add_read(QCMetrics *self, PyObject *read) 
+QCMetrics_add_read(QCMetrics *self, FastqRecordView *read) 
 {
-    if (Py_TYPE(read) != SequenceRecord) {
+    if (!FastqRecordView_CheckExact(read)) {
         PyErr_Format(PyExc_TypeError, 
-                     "Read should be a dnaio.SequenceRecord object, got %s", 
+                     "Read should be a FastqRecordView object, got %s", 
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    /* PyObject_GetAttrString creates a new unicode object every single time. 
-       Use PyObject_GetAttr to prevent this. */
-    PyObject *sequence_obj = PyObject_GetAttr(read, self->seq_name);
-    PyObject *qualities_obj = PyObject_GetAttr(read, self->qual_name);
     /* Dnaio guarantees ASCII strings */
-    const uint8_t *sequence = PyUnicode_DATA(sequence_obj);
-    const uint8_t *qualities = PyUnicode_DATA(qualities_obj);
-    /* Dnaio guarantees same length */
-    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
-    size_t i;
+    const uint8_t *record_start = read->record_start;
+    size_t sequence_length = read->sequence_length;
+    const uint8_t *sequence = record_start + read->sequence_offset;
+    const uint8_t *qualities = record_start + read->qualities_offset;
     uint8_t phred_offset = self->phred_offset;
-    uint8_t c, q, c_index, q_index;
     counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
-            goto error;
+            return NULL;
         }
     }
 
     self->number_of_reads += 1; 
-    for (i=0; i < (size_t)sequence_length; i+=1) {
-        c = sequence[i];
-        q = qualities[i] - phred_offset;
+    for (size_t i=0; i < (size_t)sequence_length; i+=1) {
+        uint8_t c = sequence[i];
+        uint8_t q = qualities[i] - phred_offset;
         if (q > PHRED_MAX) {
             PyErr_Format(
                 PyExc_ValueError, 
                 "Not a valid phred character: %c", qualities[i]
             );
-            goto error;
+            return NULL;
         }
-        q_index = phred_to_index(q);
-        c_index = NUCLEOTIDE_TO_INDEX[c];
+        uint8_t q_index = phred_to_index(q);
+        uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
         self->count_tables[i][q_index][c_index] += 1;
         base_counts[c_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
@@ -401,14 +388,7 @@ QCMetrics_add_read(QCMetrics *self, PyObject *read)
     assert(phred_score_index >= 0);
     assert(phred_score_index <= PHRED_MAX);
     self->phred_scores[phred_score_index] += 1;
-
-    Py_DECREF(sequence_obj);
-    Py_DECREF(qualities_obj);
     Py_RETURN_NONE;
-error:
-    Py_DECREF(sequence_obj);
-    Py_DECREF(qualities_obj);
-    return NULL;
 }
 
 PyDoc_STRVAR(QCMetrics_count_table__doc__,
