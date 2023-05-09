@@ -214,6 +214,70 @@ FastqRecordView_CheckExact(void *obj)
     return Py_TYPE(obj) == &FastqRecordView_Type;
 } 
 
+
+/****************
+ * FASTQ PARSER *
+ ****************/
+
+typedef struct _FastqParserStruct {
+    PyObject_HEAD 
+    uint8_t *buffer;
+    size_t buffer_size; 
+    uint8_t *record_start;
+    PyObject *buffer_obj;
+    PyObject *file_obj;
+} FastqParser;
+
+static void
+FastqParser_dealloc(FastqParser *self) 
+{
+    Py_XDECREF(self->buffer_obj);
+    Py_XDECREF(self->file_obj);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *
+FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
+{
+    static PyObject *file_obj = NULL;
+    static char *kwargnames[] = {"fileobj", NULL};
+    static char *format = "O|:FastqParser";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+        &file_obj)) {
+        return NULL;
+    }
+    PyObject *buffer_obj = PyBytes_FromStringAndSize(NULL, 0);
+    if (buffer_obj == NULL) {
+        return NULL;
+    }
+    FastqParser *self = PyObject_New(FastqParser, type);
+    if (self == NULL) {
+        Py_DECREF(buffer_obj);
+        return NULL;
+    }
+    self->buffer = (uint8_t *)PyBytes_AS_STRING(buffer_obj);
+    self->buffer_size = 0;
+    self->record_start = self->buffer; 
+    self->buffer_obj = buffer_obj;
+    self->file_obj = file_obj;
+    return (PyObject *)self;
+}
+
+static PyObject *
+FastqParser__iter__(PyObject *self)
+{
+    Py_INCREF(self);
+    return self;
+}
+
+PyTypeObject FastqParser_Type = {
+    .tp_name = "_qc.FastqParser",
+    .tp_basicsize = sizeof(FastqParser),
+    .tp_dealloc = (destructor)FastqParser_dealloc,
+    .tp_new = FastqParser__new__,
+    .tp_iter = FastqParser__iter__,
+};
+
 /**************
  * QC METRICS *
  **************/
