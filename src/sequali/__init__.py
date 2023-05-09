@@ -24,7 +24,7 @@ import dnaio
 import pygal  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
+from ._qc import AdapterCounter, FastqRecordView, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
@@ -453,12 +453,12 @@ def main():
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
     with dnaio.open(sys.argv[1]) as reader:  # type: ignore
-        for read in reader:
+        for record in reader:
+            read = FastqRecordView(record.name, record.sequence, record.qualities)
             metrics.add_read(read)
             per_tile_quality.add_read(read)
-            sequence = read.sequence
-            adapter_counter.add_sequence(sequence)
-            sequence_duplication.add_sequence(sequence)
+            adapter_counter.add_read(read)
+            sequence_duplication.add_read(read)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))

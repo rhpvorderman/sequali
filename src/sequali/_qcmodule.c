@@ -1627,7 +1627,7 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
 }
 
 static PyMethodDef SequenceDuplication_methods[] = {
-    {"add_sequence", (PyCFunction)SequenceDuplication_add_read, 
+    {"add_read", (PyCFunction)SequenceDuplication_add_read, 
      SequenceDuplication_add_read_method, 
      SequenceDuplication_add_read__doc__},
     {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
