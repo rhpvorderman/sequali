@@ -356,7 +356,7 @@ FastqParser__next__(FastqParser *self)
             // The FASTQ record is bigger than the current buffer_size
             self->read_in_size *= 2;
         }
-        uint8_t bytes_left = buffer_end - record_start;
+        size_t bytes_left = buffer_end - record_start;
         size_t read_in_size = self->read_in_size - bytes_left;
         PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
         if (new_bytes == NULL) {
