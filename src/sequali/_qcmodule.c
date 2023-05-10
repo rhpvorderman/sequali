@@ -311,7 +311,7 @@ FastqParser__next__(FastqParser *self)
             }
             size_t sequence_length = sequence_end - sequence_start; 
             uint8_t *second_header_start = sequence_end + 1; 
-            if (second_header_start[0] != '+') {
+            if ((second_header_start < buffer_end) && second_header_start[0] != '+') {
                 PyErr_Format(
                     PyExc_ValueError,
                     "Record second header does not start with + but with %c",
