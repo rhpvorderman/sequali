@@ -453,7 +453,7 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
-    with xopen.xopen(sys.argv[1], "rb") as file:  # type: ignore
+    with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
         reader = FastqParser(file)
         for read in reader:
             metrics.add_read(read)
