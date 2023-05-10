@@ -19,12 +19,13 @@ import math
 import sys
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
-import dnaio
+import xopen
 
 import pygal  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, FastqRecordView, PerTileQuality, QCMetrics, SequenceDuplication
+from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
+    PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
@@ -452,9 +453,9 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
-    with dnaio.open(sys.argv[1]) as reader:  # type: ignore
-        for record in reader:
-            read = FastqRecordView(record.name, record.sequence, record.qualities)
+    with xopen.xopen(sys.argv[1], "rb") as file:  # type: ignore
+        reader = FastqParser(file)
+        for read in reader:
             metrics.add_read(read)
             per_tile_quality.add_read(read)
             adapter_counter.add_read(read)
