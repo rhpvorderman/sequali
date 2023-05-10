@@ -353,7 +353,7 @@ FastqParser__next__(FastqParser *self)
             self->record_start = qualities_end + 1;
             return (PyObject *)record;
         }
-        if (record_start == self->buffer) {
+        if (record_start == self->buffer && self->buffer_size != 0) {
             // The FASTQ record is bigger than the current buffer_size
             self->read_in_size *= 2;
         }
@@ -376,6 +376,7 @@ FastqParser__next__(FastqParser *self)
         if (new_buffer_size == 0) {
             // Entire file is read
             PyErr_SetNone(PyExc_StopIteration);
+            return NULL;
         } else if (new_bytes_size == 0) {
             // Incomplete record at the end of file;
             PyErr_Format(
