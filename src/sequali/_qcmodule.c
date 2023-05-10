@@ -1932,7 +1932,9 @@ PyInit__qc(void)
     if ((PythonArray == NULL) || (SequenceRecord == NULL)) {
         return NULL;
     }
-
+    if (python_module_add_type(m, &FastqParser_Type) != 0) {
+        return NULL;
+    }  
     if (python_module_add_type(m, &FastqRecordView_Type) != 0) {
         return NULL; 
     }
