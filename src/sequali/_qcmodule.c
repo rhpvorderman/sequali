@@ -30,7 +30,6 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 /* Pointers to types that will be imported in the module initialization section */
 
 static PyTypeObject *PythonArray;  // array.array
-static PyTypeObject *SequenceRecord;  // dnaio.SequenceRecord
 
 
 /*********
@@ -1345,7 +1344,7 @@ PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 "Add a read to the PerTileQuality Metrics. \n"
 "\n"
 "  read\n"
-"    A dnaio.SequenceRecord object.\n"
+"    A FastqRecordView object.\n"
 );
 
 #define PerTileQuality_add_read_method METH_O
@@ -1930,8 +1929,7 @@ PyInit__qc(void)
     }
 
     PythonArray = ImportClassFromModule("array", "array");
-    SequenceRecord = ImportClassFromModule("dnaio", "SequenceRecord");
-    if ((PythonArray == NULL) || (SequenceRecord == NULL)) {
+    if (PythonArray == NULL) {
         return NULL;
     }
     if (python_module_add_type(m, &FastqParser_Type) != 0) {
