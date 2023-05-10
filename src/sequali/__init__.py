@@ -19,13 +19,13 @@ import math
 import sys
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
-import xopen
-
 import pygal  # type: ignore
 
+import xopen
+
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
-    PerTileQuality, QCMetrics, SequenceDuplication
+from ._qc import AdapterCounter, FastqParser, PerTileQuality, QCMetrics, \
+    SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
