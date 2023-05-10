@@ -268,6 +268,7 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->record_start = self->buffer; 
     self->buffer_obj = buffer_obj;
     self->read_in_size = read_in_size;
+    Py_INCREF(file_obj);
     self->file_obj = file_obj;
     return (PyObject *)self;
 }
