@@ -59,6 +59,87 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
     return array;
 }
 
+#define ASCII_MASK_8BYTE 0x8080808080808080ULL
+#define ASCII_MASK_1BYTE 0x80
+
+#ifndef __SSE2__
+/**
+ * @brief Check if a string of given length only contains ASCII characters.
+ *
+ * @param string A char pointer to the start of the string.
+ * @param length The length of the string. This funtion does not check for 
+ *               terminating NULL bytes.
+ * @returns 1 if the string is ASCII-only, 0 otherwise.
+ */
+static int
+string_is_ascii(const char * string, size_t length) {
+    size_t n = length;
+    // By performing bitwise OR on all characters in 8-byte chunks we can
+    // determine ASCII status in a non-branching (except the loops) fashion.
+    uint64_t all_chars = 0;
+    const char * char_ptr = string;
+
+    // The first loop aligns the memory.
+    while ((size_t)char_ptr % sizeof(uint64_t) && n != 0) {
+        all_chars |= *char_ptr;
+        char_ptr += 1;
+        n -= 1;
+    }
+    const uint64_t *longword_ptr = (uint64_t *)char_ptr;
+    while (n >= sizeof(uint64_t)) {
+        all_chars |= *longword_ptr;
+        longword_ptr += 1;
+        n -= sizeof(uint64_t);
+    }
+    char_ptr = (char *)longword_ptr;
+    while (n != 0) {
+        all_chars |= *char_ptr;
+        char_ptr += 1;
+        n -= 1;
+    }
+    return !(all_chars & ASCII_MASK_8BYTE);
+}
+#else 
+/**
+ * @brief Check if a string of given length only contains ASCII characters.
+ *
+ * @param string A char pointer to the start of the string.
+ * @param length The length of the string. This funtion does not check for 
+ *               terminating NULL bytes.
+ * @returns 1 if the string is ASCII-only, 0 otherwise.
+ */
+static int
+string_is_ascii(const char * string, size_t length) {
+    size_t n = length;
+    const char * char_ptr = string;
+    typedef __m128i longword;
+    char all_chars = 0;
+    longword all_words = _mm_setzero_si128();
+
+    // First align the memory adress
+    while ((size_t)char_ptr % sizeof(longword) && n != 0) {
+        all_chars |= *char_ptr;
+        char_ptr += 1;
+        n -= 1;
+    }
+    const longword * longword_ptr = (longword *)char_ptr;
+    while (n >= sizeof(longword)) {
+        all_words = _mm_or_si128(all_words, *longword_ptr);
+        longword_ptr += 1;
+        n -= sizeof(longword);
+    }
+    char_ptr = (char *)longword_ptr;
+    while (n != 0) {
+        all_chars |= *char_ptr;
+        char_ptr += 1;
+        n -= 1;
+    }
+    // Check the most significant bits in the accumulated words and chars.
+    return !(_mm_movemask_epi8(all_words) || (all_chars & ASCII_MASK_1BYTE));
+}
+
+#endif
+
 /*********************
  * FASTQ RECORD VIEW *
  *********************/
@@ -393,6 +474,13 @@ FastqParser__next__(FastqParser *self)
         memcpy(new_buffer, record_start, bytes_left);
         memcpy(new_buffer + bytes_left, PyBytes_AS_STRING(new_bytes), new_bytes_size);
         Py_DECREF(new_bytes);
+        if (!string_is_ascii((char *)new_buffer, new_buffer_size)) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Non-ASCII characters found in %R", self->file_obj
+            );
+            return NULL;
+        }
         PyObject *tmp = self->buffer_obj;
         self->buffer_obj = new_buffer_obj;
         self->buffer = new_buffer;
