@@ -24,13 +24,27 @@ import pygal  # type: ignore
 import xopen
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, FastqParser, PerTileQuality, QCMetrics, \
-    SequenceDuplication
+from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
+    PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
+]
+
+__all__ = [
+    "A", "C", "G", "N", "T",
+    "AdapterCounter",
+    "FastqParser",
+    "FastqRecordView",
+    "PerTileQuality",
+    "QCMetrics",
+    "SequenceDuplication",
+    "NUMBER_OF_NUCS",
+    "NUMBER_OF_PHREDS",
+    "PHRED_MAX",
+    "TABLE_SIZE"
 ]
 
 
@@ -455,7 +469,7 @@ def main():
     sequence_duplication = SequenceDuplication()
     with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
         reader = FastqParser(file)
-        for read in reader:
+        for read in reader:  # type: FastqRecordView
             metrics.add_read(read)
             per_tile_quality.add_read(read)
             adapter_counter.add_read(read)

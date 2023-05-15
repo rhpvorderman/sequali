@@ -2,7 +2,15 @@ import itertools
 
 import pytest
 
-from sequali import SequenceDuplication
+from sequali import FastqRecordView, SequenceDuplication
+
+
+def view_from_sequence(sequence: str) -> FastqRecordView:
+    return FastqRecordView(
+        "name",
+        sequence,
+        "A" * len(sequence)
+    )
 
 
 def test_sequence_duplication():
@@ -10,30 +18,26 @@ def test_sequence_duplication():
     # Create unique sequences by using all combinations of ACGT for 9 letters
     # This gives 4 ** 9 or 262144 unique sequences
     for combo in itertools.product(*(("ACGT",) * 9)):
-        seqdup.add_sequence("".join(combo) + 91 * "A")
+        sequence = "".join(combo) + 91 * "A"
+        read = FastqRecordView("name", sequence, "H" * len(sequence))
+        seqdup.add_read(read)
     assert seqdup.number_of_sequences == 4 ** 9
     sequence_counts = seqdup.sequence_counts()
     assert len(sequence_counts) == 100_000
     for sequence, count in sequence_counts.items():
         assert len(sequence) == 50
         assert count == 1
-    seqdup.add_sequence(100 * "A")  # Should already exist
+    duplicated_read = FastqRecordView("name", 100 * "A", 100 * "A")
+    seqdup.add_read(duplicated_read)
     assert seqdup.sequence_counts()[50 * "A"] == 2
 
 
-def test_sequence_duplication_add_sequence_no_string():
+def test_sequence_duplication_add_read_no_view():
     seqdup = SequenceDuplication()
     with pytest.raises(TypeError) as error:
-        seqdup.add_sequence(b"ACGT")  # type: ignore
-    error.match("str")
+        seqdup.add_read(b"ACGT")  # type: ignore
+    error.match("FastqRecordView")
     error.match("bytes")
-
-
-def test_sequence_duplication_add_sequence_not_ascii():
-    seqdup = SequenceDuplication()
-    with pytest.raises(ValueError) as error:
-        seqdup.add_sequence("ÄCGT")
-    error.match("ASCII")
 
 
 @pytest.mark.parametrize("threshold", [-0.1, 1.1])
@@ -50,17 +54,17 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
 def test_sequence_duplication_overrepresented_sequences():
     seqdup = SequenceDuplication()
     for i in range(100):
-        seqdup.add_sequence("mildly overrepresented")
+        seqdup.add_read(view_from_sequence("mildly overrepresented"))
     for i in range(200):
-        seqdup.add_sequence("slightly overrepresented")
+        seqdup.add_read(view_from_sequence("slightly overrepresented"))
     for i in range(2000):
-        seqdup.add_sequence("Blatantly overrepresented")
+        seqdup.add_read(view_from_sequence("Blatantly overrepresented"))
     for i in range(10):
-        seqdup.add_sequence("not overrepresented")
-    seqdup.add_sequence("truly unique")
+        seqdup.add_read(view_from_sequence("not overrepresented"))
+    seqdup.add_read(view_from_sequence("truly unique"))
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
-        seqdup.add_sequence("SPAM")
+        seqdup.add_read(view_from_sequence("SPAM"))
     overrepresented = seqdup.overrepresented_sequences(threshold=0.001)
     assert overrepresented[0][1] == "SPAM"
     assert overrepresented[1][1] == "Blatantly overrepresented"
@@ -76,18 +80,18 @@ def test_sequence_duplication_overrepresented_sequences():
 def test_sequence_duplication_duplication_counts():
     seqdup = SequenceDuplication()
     for i in range(100):
-        seqdup.add_sequence("mildly overrepresented")
+        seqdup.add_read(view_from_sequence("mildly overrepresented"))
     for i in range(200):
-        seqdup.add_sequence("slightly overrepresented")
+        seqdup.add_read(view_from_sequence("slightly overrepresented"))
     for i in range(2000):
-        seqdup.add_sequence("Blatantly overrepresented")
+        seqdup.add_read(view_from_sequence("Blatantly overrepresented"))
     for i in range(10):
-        seqdup.add_sequence("not overrepresented")
-    seqdup.add_sequence("truly unique")
-    seqdup.add_sequence("another unique")
+        seqdup.add_read(view_from_sequence("not overrepresented"))
+    seqdup.add_read(view_from_sequence("truly unique"))
+    seqdup.add_read(view_from_sequence("another unique"))
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
-        seqdup.add_sequence("SPAM")
+        seqdup.add_read(view_from_sequence("SPAM"))
     dupcounts = seqdup.duplication_counts(max_count=50_000)
     assert dupcounts[0] == 0
     assert dupcounts[1] == 2
