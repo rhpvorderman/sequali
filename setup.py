@@ -47,7 +47,7 @@ setup(
     ],
     python_requires=">=3.7",
     install_requires=[
-        "dnaio",
+        "xopen",
         "pygal>=3.0.0"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed']},
