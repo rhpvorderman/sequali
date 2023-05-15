@@ -321,7 +321,7 @@ static PyObject *
 FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
 {
     PyObject *file_obj = NULL;
-    size_t read_in_size = 8 * 1024;
+    size_t read_in_size = 128 * 1024;
     static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
     static char *format = "O|n:FastqParser";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
