@@ -1,4 +1,5 @@
 import io
+import re
 
 import pytest
 
@@ -30,7 +31,7 @@ def test_truncated_record(end: int):
     parser = FastqParser(fileobj)
     with pytest.raises(EOFError) as error:
         list(parser)
-    error.match(truncated_record.decode("ascii"))
+    error.match(re.escape(truncated_record.decode("ascii")))
     error.match("ncomplete record")
 
 
