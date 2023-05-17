@@ -18,3 +18,17 @@ def test_fastq_parser_wrong_fastq(record, error_messages):
         next(parser)
     for message in error_messages:
         error.match(message)
+
+
+COMPLETE_RECORD = b"@SOMEHEADER METADATA MOREMETADATA\nAGA\n+\nGGG\n"
+
+
+@pytest.mark.parametrize("end", range(1, len(COMPLETE_RECORD)))
+def test_truncated_record(end: int):
+    truncated_record = COMPLETE_RECORD[:end]
+    fileobj = io.BytesIO(truncated_record)
+    parser = FastqParser(fileobj)
+    with pytest.raises(EOFError) as error:
+        list(parser)
+    error.match(truncated_record.decode("ascii"))
+    error.match("ncomplete record")

@@ -461,7 +461,7 @@ FastqParser__next__(FastqParser *self)
         } else if (new_bytes_size == 0) {
             // Incomplete record at the end of file;
             PyErr_Format(
-                PyExc_ValueError, 
+                PyExc_EOFError,
                 "Incomplete record at the end of file %s", 
                 self->record_start);
             return NULL;
