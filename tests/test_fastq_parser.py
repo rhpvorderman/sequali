@@ -50,3 +50,17 @@ def test_fastq_parser_non_ascii_input():
         list(parser)
     error.match("ASCII")
     error.match("Ä")
+
+
+def test_fastq_parser_too_small_buffer():
+    with pytest.raises(ValueError) as error:
+        FastqParser(io.BytesIO(), initial_buffersize=0)
+    error.match("at least 1")
+    error.match("0")
+
+
+@pytest.mark.parametrize("initial_buffersize", [1, 2, 4, 8, 10, 20, 40, 100])
+def test_small_initial_buffer(initial_buffersize):
+    fileobj = io.BytesIO(COMPLETE_RECORD)
+    parser = FastqParser(fileobj, initial_buffersize=initial_buffersize)
+    assert len(list(parser)) == 1
