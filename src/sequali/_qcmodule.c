@@ -418,6 +418,7 @@ FastqParser__next__(FastqParser *self)
                     "Record sequence and qualities do not have equal length, %R",
                     PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL)
                 );
+                return NULL;
             }
             FastqRecordView *record = PyObject_New(FastqRecordView, &FastqRecordView_Type);
             if (record == NULL) {
