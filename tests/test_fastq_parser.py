@@ -32,3 +32,21 @@ def test_truncated_record(end: int):
         list(parser)
     error.match(truncated_record.decode("ascii"))
     error.match("ncomplete record")
+
+
+def test_fastq_parser_not_binary_error():
+    fileobj = io.StringIO("@Name\nAGC\n+\nHHH\n")
+    parser = FastqParser(fileobj)
+    with pytest.raises(TypeError) as error:
+        list(parser)
+    error.match("binary IO")
+    error.match(repr(fileobj))
+
+
+def test_fastq_parser_non_ascii_input():
+    fileobj = io.BytesIO("@nÄmé \nAGC\n+\nHHH\n".encode("latin-1"))
+    parser = FastqParser(fileobj)
+    with pytest.raises(ValueError) as error:
+        list(parser)
+    error.match("ASCII")
+    error.match("Ä")

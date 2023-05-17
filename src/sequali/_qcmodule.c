@@ -476,10 +476,17 @@ FastqParser__next__(FastqParser *self)
         memcpy(new_buffer + bytes_left, PyBytes_AS_STRING(new_bytes), new_bytes_size);
         Py_DECREF(new_bytes);
         if (!string_is_ascii((char *)new_buffer, new_buffer_size)) {
+            size_t pos;
+            for (pos=0; pos<new_buffer_size; pos+=1) {
+                if (new_buffer[pos] & ASCII_MASK_1BYTE) {
+                    break;
+                }
+            }
             PyErr_Format(
                 PyExc_ValueError, 
-                "Non-ASCII characters found in %R", self->file_obj
+                "Found non-ASCII character in file: %c", new_buffer[pos]
             );
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
         PyObject *tmp = self->buffer_obj;
