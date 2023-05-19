@@ -1,9 +1,29 @@
 import io
 import re
+from pathlib import Path
 
 import pytest
 
 from sequali import FastqParser
+
+DATA = Path(__file__).parent / "data"
+
+
+def test_fastq_parser():
+    with open(DATA / "simple.fastq", "rb") as fileobj:
+        parser = FastqParser(fileobj)
+        records = list(parser)
+    assert records[0].name() == "Myheader/1"
+    assert records[0].sequence() == "GATTACA"
+    assert records[0].qualities() == "HHHHHHH"
+    assert records[1].name() == "AnotherHeader/1"
+    assert records[1].sequence() == "ACATTAG"
+    assert records[1].qualities() == "KKKKKKK"
+    assert records[2].name() == "YetAnotherHeader/1"
+    assert records[2].sequence() == "AAAATTTT"
+    assert records[2].qualities() == "XKLLCCCC"
+    assert len(records) == 3
+
 
 WRONG_RECORDS_AND_ERRORS = [
     (b"not a record", ["Record does not start with @", "with n"]),
