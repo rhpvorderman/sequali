@@ -280,12 +280,79 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
+PyDoc_STRVAR(FastqRecordView_name__doc__,
+"name($self)\n"
+"--\n"
+"\n"
+"Returns the FASTQ header.\n"
+);
+
+static PyObject *
+FastqRecordView_name(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *result = PyUnicode_New(self->name_length, 127);
+    if (result == NULL) {
+        return NULL;
+    }
+    memcpy(PyUnicode_DATA(result), self->record_start + 1, self->name_length);
+    return result;
+}
+
+PyDoc_STRVAR(FastqRecordView_sequence__doc__,
+"sequence($self)\n"
+"--\n"
+"\n"
+"Returns the FASTQ nucleotide sequence.\n"
+);
+
+static PyObject *
+FastqRecordView_sequence(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *result = PyUnicode_New(self->sequence_length, 127);
+    if (result == NULL) {
+        return NULL;
+    }
+    memcpy(PyUnicode_DATA(result), self->record_start + self->sequence_offset, 
+           self->sequence_length);
+    return result;
+}
+
+PyDoc_STRVAR(FastqRecordView_qualities__doc__,
+"qualities($self)\n"
+"--\n"
+"\n"
+"Returns the FASTQ phred encoded qualities as a string.\n"
+);
+
+static PyObject *
+FastqRecordView_qualities(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
+{
+    PyObject *result = PyUnicode_New(self->sequence_length, 127);
+    if (result == NULL) {
+        return NULL;
+    }
+    memcpy(PyUnicode_DATA(result), self->record_start + self->qualities_offset, 
+        self->sequence_length);
+    return result;
+}
+
+static PyMethodDef FastqRecordView_methods[] = {
+    {"name", (PyCFunction)FastqRecordView_name, METH_NOARGS,
+     FastqRecordView_name__doc__},
+    {"sequence", (PyCFunction)FastqRecordView_sequence, METH_NOARGS,
+     FastqRecordView_sequence__doc__},
+    {"qualities", (PyCFunction)FastqRecordView_qualities, METH_NOARGS, 
+     FastqRecordView_qualities__doc__},
+    {NULL}
+};
+
 static PyTypeObject FastqRecordView_Type = {
     .tp_name = "_qc.FastqRecordView",
     .tp_basicsize = sizeof(FastqRecordView),
     .tp_dealloc = (destructor)FastqRecordView_dealloc,
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_new = (newfunc)FastqRecordView__new__,
+    .tp_methods = FastqRecordView_methods,
 };
 
 static inline int 
