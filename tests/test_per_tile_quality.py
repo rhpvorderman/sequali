@@ -1,12 +1,10 @@
-import dnaio
-
 import pytest
 
-from sequali import PerTileQuality
+from sequali import FastqRecordView, PerTileQuality
 
 
 def test_per_tile_quality():
-    read = dnaio.SequenceRecord(
+    read = FastqRecordView(
         "SIM:1:FCX:1:15:6329:1045:GATTACT+GTCTTAAC 1:N:0:ATCCGA",
         "AAAA",
         "ABCD"
@@ -27,15 +25,15 @@ def test_per_tile_quality():
     assert average_list[3] == 10 ** (-35 / 10)
 
 
-def test_per_tile_quality_not_sequence_record():
+def test_per_tile_quality_not_view():
     ptq = PerTileQuality()
     with pytest.raises(TypeError) as error:
         ptq.add_read("FASTQ forever!")  # type ignore
-    error.match("SequenceRecord")
+    error.match("FastqRecordView")
 
 
 def test_per_tile_quality_skip():
-    read = dnaio.SequenceRecord(
+    read = FastqRecordView(
         "SIMULATED_NAME",
         "AAAA",
         "ABCD"

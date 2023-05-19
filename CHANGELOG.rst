@@ -9,6 +9,7 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Implement a custom parser based on memchr for finding newlines.
 + Count overrepresented sequences using a hash table implemented in C.
 + Add a per tile sequence quality module
 + Count adapters using a fast shift-AND algorithm.

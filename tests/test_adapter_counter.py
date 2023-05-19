@@ -1,7 +1,7 @@
 import pytest
 
 from sequali import AdapterCounter
-from sequali._qc import MAX_SEQUENCE_SIZE
+from sequali._qc import FastqRecordView, MAX_SEQUENCE_SIZE
 
 
 def test_adapter_counter_basic_init():
@@ -54,7 +54,8 @@ def test_adapter_counter_matcher():
     counter = AdapterCounter(["GATTACA", "GGGG", "TTTTT"])
     # Only first match should be counted.
     sequence = ("AAGATTACAAAAAGATTACAGGGGAACGAGGGG")
-    counter.add_sequence(sequence)
+    read = FastqRecordView("bla", sequence, "H" * len(sequence))
+    counter.add_read(read)
     counts = counter.get_counts()
     assert counts[0][0] == "GATTACA"
     assert counts[1][0] == "GGGG"
@@ -71,20 +72,12 @@ def test_adapter_counter_matcher():
     assert sum(ttttt_list) == 0
 
 
-def test_adapter_counter_add_sequence_no_string():
+def test_adapter_counter_add_read_no_view():
     counter = AdapterCounter(["GATTACA"])
     with pytest.raises(TypeError) as error:
-        counter.add_sequence(b"GATATATACCACA")  # type: ignore
-    error.match("str")
+        counter.add_read(b"GATATATACCACA")  # type: ignore
+    error.match("FastqRecordView")
     error.match("bytes")
-
-
-def test_adapter_counter_add_sequence_no_ascii():
-    counter = AdapterCounter(["GATTACA"])
-    with pytest.raises(ValueError) as error:
-        counter.add_sequence("GÅTTAÇA")
-    error.match("GÅTTAÇA")
-    error.match("ASCII")
 
 
 def test_adapter_counter_matcher_multiple_machine_words():
@@ -95,8 +88,9 @@ def test_adapter_counter_matcher_multiple_machine_words():
         "T" * MAX_SEQUENCE_SIZE,
     ]
     sequence = ("GATTACA" * 20).join(adapters)
+    read = FastqRecordView("name", sequence, "H" * len(sequence))
     counter = AdapterCounter(adapters)
-    counter.add_sequence(sequence)
+    counter.add_read(read)
     for adapter, countview in counter.get_counts():
         assert countview[sequence.find(adapter)] == 1
         assert sum(countview) == 1
@@ -120,7 +114,8 @@ def test_adapter_counter_mixed_lengths():
     ]
     counter = AdapterCounter(adapters)
     for sequence in sequences:
-        counter.add_sequence(sequence)
+        read = FastqRecordView("name", sequence, "H" * len(sequence))
+        counter.add_read(read)
     for sequence in sequences:
         for adapter, counts in counter.get_counts():
             counts = counts.tolist()
