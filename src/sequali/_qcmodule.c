@@ -153,6 +153,19 @@ string_is_ascii(const char * string, size_t length) {
    cache locality etc.
 */
 
+struct FastqMeta {
+    uint8_t *record_start;
+    // name_offset is always 1, so no variable needed
+    uint32_t name_length;
+    uint32_t sequence_offset;
+    // Sequence length and qualities length should be the same
+    union {
+        uint32_t sequence_length;
+        uint32_t qualities_length;
+    };
+    uint32_t qualities_offset;
+};
+
 typedef struct _FastqRecordViewStruct {
     PyObject_HEAD
     uint8_t *record_start;
