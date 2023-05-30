@@ -168,16 +168,7 @@ struct FastqMeta {
 
 typedef struct _FastqRecordViewStruct {
     PyObject_HEAD
-    uint8_t *record_start;
-    // name_offset is always 1, so no variable needed
-    uint32_t name_length;
-    uint32_t sequence_offset;
-    // Sequence length and qualities length should be the same
-    union {
-        uint32_t sequence_length;
-        uint32_t qualities_length;
-    };
-    uint32_t qualities_offset;
+    struct FastqMeta meta;
     PyObject *obj;
 } FastqRecordView;
 
@@ -271,11 +262,11 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return PyErr_NoMemory();
     }
     uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
-    self->record_start = buffer;
-    self->name_length = name_length;
-    self->sequence_offset = 2 + name_length;
-    self->sequence_length = sequence_length;
-    self->qualities_offset = 5 + name_length + sequence_length;
+    self->meta.record_start = buffer;
+    self->meta.name_length = name_length;
+    self->meta.sequence_offset = 2 + name_length;
+    self->meta.sequence_length = sequence_length;
+    self->meta.qualities_offset = 5 + name_length + sequence_length;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -303,11 +294,13 @@ PyDoc_STRVAR(FastqRecordView_name__doc__,
 static PyObject *
 FastqRecordView_name(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->name_length, 127);
+    PyObject *result = PyUnicode_New(self->meta.name_length, 127);
     if (result == NULL) {
         return NULL;
     }
-    memcpy(PyUnicode_DATA(result), self->record_start + 1, self->name_length);
+    memcpy(PyUnicode_DATA(result), 
+           self->meta.record_start + 1, 
+           self->meta.name_length);
     return result;
 }
 
@@ -321,12 +314,14 @@ PyDoc_STRVAR(FastqRecordView_sequence__doc__,
 static PyObject *
 FastqRecordView_sequence(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->sequence_length, 127);
+    PyObject *result = PyUnicode_New(self->meta.sequence_length, 127);
     if (result == NULL) {
         return NULL;
     }
-    memcpy(PyUnicode_DATA(result), self->record_start + self->sequence_offset, 
-           self->sequence_length);
+    memcpy(PyUnicode_DATA(result), 
+           self->meta.record_start + 
+           self->meta.sequence_offset, 
+           self->meta.sequence_length);
     return result;
 }
 
@@ -340,12 +335,13 @@ PyDoc_STRVAR(FastqRecordView_qualities__doc__,
 static PyObject *
 FastqRecordView_qualities(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->sequence_length, 127);
+    PyObject *result = PyUnicode_New(self->meta.sequence_length, 127);
     if (result == NULL) {
         return NULL;
     }
-    memcpy(PyUnicode_DATA(result), self->record_start + self->qualities_offset, 
-        self->sequence_length);
+    memcpy(PyUnicode_DATA(result), 
+           self->meta.record_start + self->meta.qualities_offset, 
+           self->meta.sequence_length);
     return result;
 }
 
@@ -504,11 +500,11 @@ FastqParser__next__(FastqParser *self)
             if (record == NULL) {
                 return NULL;
             }
-            record->record_start = record_start;
-            record->name_length = name_length;
-            record->sequence_offset = sequence_start - record_start;
-            record->sequence_length = sequence_length;
-            record->qualities_offset = qualities_start - record_start;
+            record->meta.record_start = record_start;
+            record->meta.name_length = name_length;
+            record->meta.sequence_offset = sequence_start - record_start;
+            record->meta.sequence_length = sequence_length;
+            record->meta.qualities_offset = qualities_start - record_start;
             Py_INCREF(self->buffer_obj);
             record->obj = self->buffer_obj;
             self->record_start = qualities_end + 1;
@@ -717,10 +713,10 @@ QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    const uint8_t *record_start = read->record_start;
-    size_t sequence_length = read->sequence_length;
-    const uint8_t *sequence = record_start + read->sequence_offset;
-    const uint8_t *qualities = record_start + read->qualities_offset;
+    const uint8_t *record_start = read->meta.record_start;
+    size_t sequence_length = read->meta.sequence_length;
+    const uint8_t *sequence = record_start + read->meta.sequence_offset;
+    const uint8_t *qualities = record_start + read->meta.qualities_offset;
     uint8_t phred_offset = self->phred_offset;
     counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     double accumulated_error_rate = 0.0;
@@ -1226,8 +1222,8 @@ AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read)
         return NULL;
     }
     self->number_of_sequences += 1;
-    uint8_t *sequence = read->record_start + read->sequence_offset;
-    size_t sequence_length = read->sequence_length;
+    uint8_t *sequence = read->meta.record_start + read->meta.sequence_offset;
+    size_t sequence_length = read->meta.sequence_length;
 
     if (sequence_length > self->max_length) {
         int ret = AdapterCounter_resize(self, sequence_length);
@@ -1537,11 +1533,11 @@ PerTileQuality_add_read(PerTileQuality *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    uint8_t *record_start = read->record_start;
+    uint8_t *record_start = read->meta.record_start;
     const char *header = (char *)(record_start + 1);
-    size_t header_length = read->name_length;
-    const uint8_t *qualities = record_start + read->qualities_offset;
-    size_t sequence_length = read->sequence_length;
+    size_t header_length = read->meta.name_length;
+    const uint8_t *qualities = record_start + read->meta.qualities_offset;
+    size_t sequence_length = read->meta.sequence_length;
     uint8_t phred_offset = self->phred_offset;
 
     long tile_id = illumina_header_to_tile_id(header, header_length);
@@ -1789,8 +1785,8 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
         return NULL;
     }
     self->number_of_sequences += 1;
-    Py_ssize_t sequence_length = read->sequence_length;
-    uint8_t *sequence = read->record_start + read->sequence_offset;
+    Py_ssize_t sequence_length = read->meta.sequence_length;
+    uint8_t *sequence = read->meta.record_start + read->meta.sequence_offset;
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
