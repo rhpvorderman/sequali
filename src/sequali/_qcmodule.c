@@ -27,6 +27,12 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #include "emmintrin.h"
 #endif
 
+#if (PY_VERSION_HEX < 0x03090000)
+    #define Py_SET_REFCNT(op, count) (Py_REFCNT(op) = count)
+    #define Py_SET_SIZE(op, size) (Py_SIZE(op) = size)
+    #define Py_SET_TYPE(op) (Py_TYPE(op) = &BamCigar_Type)
+#endif
+
 /* Pointers to types that will be imported in the module initialization section */
 
 static PyTypeObject *PythonArray;  // array.array
@@ -370,6 +376,36 @@ FastqRecordView_CheckExact(void *obj)
     return Py_TYPE(obj) == &FastqRecordView_Type;
 } 
 
+/************************
+ * FastqRecordArrayView *
+ ************************/
+
+typedef struct _FastqRecordArrayViewStruct {
+    PyObject_VAR_HEAD;
+    PyObject *obj;
+    size_t number_of_records;
+    struct FastqMeta records[];
+} FastqRecordArrayView;
+
+static PyTypeObject FastqRecordArrayView_Type;
+
+static PyObject *
+FastqRecordArrayView_FromPointerAndSize(
+    struct FastqMeta *records, size_t number_of_records) 
+{
+    size_t size = number_of_records * sizeof(struct FastqMeta);
+    FastqRecordArrayView *self = PyObject_Malloc(sizeof(FastqRecordArrayView) + size);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    Py_SET_REFCNT(self, 1);
+    Py_SET_TYPE(self, &FastqRecordArrayView_Type);
+    Py_SET_SIZE(self, size);
+    if (records != NULL) {
+        memcpy(self->records, records, size);
+    }
+    return (PyObject *)self;
+}
 
 /****************
  * FASTQ PARSER *
