@@ -395,7 +395,6 @@ FastqRecordView_FromFastqMetaAndObject(struct FastqMeta *meta, PyObject *object)
 typedef struct _FastqRecordArrayViewStruct {
     PyObject_VAR_HEAD;
     PyObject *obj;
-    size_t number_of_records;
     struct FastqMeta records[];
 } FastqRecordArrayView;
 
@@ -409,8 +408,8 @@ FastqRecordArrayView_dealloc(FastqRecordArrayView *self)
 static PyTypeObject FastqRecordArrayView_Type;
 
 static PyObject *
-FastqRecordArrayView_FromPointerAndSize(
-    struct FastqMeta *records, size_t number_of_records) 
+FastqRecordArrayView_FromPointerSizeAndObject(
+    struct FastqMeta *records, size_t number_of_records, PyObject *obj) 
 {
     size_t size = number_of_records * sizeof(struct FastqMeta);
     FastqRecordArrayView *self = PyObject_Malloc(sizeof(FastqRecordArrayView) + size);
@@ -419,10 +418,12 @@ FastqRecordArrayView_FromPointerAndSize(
     }
     Py_SET_REFCNT(self, 1);
     Py_SET_TYPE(self, &FastqRecordArrayView_Type);
-    Py_SET_SIZE(self, size);
+    Py_SET_SIZE(self, number_of_records);
     if (records != NULL) {
         memcpy(self->records, records, size);
     }
+    Py_INCREF(obj);
+    self->obj = obj;
     return (PyObject *)self;
 }
 
@@ -439,6 +440,19 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
     }
     return FastqRecordView_FromFastqMetaAndObject(&(self->records[i]), self->obj);
 }
+
+static PySequenceMethods FastqRecordArrayView_sequence_methods = {
+    .sq_item = FastqRecordArrayView__get_item__,
+    .sq_length = Py_SIZE,
+};
+
+static PyTypeObject FastqRecordArrayView_Type = {
+    .tp_name = "FastqRecordArrayView",
+    .tp_dealloc = (destructor)FastqRecordArrayView_dealloc,
+    .tp_basicsize = sizeof(FastqRecordArrayView),
+    .tp_itemsize = sizeof(struct FastqMeta),
+    .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
+};
 
 
 /****************
