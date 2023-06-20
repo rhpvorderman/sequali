@@ -428,6 +428,75 @@ FastqRecordArrayView_FromPointerSizeAndObject(
 }
 
 static PyObject *
+FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    PyObject *view_items_obj = NULL;
+    static char *format = "O:FastqRecordArrayView";
+    static char *kwargnames[] = {"view_items", NULL};
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+            &view_items_obj)) {
+        return NULL;
+    }
+    PyObject *view_fastseq = PySequence_Fast(view_items_obj, 
+        "view_items should be iterable");
+    if (view_fastseq == NULL) {
+        return NULL;
+    }
+    Py_ssize_t number_of_items = PySequence_Fast_GET_SIZE(view_fastseq);
+    PyObject **items = PySequence_Fast_ITEMS(view_fastseq);
+    size_t total_memory_size = 0;
+    for (Py_ssize_t i = 0; i < number_of_items; i++) {
+        PyObject *item = items[i];
+        if (Py_TYPE(item) != &FastqRecordView_Type) {
+            PyErr_Format(
+                PyExc_TypeError, 
+                "Expected an iterable of FastqRecordView objects, but item %z "
+                "is of type %s: %R", i, Py_TYPE(item)->tp_name, item);
+            return NULL;
+        }
+        FastqRecordView *record = (FastqRecordView *) item;
+        size_t memory_size = 6 + record->meta.name_length + 
+            record->meta.sequence_length * 2;
+        total_memory_size += memory_size;
+    }
+    PyObject *obj = PyBytes_FromStringAndSize(NULL, total_memory_size);
+    if (obj == NULL) {
+        return PyErr_NoMemory();
+    }
+    FastqRecordArrayView *record_array = 
+        (FastqRecordArrayView *)
+        FastqRecordArrayView_FromPointerSizeAndObject(NULL, number_of_items, obj);
+    if (record_array == NULL) {
+        Py_DECREF(obj); 
+        return NULL;
+    }
+    char *record_ptr = PyBytes_AS_STRING(obj);
+    struct FastqMeta *metas = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_items; i++) {
+        FastqRecordView *record = (FastqRecordView *)items[i];
+        struct FastqMeta meta = record->meta;
+        record_ptr[0] = '@';
+        record_ptr += 1; 
+        memcpy(record_ptr, meta.record_start + 1, meta.name_length);
+        record_ptr += meta.name_length;
+        record_ptr[0] = '\n';
+        record_ptr += 1;
+        memcpy(record_ptr, meta.record_start + meta.sequence_offset, meta.sequence_length);
+        record_ptr += meta.sequence_length;
+        record_ptr[0] = '\n';
+        record_ptr[1] = '+';
+        record_ptr[2] = '\n';
+        record_ptr += 3;
+        memcpy(record_ptr, meta.record_start + meta.qualities_offset, meta.sequence_length);
+        record_ptr += meta.sequence_length;
+        record_ptr[0] = '\n';
+        record_ptr += 1;
+        memcpy(metas + i, &record->meta, sizeof(struct FastqMeta));
+    }
+    return (PyObject *)record_array;
+}
+
+static PyObject *
 FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
 {
     Py_ssize_t size = Py_SIZE(self);
@@ -457,6 +526,7 @@ static PyTypeObject FastqRecordArrayView_Type = {
     .tp_basicsize = sizeof(FastqRecordArrayView),
     .tp_itemsize = sizeof(struct FastqMeta),
     .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
+    .tp_new = FastqRecordArrayView__new__,
 };
 
 
