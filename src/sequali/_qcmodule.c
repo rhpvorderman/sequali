@@ -851,38 +851,20 @@ QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size)
 }
 
 
-PyDoc_STRVAR(QCMetrics_add_read__doc__,
-"add_read($self, read, /)\n"
-"--\n"
-"\n"
-"Add a read to the count metrics. \n"
-"\n"
-"  read\n"
-"    A FastqRecordView object.\n"
-);
-
-#define QCMetrics_add_read_method METH_O
-
-static PyObject * 
-QCMetrics_add_read(QCMetrics *self, FastqRecordView *read) 
+static inline int 
+QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
-    if (!FastqRecordView_CheckExact(read)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "read should be a FastqRecordView object, got %s", 
-                     Py_TYPE(read)->tp_name);
-        return NULL;
-    }
-    const uint8_t *record_start = read->meta.record_start;
-    size_t sequence_length = read->meta.sequence_length;
-    const uint8_t *sequence = record_start + read->meta.sequence_offset;
-    const uint8_t *qualities = record_start + read->meta.qualities_offset;
+    const uint8_t *record_start = meta->record_start;
+    size_t sequence_length = meta->sequence_length;
+    const uint8_t *sequence = record_start + meta->sequence_offset;
+    const uint8_t *qualities = record_start + meta->qualities_offset;
     uint8_t phred_offset = self->phred_offset;
     counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
-            return NULL;
+            return -1;
         }
     }
 
@@ -895,7 +877,7 @@ QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
                 PyExc_ValueError, 
                 "Not a valid phred character: %c", qualities[i]
             );
-            return NULL;
+            return -1;
         }
         uint8_t q_index = phred_to_index(q);
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
@@ -917,6 +899,33 @@ QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
     assert(phred_score_index >= 0);
     assert(phred_score_index <= PHRED_MAX);
     self->phred_scores[phred_score_index] += 1;
+    return 0;
+}
+
+PyDoc_STRVAR(QCMetrics_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the count metrics. \n"
+"\n"
+"  read\n"
+"    A FastqRecordView object.\n"
+);
+
+#define QCMetrics_add_read_method METH_O
+
+static PyObject * 
+QCMetrics_add_read(QCMetrics *self, FastqRecordView *read) 
+{
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    if (QCMetrics_add_meta(self, &read->meta) != 0) {
+        return NULL;
+    }
     Py_RETURN_NONE;
 }
 
