@@ -15,7 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, SupportsIndex, Optional, Tuple
 
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
@@ -34,6 +34,10 @@ class FastqRecordView:
     def sequence(self) -> str: ...
     def qualities(self) -> str: ...
 
+class FastqRecordArrayView:
+    def __init__(self, view_items: Iterable[FastqRecordView]) -> None: ...
+    def __getitem__(self, index: SupportsIndex) -> FastqRecordView: ...
+    def __len__(self) -> int: ... 
 
 class FastqParser:
     def __init__(self, fileobj, initial_buffersize = 128 * 1024): ...
