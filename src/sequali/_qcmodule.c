@@ -441,9 +441,14 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
     return FastqRecordView_FromFastqMetaAndObject(&(self->records[i]), self->obj);
 }
 
+static inline Py_ssize_t FastqRecordArrayView__length__(
+        FastqRecordArrayView *self) {
+    return Py_SIZE(self);
+}
+
 static PySequenceMethods FastqRecordArrayView_sequence_methods = {
-    .sq_item = FastqRecordArrayView__get_item__,
-    .sq_length = Py_SIZE,
+    .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
+    .sq_length = (lenfunc)FastqRecordArrayView__length__,
 };
 
 static PyTypeObject FastqRecordArrayView_Type = {
