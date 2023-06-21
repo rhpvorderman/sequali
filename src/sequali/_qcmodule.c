@@ -643,8 +643,8 @@ FastqParser__next__(FastqParser *self)
             return NULL;
         }
         size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
-        char *new_bytes_buf = PyBytes_AS_STRING(new_bytes);
-        if (!string_is_ascii(new_bytes_buf, new_bytes_size)) {
+        uint8_t *new_bytes_buf = (uint8_t *)PyBytes_AS_STRING(new_bytes);
+        if (!string_is_ascii((char *)new_bytes_buf, new_bytes_size)) {
             size_t pos;
             for (pos=0; pos<new_bytes_size; pos+=1) {
                 if (new_bytes_buf[pos] & ASCII_MASK_1BYTE) {
