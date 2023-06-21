@@ -1693,6 +1693,65 @@ long illumina_header_to_tile_id(const char *header, size_t header_length) {
     return tile_id;
 }
 
+static int 
+PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
+{
+    uint8_t *record_start = meta->record_start;
+    const char *header = (char *)(record_start + 1);
+    size_t header_length = meta->name_length;
+    const uint8_t *qualities = record_start + meta->qualities_offset;
+    size_t sequence_length = meta->sequence_length;
+    uint8_t phred_offset = self->phred_offset;
+
+    long tile_id = illumina_header_to_tile_id(header, header_length);
+    if (tile_id == -1) {
+        self->skipped_reason = PyUnicode_FromFormat(
+            "Can not parse header: %s", header); 
+        self->skipped = 1;
+        return 0;
+    }
+
+    if (sequence_length > self->max_length) {
+        if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
+            return -1;
+        }
+    }
+
+    /* Tile index must be one less than the highest number of tiles otherwise 
+       the index is not in the tile array. */
+    if (((size_t)tile_id + 1) > self->number_of_tiles) {
+        if (PerTileQuality_resize_tile_array(self, tile_id + 1) != 0) {
+            return -1;
+        }
+    }
+    
+    BaseQuality *tile_qualities = self->base_qualities[tile_id];
+    if (tile_qualities == NULL) {
+        tile_qualities = PyMem_Malloc(self->max_length * sizeof(BaseQuality));
+        if (tile_qualities == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tile_qualities, 0, self->max_length * sizeof(BaseQuality));
+        self->base_qualities[tile_id] = tile_qualities;
+    }
+
+    self->number_of_reads += 1;
+    for (size_t i=0; i < sequence_length; i+=1) {
+        uint8_t q = qualities[i] - phred_offset;
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError,
+                "Not a valid phred character: %c", qualities[i]
+            );
+            return -1;
+        }
+        tile_qualities[i].total_bases += 1;
+        tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
+    }
+    return 0;
+}
+
 PyDoc_STRVAR(PerTileQuality_add_read__doc__,
 "add_read($self, read, /)\n"
 "--\n"
@@ -1717,58 +1776,8 @@ PerTileQuality_add_read(PerTileQuality *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    uint8_t *record_start = read->meta.record_start;
-    const char *header = (char *)(record_start + 1);
-    size_t header_length = read->meta.name_length;
-    const uint8_t *qualities = record_start + read->meta.qualities_offset;
-    size_t sequence_length = read->meta.sequence_length;
-    uint8_t phred_offset = self->phred_offset;
-
-    long tile_id = illumina_header_to_tile_id(header, header_length);
-    if (tile_id == -1) {
-        self->skipped_reason = PyUnicode_FromFormat(
-            "Can not parse header: %s", header); 
-        self->skipped = 1;
-        Py_RETURN_NONE;
-    }
-
-    if (sequence_length > self->max_length) {
-        if (PerTileQuality_resize_tiles(self, sequence_length) != 0) {
-            return NULL;
-        }
-    }
-
-    /* Tile index must be one less than the highest number of tiles otherwise 
-       the index is not in the tile array. */
-    if (((size_t)tile_id + 1) > self->number_of_tiles) {
-        if (PerTileQuality_resize_tile_array(self, tile_id + 1) != 0) {
-            return NULL;
-        }
-    }
-    
-    BaseQuality *tile_qualities = self->base_qualities[tile_id];
-    if (tile_qualities == NULL) {
-        tile_qualities = PyMem_Malloc(self->max_length * sizeof(BaseQuality));
-        if (tile_qualities == NULL) {
-            PyErr_NoMemory();
-            return NULL;
-        }
-        memset(tile_qualities, 0, self->max_length * sizeof(BaseQuality));
-        self->base_qualities[tile_id] = tile_qualities;
-    }
-
-    self->number_of_reads += 1;
-    for (size_t i=0; i < sequence_length; i+=1) {
-        uint8_t q = qualities[i] - phred_offset;
-        if (q > PHRED_MAX) {
-            PyErr_Format(
-                PyExc_ValueError,
-                "Not a valid phred character: %c", qualities[i]
-            );
-            return NULL;
-        }
-        tile_qualities[i].total_bases += 1;
-        tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
+    if (PerTileQuality_add_meta(self, &read->meta) != 0) {
+        return NULL;
     }
     Py_RETURN_NONE;
 }
