@@ -392,6 +392,7 @@ FastqRecordView_FromFastqMetaAndObject(struct FastqMeta *meta, PyObject *object)
         return PyErr_NoMemory();
     }
     memcpy(self + offsetof(FastqRecordView, meta), meta, sizeof(struct FastqMeta));
+    Py_XINCREF(object);
     self->obj = object; 
     return (PyObject *)self;
 }
