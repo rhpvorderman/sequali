@@ -1853,6 +1853,37 @@ PerTileQuality_add_read(PerTileQuality *self, FastqRecordView *read)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(PerTileQuality_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the PerTileQuality metrics. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define PerTileQuality_add_record_array_method METH_O
+
+static PyObject * 
+PerTileQuality_add_record_array(PerTileQuality *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        if (PerTileQuality_add_meta(self, records + i) != 0) {
+           return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
 
 PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
 "add_read($self, /)\n"
@@ -1913,6 +1944,8 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
 static PyMethodDef PerTileQuality_methods[] = {
     {"add_read", (PyCFunction)PerTileQuality_add_read, 
      PerTileQuality_add_read_method, PerTileQuality_add_read__doc__},
+    {"add_record_array", (PyCFunction)PerTileQuality_add_record_array,
+     PerTileQuality_add_record_array_method, PerTileQuality_add_record_array__doc__},
     {"get_tile_averages", (PyCFunction)PerTileQuality_get_tile_averages,
      PerTileQuality_get_tile_averages_method, 
      PerTileQuality_get_tile_averages__doc__},
