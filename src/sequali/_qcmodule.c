@@ -1955,31 +1955,12 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
-
-PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
-"add_read($self, read, /)\n"
-"--\n"
-"\n"
-"Add a read to the duplication module. \n"
-"\n"
-"  read\n"
-"    A FastqRecordView object.\n"
-);
-
-#define SequenceDuplication_add_read_method METH_O 
-
-static PyObject *
-SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read) 
+static void
+SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
 {
-    if (!FastqRecordView_CheckExact(read)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "read should be a FastqRecordView object, got %s", 
-                     Py_TYPE(read)->tp_name);
-        return NULL;
-    }
     self->number_of_sequences += 1;
-    Py_ssize_t sequence_length = read->meta.sequence_length;
-    uint8_t *sequence = read->meta.record_start + read->meta.sequence_offset;
+    Py_ssize_t sequence_length = meta->sequence_length;
+    uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
@@ -2014,6 +1995,30 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
         /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
         index %= HASH_TABLE_SIZE;
     }
+} 
+
+PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the duplication module. \n"
+"\n"
+"  read\n"
+"    A FastqRecordView object.\n"
+);
+
+#define SequenceDuplication_add_read_method METH_O 
+
+static PyObject *
+SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read) 
+{
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    SequenceDuplication_add_meta(self, &read->meta);
     Py_RETURN_NONE;
 }
 
