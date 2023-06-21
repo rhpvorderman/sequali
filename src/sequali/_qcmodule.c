@@ -1523,6 +1523,37 @@ AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(AdapterCounter_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the adapter counter. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define AdapterCounter_add_record_array_method METH_O
+
+static PyObject * 
+AdapterCounter_add_record_array(AdapterCounter *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        if (AdapterCounter_add_meta(self, records + i) != 0) {
+           return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 "get_counts($self, /)\n"
 "--\n"
@@ -1568,6 +1599,8 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 static PyMethodDef AdapterCounter_methods[] = {
     {"add_read", (PyCFunction)AdapterCounter_add_read,
      AdapterCounter_add_read_method, AdapterCounter_add_read__doc__},
+    {"add_record_array", (PyCFunction)AdapterCounter_add_record_array,
+     AdapterCounter_add_record_array_method, AdapterCounter_add_record_array__doc__},
     {"get_counts", (PyCFunction)AdapterCounter_get_counts, 
      AdapterCounter_get_counts_method, AdapterCounter_get_counts__doc__},
     {NULL},
