@@ -469,11 +469,11 @@ def main():
     sequence_duplication = SequenceDuplication()
     with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
         reader = FastqParser(file)
-        for read in reader:  # type: FastqRecordView
-            metrics.add_read(read)
-            per_tile_quality.add_read(read)
-            adapter_counter.add_read(read)
-            sequence_duplication.add_read(read)
+        for record_array in reader:
+            metrics.add_record_array(record_array)
+            per_tile_quality.add_record_array(record_array)
+            adapter_counter.add_record_array(record_array)
+            sequence_duplication.add_record_array(record_array)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
