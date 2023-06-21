@@ -1789,6 +1789,9 @@ long illumina_header_to_tile_id(const char *header, size_t header_length) {
 static int 
 PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
 {
+    if (self->skipped) {
+        return 0;
+    }
     uint8_t *record_start = meta->record_start;
     const char *header = (char *)(record_start + 1);
     size_t header_length = meta->name_length;
@@ -1890,6 +1893,9 @@ PyDoc_STRVAR(PerTileQuality_add_record_array__doc__,
 static PyObject * 
 PerTileQuality_add_record_array(PerTileQuality *self, FastqRecordArrayView *record_array) 
 {
+    if (self->skipped) {
+        Py_RETURN_NONE;
+    }
     if (!FastqRecordArrayView_CheckExact(record_array)) {
         PyErr_Format(PyExc_TypeError, 
                      "record_array should be a FastqRecordArrayView object, got %s", 
