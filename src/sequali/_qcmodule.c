@@ -556,11 +556,12 @@ static PyTypeObject FastqRecordArrayView_Type = {
 
 typedef struct _FastqParserStruct {
     PyObject_HEAD 
-    uint8_t *buffer;
-    size_t buffer_size; 
     uint8_t *record_start;
-    PyObject *buffer_obj;
+    uint8_t *buffer_end; 
     size_t read_in_size;
+    PyObject *buffer_obj;
+    struct FastqMeta *meta_buffer;
+    size_t meta_buffer_size;
     PyObject *file_obj;
 } FastqParser;
 
@@ -598,11 +599,12 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(buffer_obj);
         return NULL;
     }
-    self->buffer = (uint8_t *)PyBytes_AS_STRING(buffer_obj);
-    self->buffer_size = 0;
-    self->record_start = self->buffer; 
+    self->record_start = (uint8_t *)PyBytes_AS_STRING(buffer_obj);
+    self->buffer_end = self->record_start;
     self->buffer_obj = buffer_obj;
     self->read_in_size = read_in_size;
+    self->meta_buffer = NULL;
+    self->meta_buffer_size = 0;
     Py_INCREF(file_obj);
     self->file_obj = file_obj;
     return (PyObject *)self;
@@ -618,9 +620,74 @@ FastqParser__iter__(PyObject *self)
 static PyObject *
 FastqParser__next__(FastqParser *self) 
 {
-    while (1) {
-        uint8_t *record_start = self->record_start;
-        uint8_t *buffer_end = self->buffer + self->buffer_size;
+    uint8_t *record_start = self->record_start;
+    uint8_t *buffer_end = self->buffer_end;
+    size_t parsed_records = 0;
+    while (parsed_records == 0) {
+        size_t leftover_size = buffer_end - record_start; 
+        size_t read_in_size = self->read_in_size - leftover_size;
+        if (read_in_size == 0) {
+            read_in_size = self->read_in_size;
+        }
+        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
+        if (new_bytes == NULL) {
+            return NULL;
+        }
+        if (!PyBytes_CheckExact(new_bytes)) {
+            PyErr_Format(
+                PyExc_TypeError,
+                "file_obj %R is not a binary IO type, got %s", 
+                self->file_obj, Py_TYPE(self->file_obj)->tp_name
+            );
+            return NULL;
+        }
+        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
+        char *new_bytes_buf = PyBytes_AS_STRING(new_bytes);
+        if (!string_is_ascii(new_bytes_buf, new_bytes_size)) {
+            size_t pos;
+            for (pos=0; pos<new_bytes_size; pos+=1) {
+                if (new_bytes_buf[pos] & ASCII_MASK_1BYTE) {
+                    break;
+                }
+            }
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Found non-ASCII character in file: %c", new_bytes_buf[pos]
+            );
+            Py_DECREF(new_bytes);
+            return NULL;
+        }
+        size_t new_buffer_size = leftover_size + new_bytes_size;
+        if (new_buffer_size == 0) {
+            // Entire file is read
+            PyErr_SetNone(PyExc_StopIteration);
+            Py_DECREF(new_bytes);
+            return NULL;
+        } else if (new_bytes_size == 0) {
+            // Incomplete record at the end of file;
+            PyErr_Format(
+                PyExc_EOFError,
+                "Incomplete record at the end of file %s", 
+                record_start);
+            Py_DECREF(new_bytes);
+            return NULL;
+        }
+        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
+        if (new_buffer_obj == NULL) {
+            Py_DECREF(new_bytes);
+            return NULL;
+        }
+        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        memcpy(new_buffer, record_start, leftover_size);
+        memcpy(new_buffer + leftover_size, new_bytes_buf, new_bytes_size);
+        Py_DECREF(new_bytes);
+        PyObject *tmp = self->buffer_obj;
+        self->buffer_obj = new_buffer_obj;
+        Py_DECREF(tmp);
+        
+        uint8_t *record_start = new_buffer;
+        uint8_t *buffer_end = record_start + new_buffer_size;
+
         while (1) {
             if (record_start + 2 >= buffer_end) {
                 break;
@@ -675,82 +742,29 @@ FastqParser__next__(FastqParser *self)
                 );
                 return NULL;
             }
-            FastqRecordView *record = PyObject_New(FastqRecordView, &FastqRecordView_Type);
-            if (record == NULL) {
-                return NULL;
-            }
-            record->meta.record_start = record_start;
-            record->meta.name_length = name_length;
-            record->meta.sequence_offset = sequence_start - record_start;
-            record->meta.sequence_length = sequence_length;
-            record->meta.qualities_offset = qualities_start - record_start;
-            Py_INCREF(self->buffer_obj);
-            record->obj = self->buffer_obj;
-            self->record_start = qualities_end + 1;
-            return (PyObject *)record;
-        }
-        if (record_start == self->buffer && self->buffer_size != 0) {
-            // The FASTQ record is bigger than the current buffer_size
-            self->read_in_size *= 2;
-        }
-        size_t bytes_left = buffer_end - record_start;
-        size_t read_in_size = self->read_in_size - bytes_left;
-        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
-        if (new_bytes == NULL) {
-            return NULL;
-        }
-        if (!PyBytes_CheckExact(new_bytes)) {
-            PyErr_Format(
-                PyExc_TypeError,
-                "file_obj %R is not a binary IO type, got %s", 
-                self->file_obj, Py_TYPE(self->file_obj)->tp_name
-            );
-            return NULL;
-        }
-        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
-        size_t new_buffer_size = bytes_left + new_bytes_size;
-        if (new_buffer_size == 0) {
-            // Entire file is read
-            PyErr_SetNone(PyExc_StopIteration);
-            return NULL;
-        } else if (new_bytes_size == 0) {
-            // Incomplete record at the end of file;
-            PyErr_Format(
-                PyExc_EOFError,
-                "Incomplete record at the end of file %s", 
-                self->record_start);
-            return NULL;
-        }
-        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
-        if (new_buffer_obj == NULL) {
-            Py_DECREF(new_bytes);
-            return NULL;
-        }
-        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
-        memcpy(new_buffer, record_start, bytes_left);
-        memcpy(new_buffer + bytes_left, PyBytes_AS_STRING(new_bytes), new_bytes_size);
-        Py_DECREF(new_bytes);
-        if (!string_is_ascii((char *)new_buffer, new_buffer_size)) {
-            size_t pos;
-            for (pos=0; pos<new_buffer_size; pos+=1) {
-                if (new_buffer[pos] & ASCII_MASK_1BYTE) {
-                    break;
+            parsed_records += 1;
+            if (parsed_records > self->meta_buffer_size) {
+                struct FastqMeta *tmp = PyMem_Realloc(
+                    self->meta_buffer, sizeof(struct FastqMeta) * parsed_records);
+                if (tmp == NULL) {
+                    return PyErr_NoMemory();
                 }
+                self->meta_buffer = tmp;
+                self->meta_buffer_size = parsed_records;
             }
-            PyErr_Format(
-                PyExc_ValueError, 
-                "Found non-ASCII character in file: %c", new_buffer[pos]
-            );
-            Py_DECREF(new_buffer_obj);
-            return NULL;
+            struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
+            meta->record_start = record_start;
+            meta->name_length = name_length;
+            meta->sequence_offset = sequence_start - record_start;
+            meta->sequence_length = sequence_length;
+            meta->qualities_offset = qualities_start - record_start;
+            record_start = qualities_end + 1;
         }
-        PyObject *tmp = self->buffer_obj;
-        self->buffer_obj = new_buffer_obj;
-        self->buffer = new_buffer;
-        self->buffer_size = new_buffer_size;
-        self->record_start = new_buffer;
-        Py_DECREF(tmp);
     }
+    self->record_start = record_start;
+    self->buffer_end = buffer_end;
+    return FastqRecordArrayView_FromPointerSizeAndObject(
+        self->meta_buffer, parsed_records, self->buffer_obj);
 }
 
 PyTypeObject FastqParser_Type = {
