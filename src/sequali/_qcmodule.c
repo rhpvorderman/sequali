@@ -684,9 +684,9 @@ FastqParser__next__(FastqParser *self)
         PyObject *tmp = self->buffer_obj;
         self->buffer_obj = new_buffer_obj;
         Py_DECREF(tmp);
-        
-        uint8_t *record_start = new_buffer;
-        uint8_t *buffer_end = record_start + new_buffer_size;
+    
+        record_start = new_buffer;
+        buffer_end = record_start + new_buffer_size;
 
         while (1) {
             if (record_start + 2 >= buffer_end) {
