@@ -520,6 +520,12 @@ static PySequenceMethods FastqRecordArrayView_sequence_methods = {
     .sq_length = (lenfunc)FastqRecordArrayView__length__,
 };
 
+static PyMemberDef FastqRecordArrayView_members[] = {
+    {"obj", T_OBJECT, offsetof(FastqRecordArrayView, obj), READONLY,
+     "The underlying buffer where the fastq records are located"},
+    {NULL},
+};
+
 static PyTypeObject FastqRecordArrayView_Type = {
     .tp_name = "FastqRecordArrayView",
     .tp_dealloc = (destructor)FastqRecordArrayView_dealloc,
@@ -527,6 +533,7 @@ static PyTypeObject FastqRecordArrayView_Type = {
     .tp_itemsize = sizeof(struct FastqMeta),
     .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
     .tp_new = FastqRecordArrayView__new__,
+    .tp_members = FastqRecordArrayView_members,
 };
 
 
@@ -802,7 +809,7 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     counttable_t *count_tables;
-    Py_ssize_t max_length;
+    size_t max_length;
     size_t number_of_reads;
     counter_t gc_content[101];
     counter_t phred_scores[PHRED_MAX + 1];
