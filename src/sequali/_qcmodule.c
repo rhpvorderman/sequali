@@ -391,7 +391,7 @@ FastqRecordView_FromFastqMetaAndObject(struct FastqMeta *meta, PyObject *object)
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    memcpy(self + offsetof(FastqRecordView, meta), meta, sizeof(struct FastqMeta));
+    memcpy(&self->meta, meta, sizeof(struct FastqMeta));
     Py_XINCREF(object);
     self->obj = object; 
     return (PyObject *)self;
@@ -516,7 +516,7 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
         PyErr_SetString(PyExc_IndexError, "array index out of range");
         return NULL;
     }
-    return FastqRecordView_FromFastqMetaAndObject(&(self->records[i]), self->obj);
+    return FastqRecordView_FromFastqMetaAndObject(self->records + i, self->obj);
 }
 
 static inline Py_ssize_t FastqRecordArrayView__length__(
