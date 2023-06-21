@@ -361,6 +361,13 @@ static PyMethodDef FastqRecordView_methods[] = {
     {NULL}
 };
 
+static PyMemberDef FastqRecordView_members[] = {
+    {"obj", T_OBJECT, offsetof(FastqRecordView, obj), READONLY,
+     "The underlying buffer where the fastq record is located"},
+    {NULL},
+};
+
+
 static PyTypeObject FastqRecordView_Type = {
     .tp_name = "_qc.FastqRecordView",
     .tp_basicsize = sizeof(FastqRecordView),
@@ -368,6 +375,7 @@ static PyTypeObject FastqRecordView_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_new = (newfunc)FastqRecordView__new__,
     .tp_methods = FastqRecordView_methods,
+    .tp_members = FastqRecordView_members,
 };
 
 static inline int 
