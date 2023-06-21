@@ -527,7 +527,7 @@ static PyMemberDef FastqRecordArrayView_members[] = {
 };
 
 static PyTypeObject FastqRecordArrayView_Type = {
-    .tp_name = "FastqRecordArrayView",
+    .tp_name = "_qc.FastqRecordArrayView",
     .tp_dealloc = (destructor)FastqRecordArrayView_dealloc,
     .tp_basicsize = sizeof(FastqRecordArrayView),
     .tp_itemsize = sizeof(struct FastqMeta),
@@ -2307,6 +2307,9 @@ PyInit__qc(void)
     }  
     if (python_module_add_type(m, &FastqRecordView_Type) != 0) {
         return NULL; 
+    }
+    if (python_module_add_type(m, &FastqRecordArrayView_Type) != 0) {
+        return NULL;
     }
     if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
