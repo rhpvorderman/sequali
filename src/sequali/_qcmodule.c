@@ -515,6 +515,11 @@ static inline Py_ssize_t FastqRecordArrayView__length__(
     return Py_SIZE(self);
 }
 
+static inline int 
+FastqRecordArrayView_CheckExact(void *obj) {
+    return Py_TYPE(obj) == &FastqRecordArrayView_Type;
+}
+
 static PySequenceMethods FastqRecordArrayView_sequence_methods = {
     .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
     .sq_length = (lenfunc)FastqRecordArrayView__length__,
@@ -936,6 +941,37 @@ QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(QCMetrics_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the count metrics. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define QCMetrics_add_record_array_method METH_O
+
+static PyObject * 
+QCMetrics_add_record_array(QCMetrics *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        if (QCMetrics_add_meta(self, records + i) != 0) {
+           return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(QCMetrics_count_table__doc__,
 "count_table($self, /)\n"
 "--\n"
@@ -995,6 +1031,8 @@ QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 static PyMethodDef QCMetrics_methods[] = {
     {"add_read",  (PyCFunction)QCMetrics_add_read, 
      QCMetrics_add_read_method,  QCMetrics_add_read__doc__},
+    {"add_record_array", (PyCFunction)QCMetrics_add_record_array,
+     QCMetrics_add_record_array_method, QCMetrics_add_record_array__doc__},
     {"count_table", (PyCFunction)QCMetrics_count_table, 
      QCMetrics_count_table_method, QCMetrics_count_table__doc__},
     {"gc_content", (PyCFunction)QCMetrics_gc_content, 
