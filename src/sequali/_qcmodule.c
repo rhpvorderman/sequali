@@ -1375,35 +1375,17 @@ static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
 }
 #endif
 
-PyDoc_STRVAR(AdapterCounter_add_read__doc__,
-"add_read($self, read, /)\n"
-"--\n"
-"\n"
-"Add a read to the adapter counter. \n"
-"\n"
-"  read\n"
-"    A FastqRecordView object.\n"
-);
-
-#define AdapterCounter_add_read_method METH_O
-
-static PyObject *
-AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read) 
+static int 
+AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
 {
-    if (!FastqRecordView_CheckExact(read)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "read should be a FastqRecordView object, got %s", 
-                     Py_TYPE(read)->tp_name);
-        return NULL;
-    }
     self->number_of_sequences += 1;
-    uint8_t *sequence = read->meta.record_start + read->meta.sequence_offset;
-    size_t sequence_length = read->meta.sequence_length;
+    uint8_t *sequence = meta->record_start + meta->sequence_offset;
+    size_t sequence_length = meta->sequence_length;
 
     if (sequence_length > self->max_length) {
         int ret = AdapterCounter_resize(self, sequence_length);
         if (ret != 0) {
-            return NULL;
+            return -1;
         }
     }
 
@@ -1473,6 +1455,33 @@ AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read)
         }
     }
     #endif
+    return 0;
+}
+
+PyDoc_STRVAR(AdapterCounter_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the adapter counter. \n"
+"\n"
+"  read\n"
+"    A FastqRecordView object.\n"
+);
+
+#define AdapterCounter_add_read_method METH_O
+
+static PyObject *
+AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read) 
+{
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    if (AdapterCounter_add_meta(self, &read->meta) != 0) {
+        return NULL;
+    }
     Py_RETURN_NONE;
 }
 
