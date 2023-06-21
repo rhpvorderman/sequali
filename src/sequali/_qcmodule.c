@@ -2126,6 +2126,36 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(SequenceDuplication_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the duplication module. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define SequenceDuplication_add_record_array_method METH_O
+
+static PyObject * 
+SequenceDuplication_add_record_array(
+    SequenceDuplication *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        SequenceDuplication_add_meta(self, records + i);
+    }
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
 "sequence_counts($self, /)\n"
 "--\n"
@@ -2306,6 +2336,9 @@ static PyMethodDef SequenceDuplication_methods[] = {
     {"add_read", (PyCFunction)SequenceDuplication_add_read, 
      SequenceDuplication_add_read_method, 
      SequenceDuplication_add_read__doc__},
+    {"add_record_array", (PyCFunction)SequenceDuplication_add_record_array,
+     SequenceDuplication_add_record_array_method, 
+     SequenceDuplication_add_record_array__doc__},
     {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
      SequenceDuplication_sequence_counts_method, 
      SequenceDuplication_sequence_counts__doc__},
