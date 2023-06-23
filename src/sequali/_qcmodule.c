@@ -833,6 +833,8 @@ typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
    count array when 65535 entries are counted in the uint16_t staging array.
    For short reads, this is mainly extra work and therefore has a very small
    penalty. For long reads it is very beneficial.
+   uint8_t was also tested but that made things a lot slower for long reads
+   due to having to transverse the count arrays very frequently.
 */
 typedef uint16_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
