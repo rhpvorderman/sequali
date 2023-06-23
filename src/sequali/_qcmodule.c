@@ -30,7 +30,7 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #if (PY_VERSION_HEX < 0x03090000)
     #define Py_SET_REFCNT(op, count) (Py_REFCNT(op) = count)
     #define Py_SET_SIZE(op, size) (Py_SIZE(op) = size)
-    #define Py_SET_TYPE(op) (Py_TYPE(op) = &BamCigar_Type)
+    #define Py_SET_TYPE(op, type) (Py_TYPE(op) = type)
 #endif
 
 /* Pointers to types that will be imported in the module initialization section */
