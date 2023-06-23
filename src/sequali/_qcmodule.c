@@ -954,6 +954,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             QCMetrics_flush_staging(self);
         }   
         self->staging_count += 1;
+        staging_counttable_t *staging_count_tables = self->staging_count_tables;
         for (size_t i=0; i < (size_t)sequence_length; i+=1) {
             uint8_t c = sequence[i];
             uint8_t q = qualities[i] - phred_offset;
@@ -966,11 +967,12 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             }
             uint8_t q_index = phred_to_index(q);
             uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-            self->staging_count_tables[i][q_index][c_index] += 1;
+            staging_count_tables[i][q_index][c_index] += 1;
             base_counts[c_index] += 1;
             accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         }
     } else {
+        counttable_t *count_tables = self->count_tables;
         for (size_t i=0; i < (size_t)sequence_length; i+=1) {
             uint8_t c = sequence[i];
             uint8_t q = qualities[i] - phred_offset;
@@ -983,7 +985,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             }
             uint8_t q_index = phred_to_index(q);
             uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-            self->count_tables[i][q_index][c_index] += 1;
+            count_tables[i][q_index][c_index] += 1;
             base_counts[c_index] += 1;
             accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         }
