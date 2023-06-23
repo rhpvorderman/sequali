@@ -45,7 +45,7 @@ setup(
         "GNU Affero General Public License v3 or later (AGPLv3+)",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.8",  # SupportsIndex requires 3.8
     install_requires=[
         "xopen",
         "pygal>=3.0.0"
