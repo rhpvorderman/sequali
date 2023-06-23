@@ -817,14 +817,11 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
-
-typedef uint64_t counter_t;
-
 /* Illumina reads often use a limited set of phreds rather than the full range
    of 0-93. Putting phreds before nucleotides in the array type therefore gives
    nice dense spots in the array where all nucleotides with the same phred sit
    next to eachother. That leads to better cache locality. */
-typedef counter_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
+typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
 static inline uint8_t phred_to_index(uint8_t phred) {
     if (phred > PHRED_LIMIT){
@@ -839,8 +836,8 @@ typedef struct _QCMetricsStruct {
     counttable_t *count_tables;
     size_t max_length;
     size_t number_of_reads;
-    counter_t gc_content[101];
-    counter_t phred_scores[PHRED_MAX + 1];
+    uint64_t gc_content[101];
+    uint64_t phred_scores[PHRED_MAX + 1];
 } QCMetrics;
 
 static void
@@ -862,8 +859,8 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->phred_offset = phred_offset;
     self->count_tables = NULL;
     self->number_of_reads = 0;
-    memset(self->gc_content, 0, 101 * sizeof(counter_t));
-    memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(counter_t));
+    memset(self->gc_content, 0, 101 * sizeof(uint64_t));
+    memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
     return (PyObject *)self;
 }
 
@@ -894,7 +891,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
     uint8_t phred_offset = self->phred_offset;
-    counter_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
+    uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
@@ -920,8 +917,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         base_counts[c_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
     }
-    counter_t at_counts = base_counts[A] + base_counts[T];
-    counter_t gc_counts = base_counts[C] + base_counts[G];
+    uint64_t at_counts = base_counts[A] + base_counts[T];
+    uint64_t gc_counts = base_counts[C] + base_counts[G];
     double gc_content_percentage = (double)at_counts * (double)100.0 / (double)(at_counts + gc_counts);
     uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
     assert(gc_content_index >= 0);
@@ -1144,7 +1141,7 @@ typedef struct AdapterCounterStruct {
     size_t number_of_adapters;
     size_t max_length;
     size_t number_of_sequences;
-    counter_t **adapter_counter;
+    uint64_t **adapter_counter;
     PyObject *adapters;
     size_t number_of_matchers;
     MachineWordPatternMatcher *matchers;
@@ -1307,13 +1304,13 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    counter_t **counter_tmp = PyMem_Malloc(sizeof(counter_t *) * number_of_adapters);
-    if (counter_tmp == NULL) {
+    uint64_t **uint64_tmp = PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
+    if (uint64_tmp == NULL) {
         PyErr_NoMemory();
         goto error;
     }
-    memset(counter_tmp, 0, sizeof(counter_t *) * number_of_adapters);
-    self->adapter_counter = counter_tmp;
+    memset(uint64_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
+    self->adapter_counter = uint64_tmp;
     self->adapters = NULL;
     self->matchers = NULL;
     self->max_length = 0;
@@ -1399,15 +1396,15 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     }
     size_t old_size = self->max_length;
     for (size_t i=0; i < self->number_of_adapters; i++) {
-        counter_t *tmp = PyMem_Realloc(self->adapter_counter[i],
-                                       new_size * sizeof(counter_t));
+        uint64_t *tmp = PyMem_Realloc(self->adapter_counter[i],
+                                       new_size * sizeof(uint64_t));
         if (tmp == NULL) {
             PyErr_NoMemory();
             return -1;
         }
         self->adapter_counter[i] = tmp;
         memset(self->adapter_counter[i] + old_size, 0,
-               (new_size - old_size) * sizeof(counter_t));
+               (new_size - old_size) * sizeof(uint64_t));
     }
     self->max_length = new_size;
     return 0;
@@ -1604,7 +1601,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         PyObject *counts = PythonArray_FromBuffer(
             'Q',
             self->adapter_counter[i],
-            self->max_length * sizeof(counter_t)
+            self->max_length * sizeof(uint64_t)
         );
         if (counts == NULL) {
             return NULL;
@@ -1640,7 +1637,7 @@ static PyMemberDef AdapterCounter_members[] = {
     {NULL},
 };
 
-static PyTypeObject AdapterCounter_Type = {
+static PyTypeObject Adapteruint64_type = {
     .tp_name = "_qc.AdapterCounter",
     .tp_basicsize = sizeof(AdapterCounter),
     .tp_dealloc = (destructor)AdapterCounter_dealloc,
@@ -1655,7 +1652,7 @@ static PyTypeObject AdapterCounter_Type = {
  ********************/
 
 typedef struct _BaseQualityStruct {
-    counter_t total_bases;
+    uint64_t total_bases;
     double total_error;  /* double for now, fixed point might be better */ 
 } BaseQuality;
 
@@ -2480,7 +2477,7 @@ PyInit__qc(void)
     if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
     }
-    if (python_module_add_type(m, &AdapterCounter_Type) != 0) {
+    if (python_module_add_type(m, &Adapteruint64_type) != 0) {
         return NULL;
     }
     if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
