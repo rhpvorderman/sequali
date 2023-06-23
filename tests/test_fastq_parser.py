@@ -12,7 +12,9 @@ DATA = Path(__file__).parent / "data"
 def test_fastq_parser():
     with open(DATA / "simple.fastq", "rb") as fileobj:
         parser = FastqParser(fileobj)
-        records = list(parser)
+        record_arrays = list(parser)
+    assert len(record_arrays) == 1
+    records = record_arrays[0]
     assert records[0].name() == "Myheader/1"
     assert records[0].sequence() == "GATTACA"
     assert records[0].qualities() == "HHHHHHH"
