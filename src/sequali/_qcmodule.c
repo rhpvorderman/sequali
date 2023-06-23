@@ -875,6 +875,7 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->max_length = 0;
     self->phred_offset = phred_offset;
     self->count_tables = NULL;
+    self->staging_count_tables = NULL;
     self->number_of_reads = 0;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
