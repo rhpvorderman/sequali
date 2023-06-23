@@ -50,7 +50,7 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
         return NULL;
     } 
     /* We cannot paste into the array directly, so use a temporary memoryview */
-    PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, READONLY);
+    PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, PyBUF_READ);
     if (tmp == NULL) {
         Py_DECREF(array);
         return NULL;
