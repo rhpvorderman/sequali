@@ -402,7 +402,7 @@ FastqRecordView_FromFastqMetaAndObject(struct FastqMeta *meta, PyObject *object)
  ************************/
 
 typedef struct _FastqRecordArrayViewStruct {
-    PyObject_VAR_HEAD;
+    PyObject_VAR_HEAD
     PyObject *obj;
     struct FastqMeta records[];
 } FastqRecordArrayView;
