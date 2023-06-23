@@ -823,6 +823,20 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
    next to eachother. That leads to better cache locality. */
 typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
+/* The counttable currently spans 5 * 12 = 60 integers. With uint64_t this 
+   means 480 bytes and 8 cache lines. This makes it unpredictable for the 
+   hardware prefetcher what the next required cacheline is. Using a uint8_t 
+   staging table has the following advantages.
+        - 8 Times smaller, therefore more likely to fit in cache
+        - Each table fits in 60 bytes, therefore in a single cacheline. Much
+          easier for the hardware prefetcher to predict the next cache line 
+          that needs to be retrieved. 
+   The staging count array can be added to the proper count array every 255
+   iterations. Which means 254 out of 255 do not need to touch the much less 
+   cache friendly bigger chunck of memory.  
+*/
+typedef uint8_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
+
 static inline uint8_t phred_to_index(uint8_t phred) {
     if (phred > PHRED_LIMIT){
         phred = PHRED_LIMIT;
@@ -833,8 +847,10 @@ static inline uint8_t phred_to_index(uint8_t phred) {
 typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
-    counttable_t *count_tables;
+    uint8_t staging_count;
     size_t max_length;
+    staging_counttable_t *staging_count_tables;
+    counttable_t *count_tables;
     size_t number_of_reads;
     uint64_t gc_content[101];
     uint64_t phred_scores[PHRED_MAX + 1];
@@ -843,6 +859,7 @@ typedef struct _QCMetricsStruct {
 static void
 QCMetrics_dealloc(QCMetrics *self) {
     PyMem_Free(self->count_tables);
+    PyMem_Free(self->staging_count_tables);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -878,10 +895,36 @@ QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size)
     /* Set the added part to 0 */
     memset(self->count_tables + self->max_length, 0, 
            (new_size - self->max_length) * sizeof(counttable_t));
+
+    staging_counttable_t *staging_tmp = PyMem_Realloc(
+        self->staging_count_tables, new_size * sizeof(staging_counttable_t)
+    );
+    if (staging_tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    self->staging_count_tables = staging_tmp;
+    /* Set the added part to 0 */
+    memset(self->staging_count_tables + self->max_length, 0, 
+           (new_size - self->max_length) * sizeof(staging_counttable_t));
     self->max_length = new_size;
     return 0;
 }
 
+static void 
+QCMetrics_flush_staging(QCMetrics *self) {
+    if (self->staging_count == 0) {
+        return;
+    }
+    uint64_t *counts = (uint64_t *)self->count_tables;
+    uint8_t *staging_counts = (uint8_t *)self->staging_count_tables;
+    size_t number_of_ints = self->max_length * PHRED_TABLE_SIZE * NUC_TABLE_SIZE;
+    for (size_t i=0; i < number_of_ints; i++) {
+        counts[i] += staging_counts[i];
+    }
+    memset(staging_counts, 0, number_of_ints);
+    self->staging_count = 0;
+}
 
 static inline int 
 QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
@@ -900,7 +943,11 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         }
     }
 
+    if (self->staging_count >= UINT8_MAX) {
+        QCMetrics_flush_staging(self);
+    }
     self->number_of_reads += 1; 
+    self->staging_count += 1;
     for (size_t i=0; i < (size_t)sequence_length; i+=1) {
         uint8_t c = sequence[i];
         uint8_t q = qualities[i] - phred_offset;
@@ -913,7 +960,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         }
         uint8_t q_index = phred_to_index(q);
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-        self->count_tables[i][q_index][c_index] += 1;
+        self->staging_count_tables[i][q_index][c_index] += 1;
         base_counts[c_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
     }
@@ -1004,6 +1051,7 @@ PyDoc_STRVAR(QCMetrics_count_table__doc__,
 static PyObject *
 QCMetrics_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer(
         'Q', 
         self->count_tables, 
@@ -1022,6 +1070,7 @@ PyDoc_STRVAR(QCMetrics_gc_content__doc__,
 static PyObject *
 QCMetrics_gc_content(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer(
         'Q',
         self->gc_content,
@@ -1041,6 +1090,7 @@ PyDoc_STRVAR(QCMetrics_phred_scores__doc__,
 static PyObject *
 QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer(
         'Q',
         self->phred_scores,
