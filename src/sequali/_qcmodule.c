@@ -824,18 +824,14 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
 /* The counttable currently spans 5 * 12 = 60 integers. With uint64_t this 
-   means 480 bytes and 8 cache lines. This makes it unpredictable for the 
-   hardware prefetcher what the next required cacheline is. Using a uint8_t 
-   staging table has the following advantages.
-        - 8 Times smaller, therefore more likely to fit in cache
-        - Each table fits in 60 bytes, therefore in a single cacheline. Much
-          easier for the hardware prefetcher to predict the next cache line 
-          that needs to be retrieved. 
-   The staging count array can be added to the proper count array every 255
-   iterations. Which means 254 out of 255 do not need to touch the much less 
-   cache friendly bigger chunck of memory.  
+   means 480 bytes and 8 cache lines. Using smaller than 64-bit integers has 
+   the disadvantage that there will be overflow. 
+   Using a uint16_t count array reduces memory usage by 4x (and therefore 
+   has better cache locality). We can prevent overflow by simply keeping it
+   next to a uint64_t count array and simply adding the result to the uint64_t
+   count array when 65535 entries are counted in the uint16_t staging array. 
 */
-typedef uint8_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
+typedef uint16_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
 static inline uint8_t phred_to_index(uint8_t phred) {
     if (phred > PHRED_LIMIT){
@@ -847,7 +843,7 @@ static inline uint8_t phred_to_index(uint8_t phred) {
 typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
-    uint8_t staging_count;
+    uint16_t staging_count;
     size_t max_length;
     staging_counttable_t *staging_count_tables;
     counttable_t *count_tables;
@@ -918,12 +914,12 @@ QCMetrics_flush_staging(QCMetrics *self) {
         return;
     }
     uint64_t *counts = (uint64_t *)self->count_tables;
-    uint8_t *staging_counts = (uint8_t *)self->staging_count_tables;
+    uint16_t *staging_counts = (uint16_t *)self->staging_count_tables;
     size_t number_of_ints = self->max_length * PHRED_TABLE_SIZE * NUC_TABLE_SIZE;
     for (size_t i=0; i < number_of_ints; i++) {
         counts[i] += staging_counts[i];
     }
-    memset(staging_counts, 0, number_of_ints);
+    memset(staging_counts, 0, number_of_ints * sizeof(uint16_t));
     self->staging_count = 0;
 }
 
@@ -944,7 +940,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         }
     }
 
-    if (self->staging_count >= UINT8_MAX) {
+    if (self->staging_count >= UINT16_MAX) {
         QCMetrics_flush_staging(self);
     }
     self->number_of_reads += 1; 
