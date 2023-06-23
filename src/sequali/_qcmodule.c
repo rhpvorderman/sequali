@@ -19,6 +19,7 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 #include "structmember.h"
+#include "stdbool.h"
 
 #include "math.h"
 #include "score_to_error_rate.h"
@@ -829,7 +830,9 @@ typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
    Using a uint16_t count array reduces memory usage by 4x (and therefore 
    has better cache locality). We can prevent overflow by simply keeping it
    next to a uint64_t count array and simply adding the result to the uint64_t
-   count array when 65535 entries are counted in the uint16_t staging array. 
+   count array when 65535 entries are counted in the uint16_t staging array.
+   For short reads, this is mainly extra work and therefore has a very small
+   penalty. For long reads it is very beneficial.
 */
 typedef uint16_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
 
@@ -844,6 +847,7 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     uint16_t staging_count;
+    bool use_staging;
     size_t max_length;
     staging_counttable_t *staging_count_tables;
     counttable_t *count_tables;
@@ -873,6 +877,7 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->count_tables = NULL;
     self->staging_count_tables = NULL;
     self->number_of_reads = 0;
+    self->use_staging = false;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
     return (PyObject *)self;
@@ -935,31 +940,53 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
+        if (sequence_length > 1000) {
+            self->use_staging = true;
+        }
         if (QCMetrics_resize(self, sequence_length) != 0) {
             return -1;
         }
     }
 
-    if (self->staging_count >= UINT16_MAX) {
-        QCMetrics_flush_staging(self);
-    }
     self->number_of_reads += 1; 
-    self->staging_count += 1;
-    for (size_t i=0; i < (size_t)sequence_length; i+=1) {
-        uint8_t c = sequence[i];
-        uint8_t q = qualities[i] - phred_offset;
-        if (q > PHRED_MAX) {
-            PyErr_Format(
-                PyExc_ValueError, 
-                "Not a valid phred character: %c", qualities[i]
-            );
-            return -1;
+    if (self->use_staging) {
+        if (self->staging_count >= UINT16_MAX) {
+            QCMetrics_flush_staging(self);
+        }   
+        self->staging_count += 1;
+        for (size_t i=0; i < (size_t)sequence_length; i+=1) {
+            uint8_t c = sequence[i];
+            uint8_t q = qualities[i] - phred_offset;
+            if (q > PHRED_MAX) {
+                PyErr_Format(
+                    PyExc_ValueError, 
+                    "Not a valid phred character: %c", qualities[i]
+                );
+                return -1;
+            }
+            uint8_t q_index = phred_to_index(q);
+            uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
+            self->staging_count_tables[i][q_index][c_index] += 1;
+            base_counts[c_index] += 1;
+            accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         }
-        uint8_t q_index = phred_to_index(q);
-        uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-        self->staging_count_tables[i][q_index][c_index] += 1;
-        base_counts[c_index] += 1;
-        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+    } else {
+        for (size_t i=0; i < (size_t)sequence_length; i+=1) {
+            uint8_t c = sequence[i];
+            uint8_t q = qualities[i] - phred_offset;
+            if (q > PHRED_MAX) {
+                PyErr_Format(
+                    PyExc_ValueError, 
+                    "Not a valid phred character: %c", qualities[i]
+                );
+                return -1;
+            }
+            uint8_t q_index = phred_to_index(q);
+            uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
+            self->count_tables[i][q_index][c_index] += 1;
+            base_counts[c_index] += 1;
+            accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+        }
     }
     uint64_t at_counts = base_counts[A] + base_counts[T];
     uint64_t gc_counts = base_counts[C] + base_counts[G];
