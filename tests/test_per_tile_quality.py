@@ -47,9 +47,17 @@ def test_per_tile_quality_not_view():
     error.match("FastqRecordView")
 
 
-def test_per_tile_quality_skip():
+@pytest.mark.parametrize("header", [
+    "SIMULATED_NAME",
+    "SIM:1:FCX:1::6329:1045:GATTACT+GTCTTAAC 1:N:0:ATCCGA",  # tile empty
+    "SIM:1:FCX:1:abc:6329:1045:GATTACT+GTCTTAAC 1:N:0:ATCCGA",  # tile not a number
+    "SIM:1:FCX:1:0x1a3:6329:1045:GATTACT+GTCTTAAC 1:N:0:ATCCGA",  # number not decimal
+    "SIM:1:FCX:1",  # truncated before tile id
+    "SIM:1:FCX:1:1045",  # truncated after tile id
+])
+def test_per_tile_quality_skip(header):
     read = FastqRecordView(
-        "SIMULATED_NAME",
+        header,
         "AAAA",
         "ABCD"
     )
@@ -57,4 +65,4 @@ def test_per_tile_quality_skip():
     ptq.add_read(read)
     assert ptq.number_of_reads == 0
     assert ptq.max_length == 0
-    assert "SIMULATED_NAME" in ptq.skipped_reason
+    assert header in ptq.skipped_reason
