@@ -21,6 +21,8 @@ from typing import Iterable, Iterator, List, Sequence, Tuple
 
 import pygal  # type: ignore
 
+import tqdm
+
 import xopen
 
 from ._qc import A, C, G, N, T
@@ -467,13 +469,21 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
-    with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
-        reader = FastqParser(file)
-        for record_array in reader:
-            metrics.add_record_array(record_array)
-            per_tile_quality.add_record_array(record_array)
-            adapter_counter.add_record_array(record_array)
-            sequence_duplication.add_record_array(record_array)
+    progress_update_every_xth_byte = 2 * 1024 * 1024
+    progress_update_at = progress_update_every_xth_byte
+    total_bytes = 0
+    with tqdm.tqdm(unit="MiB") as progress:
+        with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
+            reader = FastqParser(file)
+            for record_array in reader:
+                total_bytes += len(record_array.obj)
+                if total_bytes > progress_update_at:
+                    progress.update(2)
+                    progress_update_at += progress_update_every_xth_byte
+                metrics.add_record_array(record_array)
+                per_tile_quality.add_record_array(record_array)
+                adapter_counter.add_record_array(record_array)
+                sequence_duplication.add_record_array(record_array)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
