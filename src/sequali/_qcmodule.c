@@ -1856,9 +1856,7 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
     size_t remaining_length = header_length - tile_number_offset;
     for (size_t i=0; i < remaining_length; i++) {
         uint8_t c = tile_start[i];
-        /* When the character value for '0' is substracted, c should be in the
-           0-9 range, otherwise it is not a decimal number. Because
-           the characer is unsigned no check for < 0 is needed. */
+        /* 0-9 range check. Only one side needs to be checked because of unsigned number */
         c -= '0';
         if (c > 9) {
             if ((i > 0) && ((c + '0') == ':')) {
@@ -1867,9 +1865,7 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
             }
             return -1;
         }
-        /* The number is read from left to right. The thousands precede the
-           hundreds etc. Whenever a new digit is found the rest of the number
-           can be promoted upwards by multiplying by 10. */
+        /* Shift already found digits one decimal place and add current digit */
         tile_id = tile_id * 10 + c;
     }
     /* No colon found at the end of the string, this is an invalid header */
