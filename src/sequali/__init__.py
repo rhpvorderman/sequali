@@ -473,18 +473,25 @@ def main():
     progress_update_every_xth_byte = 1024 * 1024 * 10
     progress_update_at = progress_update_every_xth_byte
     progress_bytes = 0
-    with tqdm.tqdm(
-            desc=f"Processing {os.path.basename(sys.argv[1])}",
+    filename = sys.argv[1]
+    with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
+        total = os.stat(filename).st_size
+        if hasattr(file, "fileobj") and file.fileobj.seekable():
+            # True for gzip objects
+            get_current_pos = file.fileobj.tell
+        elif file.seekable():
+            get_current_pos = file.tell
+        else:
+            total = None
+
+            def get_current_pos():
+                return progress_bytes
+        progress = tqdm.tqdm(
+            desc=f"Processing {os.path.basename(filename)}",
             unit="iB", unit_scale=True, unit_divisor=1024,
-            total=os.stat(sys.argv[1]).st_size) as progress:
-        with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
-            if hasattr(file, "fileobj"):
-                get_current_pos = file.fileobj.tell
-            elif hasattr(file, "tell"):
-                get_current_pos = file.tell
-            else:
-                def get_current_pos():
-                    return progress_bytes
+            total=total
+        )
+        with progress:
             current_pos = 0
             total_bytes = 0
             reader = FastqParser(file)
