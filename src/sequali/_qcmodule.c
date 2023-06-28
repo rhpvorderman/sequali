@@ -1856,18 +1856,15 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
     size_t remaining_length = header_length - tile_number_offset;
     for (size_t i=0; i < remaining_length; i++) {
         uint8_t c = tile_start[i];
-        if (c == ':') {
-            if (i == 0) {
-                /* Fourth ':' should not be immediately followed by another ':' */
-                return -1;
-            }
-            return tile_id;
-        }
         /* When the character value for '0' is substracted, c should be in the
            0-9 range, otherwise it is not a decimal number. Because
            the characer is unsigned no check for < 0 is needed. */
         c -= '0';
         if (c > 9) {
+            if ((i > 0) && ((c + '0') == ':')) {
+                /* successfully parsed a number between the colons */
+                return tile_id;
+            }
             return -1;
         }
         /* The number is read from left to right. The thousands precede the
@@ -1875,6 +1872,7 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
            can be promoted upwards by multiplying by 10. */
         tile_id = tile_id * 10 + c;
     }
+    /* No colon found at the end of the string, this is an invalid header */
     return -1;
 }
 
