@@ -132,6 +132,104 @@ def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
     return scatter_plot.render(is_unicode=True)
 
 
+def per_base_quality_plot(per_base_qualities: Sequence[Sequence[float]],
+                          mean_qualities: Sequence[float],
+                          data_categories: Sequence[str]) -> str:
+    plot = pygal.Line(
+        title="Per base sequence quality",
+        dots_size=1,
+        x_labels=data_categories,
+        truncate_label=-1,
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    plot.add("A", per_base_qualities[A])
+    plot.add("C", per_base_qualities[C])
+    plot.add("G", per_base_qualities[G])
+    plot.add("T", per_base_qualities[T])
+    plot.add("mean", mean_qualities)
+    return plot.render(is_unicode=True)
+
+
+def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
+                                      x_labels: Sequence[str]) -> str:
+    plot = pygal.Bar(
+        title="Sequence length distribution",
+        x_labels=x_labels,
+        truncate_label=-1,
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    plot.add("Length", sequence_lengths)
+    return plot.render(is_unicode=True)
+
+
+def base_content_plot(base_content: Sequence[Sequence[float]],
+                      x_labels: Sequence[str]) -> str:
+    plot = pygal.StackedLine(
+        title="Base content",
+        dots_size=1,
+        x_labels=x_labels,
+        y_labels=[i / 10 for i in range(11)],
+        truncate_label=-1,
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    plot.add("G", base_content[G], fill=True)
+    plot.add("C", base_content[C], fill=True)
+    plot.add("A", base_content[A], fill=True)
+    plot.add("T", base_content[T], fill=True)
+    plot.add("N", base_content[N], fill=True)
+    return plot.render(is_unicode=True)
+
+
+def per_sequence_gc_content_plot(gc_content: Sequence[int]) -> str:
+    plot = pygal.Bar(
+        title="Per sequence GC content",
+        x_labels=range(101),
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    plot.add("", gc_content)
+    return plot.render(is_unicode=True)
+
+
+def per_sequence_quality_scores_plot(
+        per_sequence_quality_scores: Sequence[int]) -> str:
+    plot = pygal.Line(
+        title="Per sequence quality scores",
+        x_labels=range(PHRED_MAX + 1),
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    total = sum(per_sequence_quality_scores)
+    percentage_scores = [100 * score / total
+                         for score in per_sequence_quality_scores]
+    plot.add("%", percentage_scores)
+    return plot.render(is_unicode=True)
+
+
+def adapter_content_plot(adapter_content: Sequence[Sequence[float]],
+                         adapter_labels: Sequence[str],
+                         x_labels: Sequence[str],) -> str:
+    plot = pygal.Line(
+        title="Adapter content (%)",
+        x_labels=x_labels,
+        range=(0.0, 100.0),
+        width=1000,
+        explicit_size=True,
+        disable_xml_declaration=True,
+    )
+    for label, content in zip(adapter_labels, adapter_content):
+        plot.add(label, content)
+    return plot.render(is_unicode=True)
+
+
 class QCMetricsReport:
     raw_count_matrix: array.ArrayType
     aggregated_count_matrix: array.ArrayType
@@ -310,103 +408,19 @@ class QCMetricsReport:
                 )
         return base_qualities
 
-    def per_base_quality_plot(self) -> str:
-        plot = pygal.Line(
-            title="Per base sequence quality",
-            dots_size=1,
-            x_labels=self.data_categories,
-            truncate_label=-1,
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        per_base_qualities = self.per_base_qualities()
-        plot.add("A", per_base_qualities[A])
-        plot.add("C", per_base_qualities[C])
-        plot.add("G", per_base_qualities[G])
-        plot.add("T", per_base_qualities[T])
-        plot.add("mean", self.mean_qualities())
-        return plot.render(is_unicode=True)
-
-    def sequence_length_distribution_plot(self) -> str:
-        plot = pygal.Bar(
-            title="Sequence length distribution",
-            x_labels=["0"] + self.data_categories,
-            truncate_label=-1,
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        plot.add("Length", self.sequence_lengths())
-        return plot.render(is_unicode=True)
-
-    def base_content_plot(self) -> str:
-        plot = pygal.StackedLine(
-            title="Base content",
-            dots_size=1,
-            x_labels=self.data_categories,
-            y_labels=[i / 10 for i in range(11)],
-            truncate_label=-1,
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        base_content = self.base_content()
-        plot.add("G", base_content[G], fill=True)
-        plot.add("C", base_content[C], fill=True)
-        plot.add("A", base_content[A], fill=True)
-        plot.add("T", base_content[T], fill=True)
-        plot.add("N", base_content[N], fill=True)
-        return plot.render(is_unicode=True)
-
-    def per_sequence_gc_content_plot(self) -> str:
-        plot = pygal.Bar(
-            title="Per sequence GC content",
-            x_labels=range(101),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        plot.add("", self.gc_content)
-        return plot.render(is_unicode=True)
-
-    def per_sequence_quality_scores_plot(self) -> str:
-        plot = pygal.Line(
-            title="Per sequence quality scores",
-            x_labels=range(PHRED_MAX + 1),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        total = 0
-        cumalative_scores = [0.0 for _ in range(PHRED_MAX + 1)]
-        for i in range(0, PHRED_MAX + 1):
-            total += self.phred_scores[i]
-            cumalative_scores[i] = total * 100 / self.total_reads
-        plot.add("%", cumalative_scores)
-        return plot.render(is_unicode=True)
-
-    def adapter_content_plot(self) -> str:
-        plot = pygal.Line(
-            title="Adapter content (%)",
-            x_labels=self.data_categories,
-            range=(0.0, 100.0),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-        )
-        for adapter, countview in self.adapter_counter.get_counts():
-            adapter_counts = [sum(countview[start:stop])
+    def all_adapter_values(self):
+        all_adapters = []
+        for adapter, countarray in self.adapter_counter.get_counts():
+            adapter_counts = [sum(countarray[start:stop])
                               for start, stop in self._data_ranges]
             total = 0
             accumulated_counts = []
             for count in adapter_counts:
                 total += count
                 accumulated_counts.append(total)
-            adapter_content = [count * 100 / self.total_reads for
-                               count in accumulated_counts]
-            plot.add(adapter, adapter_content)
-        return plot.render(is_unicode=True)
+            all_adapters.append([count * 100 / self.total_reads for
+                                 count in accumulated_counts])
+        return all_adapters
 
     def html_report(self):
         return f"""
@@ -441,18 +455,24 @@ class QCMetricsReport:
         </td></tr>
         </table>
         <h2>Quality scores</h2>
-        {self.per_base_quality_plot()}
+        {per_base_quality_plot(self.per_base_qualities(), 
+                               self.mean_qualities(), 
+                               self.data_categories)}
         </html>
         <h2>Sequence length distribution</h2>
-        {self.sequence_length_distribution_plot()}
+        {sequence_length_distribution_plot(
+            sequence_lengths=self.sequence_lengths(),
+           x_labels=["0"] + self.data_categories)}
         <h2>Base content</h2>
-        {self.base_content_plot()}
+        {base_content_plot(self.base_content(), self.data_categories)}
         <h2>Per sequence GC content</h2>
-        {self.per_sequence_gc_content_plot()}
+        {per_sequence_gc_content_plot(self.gc_content)}
         <h2>Per sequence quality scores</h2>
-        {self.per_sequence_quality_scores_plot()}
+        {per_sequence_quality_scores_plot(self.phred_scores)}
         <h2>Adapter content plot</h2>
-        {self.adapter_content_plot()}
+        {adapter_content_plot(self.all_adapter_values(), 
+                              self.adapter_counter.adapters, 
+                              self.data_categories)}
         </html>
         """
 
