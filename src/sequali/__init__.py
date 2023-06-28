@@ -492,7 +492,6 @@ def main():
             total=total
         )
         with progress:
-            current_pos = 0
             total_bytes = 0
             reader = FastqParser(file)
             for record_array in reader:
@@ -506,7 +505,7 @@ def main():
                 per_tile_quality.add_record_array(record_array)
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
-            progress.update(current_pos - total_bytes)
+            progress.update(get_current_pos() - total_bytes)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
