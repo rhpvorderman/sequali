@@ -1829,7 +1829,7 @@ PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length)
  * @return long the tile_id or -1 if there was a parse error.
  */
 static
-long illumina_header_to_tile_id(const char *header, size_t header_length) {
+ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) {
 
     /* The following link contains the header format:
        https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
@@ -1851,15 +1851,31 @@ long illumina_header_to_tile_id(const char *header, size_t header_length) {
     if (colon_count != 4) {
         return -1;
     }
-    const char *tile_start = header + tile_number_offset;
-    char *tile_end = NULL;
-    long tile_id = strtol(tile_start, &tile_end, 10);
-    /* tile_end must point to a colon (the one before x-pos) after tile_start */
-    if (tile_end == NULL || tile_end == tile_start || *tile_end != ':') {
-        errno = 0;  /* Clear errno because there might be a parse error set by strtol*/
-        return -1;
+    ssize_t tile_id = 0;
+    const uint8_t *tile_start = header + tile_number_offset;
+    size_t remaining_length = header_length - tile_number_offset;
+    for (size_t i=0; i < remaining_length; i++) {
+        uint8_t c = tile_start[i];
+        if (c == ':') {
+            if (i == 0) {
+                /* Fourth ':' should not be immediately followed by another ':' */
+                return -1;
+            }
+            return tile_id;
+        }
+        /* When the character value for '0' is substracted, c should be in the
+           0-9 range, otherwise it is not a decimal number. Because
+           the characer is unsigned no check for < 0 is needed. */
+        c -= '0';
+        if (c > 9) {
+            return -1;
+        }
+        /* The number is read from left to right. The thousands precede the
+           hundreds etc. Whenever a new digit is found the rest of the number
+           can be promoted upwards by multiplying by 10. */
+        tile_id = tile_id * 10 + c;
     }
-    return tile_id;
+    return -1;
 }
 
 static int 
@@ -1869,13 +1885,13 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *record_start = meta->record_start;
-    const char *header = (char *)(record_start + 1);
+    const uint8_t *header = record_start + 1;
     size_t header_length = meta->name_length;
     const uint8_t *qualities = record_start + meta->qualities_offset;
     size_t sequence_length = meta->sequence_length;
     uint8_t phred_offset = self->phred_offset;
 
-    long tile_id = illumina_header_to_tile_id(header, header_length);
+    ssize_t tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %s", header); 

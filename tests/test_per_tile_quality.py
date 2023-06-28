@@ -25,6 +25,21 @@ def test_per_tile_quality():
     assert average_list[3] == 10 ** (-35 / 10)
 
 
+@pytest.mark.parametrize("tile_id", list(range(100)) + [1234, 99239])
+def test_tile_parse_correct(tile_id):
+    read = FastqRecordView(
+        f"SIM:1:FCX:1:{tile_id}:6329:1045:GATTACT+GTCTTAAC 1:N:0:ATCCGA",
+        "AAAA",
+        "ABCD"
+    )
+    ptq = PerTileQuality()
+    ptq.add_read(read)
+    averages = ptq.get_tile_averages()
+    assert len(averages) == 1
+    tile, average_list = averages[0]
+    assert tile == tile_id
+
+
 def test_per_tile_quality_not_view():
     ptq = PerTileQuality()
     with pytest.raises(TypeError) as error:
