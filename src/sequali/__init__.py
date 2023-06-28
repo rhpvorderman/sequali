@@ -16,10 +16,13 @@
 
 import array
 import math
+import os
 import sys
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
 import pygal  # type: ignore
+
+import tqdm
 
 import xopen
 
@@ -467,13 +470,42 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
-    with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
-        reader = FastqParser(file)
-        for record_array in reader:
-            metrics.add_record_array(record_array)
-            per_tile_quality.add_record_array(record_array)
-            adapter_counter.add_record_array(record_array)
-            sequence_duplication.add_record_array(record_array)
+    progress_update_every_xth_byte = 1024 * 1024 * 10
+    progress_update_at = progress_update_every_xth_byte
+    progress_bytes = 0
+    filename = sys.argv[1]
+    with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
+        total = os.stat(filename).st_size
+        if hasattr(file, "fileobj") and file.fileobj.seekable():
+            # True for gzip objects
+            get_current_pos = file.fileobj.tell
+        elif file.seekable():
+            get_current_pos = file.tell
+        else:
+            total = None
+
+            def get_current_pos():
+                return progress_bytes
+        progress = tqdm.tqdm(
+            desc=f"Processing {os.path.basename(filename)}",
+            unit="iB", unit_scale=True, unit_divisor=1024,
+            total=total
+        )
+        with progress:
+            total_bytes = 0
+            reader = FastqParser(file)
+            for record_array in reader:
+                progress_bytes += len(record_array.obj)
+                if progress_bytes > progress_update_at:
+                    current_pos = get_current_pos()
+                    progress.update(current_pos - total_bytes)
+                    total_bytes = current_pos
+                    progress_update_at += progress_update_every_xth_byte
+                metrics.add_record_array(record_array)
+                per_tile_quality.add_record_array(record_array)
+                adapter_counter.add_record_array(record_array)
+                sequence_duplication.add_record_array(record_array)
+            progress.update(get_current_pos() - total_bytes)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
