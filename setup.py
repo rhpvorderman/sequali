@@ -48,7 +48,8 @@ setup(
     python_requires=">=3.8",  # SupportsIndex requires 3.8
     install_requires=[
         "xopen",
-        "pygal>=3.0.0"
+        "pygal>=3.0.0",
+        "tqdm"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed']},
     ext_modules=[Extension("sequali._qc", ["src/sequali/_qcmodule.c"])],

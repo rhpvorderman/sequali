@@ -16,6 +16,7 @@
 
 import array
 import math
+import os
 import sys
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
@@ -469,21 +470,36 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
-    progress_update_every_xth_byte = 2 * 1024 * 1024
+    progress_update_every_xth_byte = 1024 * 1024 * 10
     progress_update_at = progress_update_every_xth_byte
-    total_bytes = 0
-    with tqdm.tqdm(unit="MiB") as progress:
+    progress_bytes = 0
+    with tqdm.tqdm(
+            desc=f"Processing {os.path.basename(sys.argv[1])}",
+            unit="iB", unit_scale=True, unit_divisor=1024,
+            total=os.stat(sys.argv[1]).st_size) as progress:
         with xopen.xopen(sys.argv[1], "rb", threads=0) as file:  # type: ignore
+            if hasattr(file, "fileobj"):
+                get_current_pos = file.fileobj.tell
+            elif hasattr(file, "tell"):
+                get_current_pos = file.tell
+            else:
+                def get_current_pos():
+                    return progress_bytes
+            current_pos = 0
+            total_bytes = 0
             reader = FastqParser(file)
             for record_array in reader:
-                total_bytes += len(record_array.obj)
-                if total_bytes > progress_update_at:
-                    progress.update(2)
+                progress_bytes += len(record_array.obj)
+                if progress_bytes > progress_update_at:
+                    current_pos = get_current_pos()
+                    progress.update(current_pos - total_bytes)
+                    total_bytes = current_pos
                     progress_update_at += progress_update_every_xth_byte
                 metrics.add_record_array(record_array)
                 per_tile_quality.add_record_array(record_array)
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
+            progress.update(current_pos - total_bytes)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
     print(per_tile_graph(per_tile_quality))
