@@ -20,8 +20,6 @@ import os
 import sys
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
-import pygal  # type: ignore
-
 import tqdm
 
 import xopen
@@ -30,6 +28,11 @@ from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
     PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from .plots import (adapter_content_plot, base_content_plot,
+                    per_base_quality_plot, per_sequence_gc_content_plot,
+                    per_sequence_quality_scores_plot,
+                    per_tile_graph,
+                    sequence_length_distribution_plot)
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -66,7 +69,7 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
 
 
 def base_weighted_categories(
-    base_counts: Sequence[int], number_of_categories: int
+        base_counts: Sequence[int], number_of_categories: int
 ) -> Iterator[Tuple[int, int]]:
     total_bases = sum(base_counts)
     per_category = total_bases // number_of_categories
@@ -92,7 +95,8 @@ def cumulative_percentages(counts: Iterable[int], total: int):
     return cumalitive_percentages
 
 
-def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
+def normalized_per_tile_averages(
+        per_tile_quality: PerTileQuality) -> List[Tuple[str, List[float]]]:
     tile_averages = per_tile_quality.get_tile_averages()
     max_length = per_tile_quality.max_length
     ranges = list(equidistant_ranges(max_length, 50))
@@ -112,122 +116,14 @@ def per_tile_graph(per_tile_quality: PerTileQuality) -> str:
     number_of_tiles = len(tile_averages)
     averages_per_category = [total / number_of_tiles
                              for total in per_category_totals]
-    scatter_plot = pygal.Line(
-        title="Sequence length distribution",
-        x_labels=[f"{start}-{stop}" for start, stop in ranges],
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-        stroke=False,
-    )
-
+    normalized_averages = []
     for tile, tile_phreds in average_phreds:
         normalized_tile_phreds = [
             tile_phred - average
             for tile_phred, average in zip(tile_phreds, averages_per_category)
         ]
-        scatter_plot.add(str(tile),  normalized_tile_phreds)
-
-    return scatter_plot.render(is_unicode=True)
-
-
-def per_base_quality_plot(per_base_qualities: Sequence[Sequence[float]],
-                          mean_qualities: Sequence[float],
-                          data_categories: Sequence[str]) -> str:
-    plot = pygal.Line(
-        title="Per base sequence quality",
-        dots_size=1,
-        x_labels=data_categories,
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    plot.add("A", per_base_qualities[A])
-    plot.add("C", per_base_qualities[C])
-    plot.add("G", per_base_qualities[G])
-    plot.add("T", per_base_qualities[T])
-    plot.add("mean", mean_qualities)
-    return plot.render(is_unicode=True)
-
-
-def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
-                                      x_labels: Sequence[str]) -> str:
-    plot = pygal.Bar(
-        title="Sequence length distribution",
-        x_labels=x_labels,
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    plot.add("Length", sequence_lengths)
-    return plot.render(is_unicode=True)
-
-
-def base_content_plot(base_content: Sequence[Sequence[float]],
-                      x_labels: Sequence[str]) -> str:
-    plot = pygal.StackedLine(
-        title="Base content",
-        dots_size=1,
-        x_labels=x_labels,
-        y_labels=[i / 10 for i in range(11)],
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    plot.add("G", base_content[G], fill=True)
-    plot.add("C", base_content[C], fill=True)
-    plot.add("A", base_content[A], fill=True)
-    plot.add("T", base_content[T], fill=True)
-    plot.add("N", base_content[N], fill=True)
-    return plot.render(is_unicode=True)
-
-
-def per_sequence_gc_content_plot(gc_content: Sequence[int]) -> str:
-    plot = pygal.Bar(
-        title="Per sequence GC content",
-        x_labels=range(101),
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    plot.add("", gc_content)
-    return plot.render(is_unicode=True)
-
-
-def per_sequence_quality_scores_plot(
-        per_sequence_quality_scores: Sequence[int]) -> str:
-    plot = pygal.Line(
-        title="Per sequence quality scores",
-        x_labels=range(PHRED_MAX + 1),
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    total = sum(per_sequence_quality_scores)
-    percentage_scores = [100 * score / total
-                         for score in per_sequence_quality_scores]
-    plot.add("%", percentage_scores)
-    return plot.render(is_unicode=True)
-
-
-def adapter_content_plot(adapter_content: Sequence[Sequence[float]],
-                         adapter_labels: Sequence[str],
-                         x_labels: Sequence[str],) -> str:
-    plot = pygal.Line(
-        title="Adapter content (%)",
-        x_labels=x_labels,
-        range=(0.0, 100.0),
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
-    )
-    for label, content in zip(adapter_labels, adapter_content):
-        plot.add(label, content)
-    return plot.render(is_unicode=True)
+        normalized_averages.append((str(tile), normalized_tile_phreds))
+    return normalized_averages
 
 
 class QCMetricsReport:
@@ -260,7 +156,8 @@ class QCMetricsReport:
         matrix = memoryview(self.raw_count_matrix)
 
         # use bytes constructor to initialize the aggregated count matrix to 0.
-        raw_sequence_lengths = array.array("Q", bytes(8 * (self.max_length + 1)))
+        raw_sequence_lengths = array.array("Q",
+                                           bytes(8 * (self.max_length + 1)))
         raw_base_counts = array.array("Q", bytes(8 * (self.max_length + 1)))
         # All reads have at least 0 bases
         raw_base_counts[0] = self.total_reads
@@ -365,7 +262,8 @@ class QCMetricsReport:
 
     def sequence_lengths(self):
         seqlength_view = memoryview(self.raw_sequence_lengths)[1:]
-        lengths = [sum(seqlength_view[start:stop]) for start, stop in self._data_ranges]
+        lengths = [sum(seqlength_view[start:stop]) for start, stop in
+                   self._data_ranges]
         return [self.raw_sequence_lengths[0]] + lengths
 
     def mean_qualities(self):
@@ -374,7 +272,7 @@ class QCMetricsReport:
             total = 0
             total_prob = 0.0
             for phred_p_value, offset in zip(
-                PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
+                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
             ):
                 nucs = table[offset: offset + NUMBER_OF_NUCS]
                 count = sum(nucs)
@@ -394,7 +292,7 @@ class QCMetricsReport:
             nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
             nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
             for phred_p_value, offset in zip(
-                PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
+                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
             ):
                 nucs = table[offset: offset + NUMBER_OF_NUCS]
                 for i, count in enumerate(nucs):
@@ -455,14 +353,14 @@ class QCMetricsReport:
         </td></tr>
         </table>
         <h2>Quality scores</h2>
-        {per_base_quality_plot(self.per_base_qualities(), 
-                               self.mean_qualities(), 
+        {per_base_quality_plot(self.per_base_qualities(),
+                               self.mean_qualities(),
                                self.data_categories)}
         </html>
         <h2>Sequence length distribution</h2>
         {sequence_length_distribution_plot(
             sequence_lengths=self.sequence_lengths(),
-           x_labels=["0"] + self.data_categories)}
+            x_labels=["0"] + self.data_categories)}
         <h2>Base content</h2>
         {base_content_plot(self.base_content(), self.data_categories)}
         <h2>Per sequence GC content</h2>
@@ -470,8 +368,8 @@ class QCMetricsReport:
         <h2>Per sequence quality scores</h2>
         {per_sequence_quality_scores_plot(self.phred_scores)}
         <h2>Adapter content plot</h2>
-        {adapter_content_plot(self.all_adapter_values(), 
-                              self.adapter_counter.adapters, 
+        {adapter_content_plot(self.all_adapter_values(),
+                              self.adapter_counter.adapters,
                               self.data_categories)}
         </html>
         """
@@ -528,7 +426,12 @@ def main():
             progress.update(get_current_pos() - total_bytes)
     report = QCMetricsReport(metrics, adapter_counter)
     print(report.html_report())
-    print(per_tile_graph(per_tile_quality))
+    print(
+        per_tile_graph(
+            normalized_per_tile_averages(per_tile_quality),
+            [f"{x}-{y}" for x, y in equidistant_ranges(per_tile_quality.max_length, 50)]
+        )
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
