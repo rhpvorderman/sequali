@@ -254,4 +254,4 @@ def adapter_counts(adapter_counter: AdapterCounter,
             accumulated_counts.append(total)
         all_adapters.append([count * 100 / total_sequences
                              for count in accumulated_counts])
-    return all_adapters
+    return list(zip(adapter_counter.adapters, all_adapters))

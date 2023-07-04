@@ -66,17 +66,12 @@ def calculate_stats(
     total_reads = metrics.number_of_reads
     seq_lengths = sequence_lengths(count_table, total_reads)
     x_labels = stringify_ranges(data_ranges)
-    adapter_counts = adapter_counter.get_counts()
-    adapter_fractions = [[
-        (adapter, sum(count_array[start:stop]) / adapter_counter.number_of_sequences)
-        for start, stop in data_ranges
-    ] for adapter, count_array in adapter_counts]
     pbq = per_base_qualities(aggregated_table)
     return {
         "summary": {
             "mean_length":  total_bases / total_reads,
             "minimum_length": min_length(seq_lengths),
-            "max_length": metrics.max_length,
+            "maximum_length": metrics.max_length,
             "total_reads": total_reads,
             "total_bases": total_bases,
             "q20_bases": q20_bases(aggregated_table),
@@ -94,7 +89,8 @@ def calculate_stats(
         },
         "sequence_length_distribution": {
             "x_labels": [0] + x_labels,
-            "values": sequence_lengths(aggregated_table, total_reads)
+            "values": [sum(seq_lengths[start+1:stop+1])
+                       for start, stop in data_ranges]
         },
         "base_content": {
             "x_labels": x_labels,
@@ -110,8 +106,7 @@ def calculate_stats(
         },
         "adapter_content": {
             "x_labels": x_labels,
-            "values": list(zip(adapter_counter.adapters,
-                                 adapter_fractions))
+            "values": adapter_counts(adapter_counter, data_ranges)
 
         },
         "per_tile_quality": {
@@ -161,7 +156,7 @@ def html_report(data: Dict[str, Any]):
     )}
     <h2>Base content</h2>
     {base_content_plot(data["base_content"]["values"],
-                       data["base_content"]["x_labeles"])}
+                       data["base_content"]["x_labels"])}
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Per sequence quality scores</h2>
