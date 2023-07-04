@@ -1,4 +1,4 @@
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 
@@ -119,3 +119,65 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
     for label, content in adapter_content:
         plot.add(label, content)
     return plot.render(is_unicode=True)
+
+
+def html_report(data: Dict[str, Any]):
+    summary = data["summary"]
+    ptq = data["per_tile_quality"]
+    skipped_reason = ptq["skipped_reason"]
+    if skipped_reason:
+        ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
+    else:
+        ptq_content = per_tile_graph(
+            data["per_tile_quality"]["normalized_per_tile_averages"],
+            data["per_tile_quality"]["x_labels"]
+        )
+    return f"""
+    <html>
+    <head>
+        <meta http-equiv="content-type" content="text/html:charset=utf-8">
+        <title>sequali report</title>
+    </head>
+    <h1>sequali report</h1>
+    <h2>Summary</h2>
+    <table>
+    <tr><td>Mean length</td><td align="right">
+        {summary["mean_length"]:.2f}</td></tr>
+    <tr><td>Length range (min-max)</td><td align="right">
+        {summary["minimum_length"]}-{summary["maximum_length"]}</td></tr>
+    <tr><td>total reads</td><td align="right">{summary["total_reads"]}</td></tr>
+    <tr><td>total bases</td><td align="right">{summary["total_bases"]}</td></tr>
+    <tr>
+        <td>Q20 bases</td>
+        <td align="right">
+            {summary["q20_bases"]} ({summary["q20_bases"] * 100 /
+                                     summary["total_bases"]:.2f}%)
+        </td>
+    </tr>
+    <tr><td>GC content</td><td align="right">
+        {summary["total_gc_fraction"] * 100:.2f}%
+    </td></tr>
+    </table>
+    <h2>Quality scores</h2>
+    {per_base_quality_plot(data["per_base_qualities"]["values"],
+                           data["per_base_qualities"]["x_labels"], )}
+    </html>
+    <h2>Sequence length distribution</h2>
+    {sequence_length_distribution_plot(
+        data["sequence_length_distribution"]["values"],
+        data["sequence_length_distribution"]["x_labels"],
+    )}
+    <h2>Base content</h2>
+    {base_content_plot(data["base_content"]["values"],
+                       data["base_content"]["x_labels"])}
+    <h2>Per sequence GC content</h2>
+    {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
+    <h2>Per sequence quality scores</h2>
+    {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
+    <h2>Adapter content plot</h2>
+    {adapter_content_plot(data["adapter_content"]["values"],
+                          data["adapter_content"]["x_labels"])}
+    <h2>Per Tile Quality</h2>
+    {ptq_content}
+    </html>
+    """

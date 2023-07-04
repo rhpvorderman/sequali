@@ -15,11 +15,11 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import array
 import math
-from typing import Iterable, Iterator, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from ._qc import A, C, G, T
-from ._qc import AdapterCounter
-from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, TABLE_SIZE
+from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -260,3 +260,71 @@ def adapter_counts(adapter_counter: AdapterCounter,
         all_adapters.append([count * 100 / total_sequences
                              for count in accumulated_counts])
     return list(zip(adapter_counter.adapters, all_adapters))
+
+
+def calculate_stats(
+        metrics: QCMetrics,
+        adapter_counter: AdapterCounter,
+        per_tile_quality: PerTileQuality,
+        sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
+    count_table = metrics.count_table()
+
+    data_ranges = (
+        list(equidistant_ranges(metrics.max_length, 50))
+        if metrics.max_length < 500 else
+        list(base_weighted_categories(count_table, 50))
+    )
+    aggregated_table = aggregate_count_matrix(count_table, data_ranges)
+    total_bases = sum(aggregated_table)
+    total_reads = metrics.number_of_reads
+    seq_lengths = sequence_lengths(count_table, total_reads)
+    x_labels = stringify_ranges(data_ranges)
+    pbq = per_base_qualities(aggregated_table)
+    return {
+        "summary": {
+            "mean_length": total_bases / total_reads,
+            "minimum_length": min_length(seq_lengths),
+            "maximum_length": metrics.max_length,
+            "total_reads": total_reads,
+            "total_bases": total_bases,
+            "q20_bases": q20_bases(aggregated_table),
+            "total_gc_fraction": total_gc_fraction(aggregated_table),
+        },
+        "per_base_qualities": {
+            "x_labels": x_labels,
+            "values": {
+                "mean": mean_qualities(aggregated_table),
+                "A": pbq[A],
+                "C": pbq[C],
+                "G": pbq[G],
+                "T": pbq[T],
+            },
+        },
+        "sequence_length_distribution": {
+            "x_labels": ["0"] + x_labels,
+            "values": aggregate_sequence_lengths(seq_lengths, data_ranges)
+        },
+        "base_content": {
+            "x_labels": x_labels,
+            "values": base_content(aggregated_table),
+        },
+        "per_sequence_gc_content": {
+            "x_labels": [str(i) for i in range(101)],
+            "values": list(metrics.gc_content()),
+        },
+        "per_sequence_quality_scores": {
+            "x_labels": [str(i) for i in range(PHRED_MAX + 1)],
+            "values": list(metrics.phred_scores()),
+        },
+        "adapter_content": {
+            "x_labels": x_labels,
+            "values": adapter_counts(adapter_counter, data_ranges)
+
+        },
+        "per_tile_quality": {
+            "skipped_reason": per_tile_quality.skipped_reason,
+            "normalized_per_tile_averages": normalized_per_tile_averages(
+                per_tile_quality.get_tile_averages(), data_ranges),
+            "x_labels": x_labels,
+        }
+    }
