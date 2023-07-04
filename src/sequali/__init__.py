@@ -14,11 +14,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-import array
-import math
 import os
 import sys
-from typing import Iterable, Iterator, List, Sequence, Tuple
+from typing import Any, Dict
 
 import tqdm
 
@@ -37,7 +35,8 @@ from .stats import (base_content, base_weighted_categories, equidistant_ranges,
                     adapter_counts, per_base_qualities, mean_qualities,
                     aggregate_sequence_lengths, min_length, q20_bases,
                     total_gc_fraction, aggregate_count_matrix,
-                    stringify_ranges, normalized_per_tile_averages, )
+                    stringify_ranges, normalized_per_tile_averages,
+                    sequence_lengths)
 
 __all__ = [
     "A", "C", "G", "N", "T",
@@ -53,6 +52,46 @@ __all__ = [
     "TABLE_SIZE"
 ]
 
+
+def calculate_stats(
+        metrics: QCMetrics,
+        adapter_counter: AdapterCounter,
+        per_tile_quality: PerTileQuality,
+        sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
+    count_table = metrics.count_table()
+
+    data_ranges = list(equidistant_ranges(metrics.max_length, 50))
+    aggregated_table = aggregate_count_matrix(count_table, data_ranges)
+    total_bases = sum(aggregated_table)
+    total_reads = metrics.number_of_reads
+    seq_lengths = sequence_lengths(count_table, total_reads)
+    x_labels = stringify_ranges(data_ranges)
+    return {
+        "summary": {
+            "mean_length":  total_bases / total_reads,
+            "minimum_length": min_length(seq_lengths),
+            "max_length": metrics.max_length,
+            "total_reads": total_reads,
+            "total_bases": total_bases,
+            "q20_bases": q20_bases(aggregated_table)
+        },
+        "per_base_qualities": {
+            "x_labels": x_labels,
+            "values": per_base_qualities(aggregated_table)
+        },
+        "sequence_length_distribution": {
+            "x_labels": [0] + x_labels,
+            "values": sequence_lengths(aggregated_table, total_reads)
+        },
+        "base_content": {
+            "x_labels": x_labels,
+            "values": base_content(aggregated_table),
+        },
+        "per_sequence_gc_content": {
+            "x_labels": [str(i) for i in range(101)],
+            "values": metrics.gc_content(),
+        }
+    }
 
 def html_report(self):
     return f"""
