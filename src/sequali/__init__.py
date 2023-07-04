@@ -90,6 +90,16 @@ def calculate_stats(
         "per_sequence_gc_content": {
             "x_labels": [str(i) for i in range(101)],
             "values": metrics.gc_content(),
+        },
+        "per_sequence_quality_scores": {
+            "x_labels": [str(i) for i in range(PHRED_MAX + 1)],
+            "values": metrics.phred_scores(),
+        },
+        "adapter_content": {
+            "x_labels": x_labels,
+            "adapters": dict(zip(adapter_counter.adapters,
+                                 adapter_counter.get_counts()))
+
         }
     }
 
