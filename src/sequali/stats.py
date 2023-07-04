@@ -17,11 +17,9 @@ import array
 import math
 from typing import Iterable, Iterator, List, Sequence, Tuple
 
-from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
-    PerTileQuality, QCMetrics, SequenceDuplication
-from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
-
+from ._qc import A, C, G, T
+from ._qc import AdapterCounter
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, TABLE_SIZE
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -44,8 +42,13 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
 
 
 def base_weighted_categories(
-        base_counts: Sequence[int], number_of_categories: int
+        count_tables: array.array, number_of_categories: int
 ) -> Iterator[Tuple[int, int]]:
+    max_length = len(count_tables) // TABLE_SIZE
+    base_counts = array.array("Q", bytes((max_length + 1) * 8))
+    base_counts[0] = max_length
+    for i, table in enumerate(table_iterator(count_tables)):
+        base_counts[i+1] = sum(table)
     total_bases = sum(base_counts)
     per_category = total_bases // number_of_categories
     enough_bases = per_category
@@ -80,7 +83,9 @@ def cumulative_percentages(counts: Iterable[int], total: int):
 def normalized_per_tile_averages(
         tile_averages:  Sequence[Tuple[int, Sequence[float]]],
         data_ranges: Sequence[Tuple[int, int]],
-    ) -> List[Tuple[str, List[float]]]:
+        ) -> List[Tuple[str, List[float]]]:
+    if not tile_averages:
+        return []
     average_phreds = []
     per_category_totals = [0.0 for i in range(len(data_ranges))]
     for tile, averages in tile_averages:
@@ -164,7 +169,7 @@ def total_gc_fraction(count_tables: array.ArrayType) -> float:
     total_nucs = [
         sum(
             count_tables[
-            i: len(count_tables): NUMBER_OF_NUCS
+                i: len(count_tables): NUMBER_OF_NUCS
             ]
         )
         for i in range(NUMBER_OF_NUCS)

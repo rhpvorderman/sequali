@@ -31,12 +31,16 @@ from .plots import (adapter_content_plot, base_content_plot,
                     per_sequence_quality_scores_plot,
                     per_tile_graph,
                     sequence_length_distribution_plot)
-from .stats import (base_content, base_weighted_categories, equidistant_ranges,
-                    adapter_counts, per_base_qualities, mean_qualities,
-                    aggregate_sequence_lengths, min_length, q20_bases,
-                    total_gc_fraction, aggregate_count_matrix,
-                    stringify_ranges, normalized_per_tile_averages,
-                    sequence_lengths)
+from .stats import (adapter_counts, aggregate_count_matrix,
+                    aggregate_sequence_lengths, base_content,
+                    base_weighted_categories, equidistant_ranges,
+                    mean_qualities, min_length,
+                    normalized_per_tile_averages,
+                    per_base_qualities,
+                    q20_bases,
+                    sequence_lengths,
+                    stringify_ranges,
+                    total_gc_fraction,)
 
 __all__ = [
     "A", "C", "G", "N", "T",
@@ -60,7 +64,10 @@ def calculate_stats(
         sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
-    data_ranges = list(equidistant_ranges(metrics.max_length, 50))
+    data_ranges = \
+        list(equidistant_ranges(metrics.max_length, 50)) \
+        if metrics.max_length < 500 else \
+        list(base_weighted_categories(count_table, 50))
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
     total_reads = metrics.number_of_reads
@@ -89,8 +96,7 @@ def calculate_stats(
         },
         "sequence_length_distribution": {
             "x_labels": [0] + x_labels,
-            "values": [sum(seq_lengths[start+1:stop+1])
-                       for start, stop in data_ranges]
+            "values": aggregate_sequence_lengths(seq_lengths, data_ranges)
         },
         "base_content": {
             "x_labels": x_labels,
@@ -117,6 +123,7 @@ def calculate_stats(
         }
     }
 
+
 def html_report(data: Dict[str, Any]):
     summary = data["summary"]
     return f"""
@@ -137,7 +144,7 @@ def html_report(data: Dict[str, Any]):
     <tr>
         <td>Q20 bases</td>
         <td align="right">
-            {summary["q20_bases"]} ({summary["q20_bases"] * 100 / 
+            {summary["q20_bases"]} ({summary["q20_bases"] * 100 /
                                      summary["total_bases"]:.2f}%)
         </td>
     </tr>
@@ -165,12 +172,12 @@ def html_report(data: Dict[str, Any]):
     {adapter_content_plot(data["adapter_content"]["values"],
                           data["adapter_content"]["x_labels"])}
     <h2>Per Tile Quality</h2>
-    {data["per_tile_quality"]["skipped_reason"] if 
-        data["per_tile_quality"]["skipped_reason"]
+    {data["per_tile_quality"]["skipped_reason"] if
+     data["per_tile_quality"]["skipped_reason"]
     else
     per_tile_graph(
         data["per_tile_quality"]["normalized_per_tile_averages"],
-        data["per_tile_quality"]["x_labels"]    
+        data["per_tile_quality"]["x_labels"]
     )
     }
     </html>
