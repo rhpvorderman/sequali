@@ -13,9 +13,9 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
-
+import argparse
+import json
 import os
-import sys
 from typing import Any, Dict
 
 import tqdm
@@ -40,7 +40,7 @@ from .stats import (adapter_counts, aggregate_count_matrix,
                     q20_bases,
                     sequence_lengths,
                     stringify_ranges,
-                    total_gc_fraction,)
+                    total_gc_fraction, )
 
 __all__ = [
     "A", "C", "G", "N", "T",
@@ -64,10 +64,11 @@ def calculate_stats(
         sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
-    data_ranges = \
-        list(equidistant_ranges(metrics.max_length, 50)) \
-        if metrics.max_length < 500 else \
+    data_ranges = (
+        list(equidistant_ranges(metrics.max_length, 50))
+        if metrics.max_length < 500 else
         list(base_weighted_categories(count_table, 50))
+    )
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
     total_reads = metrics.number_of_reads
@@ -76,7 +77,7 @@ def calculate_stats(
     pbq = per_base_qualities(aggregated_table)
     return {
         "summary": {
-            "mean_length":  total_bases / total_reads,
+            "mean_length": total_bases / total_reads,
             "minimum_length": min_length(seq_lengths),
             "maximum_length": metrics.max_length,
             "total_reads": total_reads,
@@ -104,11 +105,11 @@ def calculate_stats(
         },
         "per_sequence_gc_content": {
             "x_labels": [str(i) for i in range(101)],
-            "values": metrics.gc_content(),
+            "values": list(metrics.gc_content()),
         },
         "per_sequence_quality_scores": {
             "x_labels": [str(i) for i in range(PHRED_MAX + 1)],
-            "values": metrics.phred_scores(),
+            "values": list(metrics.phred_scores()),
         },
         "adapter_content": {
             "x_labels": x_labels,
@@ -131,10 +132,10 @@ def html_report(data: Dict[str, Any]):
     if skipped_reason:
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
-        ptq_content =  per_tile_graph(
-        data["per_tile_quality"]["normalized_per_tile_averages"],
-        data["per_tile_quality"]["x_labels"]
-    )
+        ptq_content = per_tile_graph(
+            data["per_tile_quality"]["normalized_per_tile_averages"],
+            data["per_tile_quality"]["x_labels"]
+        )
     return f"""
     <html>
     <head>
@@ -163,7 +164,7 @@ def html_report(data: Dict[str, Any]):
     </table>
     <h2>Quality scores</h2>
     {per_base_quality_plot(data["per_base_qualities"]["values"],
-                           data["per_base_qualities"]["x_labels"],)}
+                           data["per_base_qualities"]["x_labels"], )}
     </html>
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
@@ -186,7 +187,20 @@ def html_report(data: Dict[str, Any]):
     """
 
 
+def argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input", help="Input FASTQ file")
+    parser.add_argument("--json",
+                        help="JSON output file. default '<input>.json'")
+    parser.add_argument("--html",
+                        help="HTML output file. default '<input>.html'")
+    parser.add_argument("--dir", help="Output directory",
+                        default=os.getcwd())
+    return parser
+
+
 def main():
+    args = argument_parser().parse_args()
     metrics = QCMetrics()
     adapters = {
         "Illumina Universal Adapter": "AGATCGGAAGAG",
@@ -202,7 +216,7 @@ def main():
     progress_update_every_xth_byte = 1024 * 1024 * 10
     progress_update_at = progress_update_every_xth_byte
     progress_bytes = 0
-    filename = sys.argv[1]
+    filename = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         total = os.stat(filename).st_size
         if hasattr(file, "fileobj") and file.fileobj.seekable():
@@ -239,7 +253,14 @@ def main():
                                 adapter_counter,
                                 per_tile_quality,
                                 sequence_duplication)
-    print(html_report(json_data))
+    if args.json is None:
+        args.json = os.path.basename(filename) + ".json"
+    if args.html is None:
+        args.html = os.path.basename(filename) + ".html"
+    with open(os.path.join(args.dir, args.json), "wt") as json_file:
+        json.dump(json_data, json_file, indent=2)
+    with open(os.path.join(args.dir, args.html), "wt") as html_file:
+        html_file.write(html_report(json_data))
 
 
 if __name__ == "__main__":  # pragma: no cover
