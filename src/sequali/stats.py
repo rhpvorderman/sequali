@@ -123,7 +123,8 @@ def sequence_lengths(count_tables: array.ArrayType, total_reads: int):
     previous_count = 0
     for i in range(max_length, 0, -1):
         number_at_least = base_counts[i]
-        sequence_lengths = number_at_least - previous_count
+        sequence_lengths[i] = number_at_least - previous_count
+        previous_count = number_at_least
     return sequence_lengths
 
 
