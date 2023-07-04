@@ -68,9 +68,10 @@ def calculate_stats(
     x_labels = stringify_ranges(data_ranges)
     adapter_counts = adapter_counter.get_counts()
     adapter_fractions = [[
-        sum(count_array[start:stop]) / adapter_counter.number_of_sequences
+        (adapter, sum(count_array[start:stop]) / adapter_counter.number_of_sequences)
         for start, stop in data_ranges
-    ] for count_array in adapter_counts]
+    ] for adapter, count_array in adapter_counts]
+    pbq = per_base_qualities(aggregated_table)
     return {
         "summary": {
             "mean_length":  total_bases / total_reads,
@@ -78,11 +79,18 @@ def calculate_stats(
             "max_length": metrics.max_length,
             "total_reads": total_reads,
             "total_bases": total_bases,
-            "q20_bases": q20_bases(aggregated_table)
+            "q20_bases": q20_bases(aggregated_table),
+            "total_gc_fraction": total_gc_fraction(aggregated_table),
         },
         "per_base_qualities": {
             "x_labels": x_labels,
-            "values": per_base_qualities(aggregated_table)
+            "values": {
+                "mean": mean_qualities(aggregated_table),
+                "A": pbq[A],
+                "C": pbq[C],
+                "G": pbq[G],
+                "T": pbq[T],
+            },
         },
         "sequence_length_distribution": {
             "x_labels": [0] + x_labels,
@@ -102,7 +110,7 @@ def calculate_stats(
         },
         "adapter_content": {
             "x_labels": x_labels,
-            "adapters": list(zip(adapter_counter.adapters,
+            "values": list(zip(adapter_counter.adapters,
                                  adapter_fractions))
 
         },
@@ -114,7 +122,8 @@ def calculate_stats(
         }
     }
 
-def html_report(self):
+def html_report(data: Dict[str, Any]):
+    summary = data["summary"]
     return f"""
     <html>
     <head>
@@ -125,46 +134,50 @@ def html_report(self):
     <h2>Summary</h2>
     <table>
     <tr><td>Mean length</td><td align="right">
-        {self.mean_length():.2f}</td></tr>
+        {summary["mean_length"]:.2f}</td></tr>
     <tr><td>Length range (min-max)</td><td align="right">
-        {self.min_length()}-{self.max_length}</td></tr>
-    <tr><td>total reads</td><td align="right">{self.total_reads}</td></tr>
-    <tr><td>total bases</td><td align="right">{self.total_bases}</td></tr>
+        {summary["minimum_length"]}-{summary["maximum_length"]}</td></tr>
+    <tr><td>total reads</td><td align="right">{summary["total_reads"]}</td></tr>
+    <tr><td>total bases</td><td align="right">{summary["total_bases"]}</td></tr>
     <tr>
         <td>Q20 bases</td>
         <td align="right">
-            {self.q20_bases()} ({self.q20_bases() * 100 / self.total_bases:.2f}%)
-        </td>
-    </tr>
-    <tr>
-        <td>Q28 bases</td>
-        <td align="right">
-            {self.q28_bases()} ({self.q28_bases() * 100 / self.total_bases:.2f}%)
+            {summary["q20_bases"]} ({summary["q20_bases"] * 100 / 
+                                     summary["total_bases"]:.2f}%)
         </td>
     </tr>
     <tr><td>GC content</td><td align="right">
-        {self.total_gc_fraction() * 100:.2f}%
+        {summary["total_gc_fraction"] * 100:.2f}%
     </td></tr>
     </table>
     <h2>Quality scores</h2>
-    {per_base_quality_plot(self.per_base_qualities(),
-                           self.mean_qualities(),
-                           self.data_categories)}
+    {per_base_quality_plot(data["per_base_qualities"]["values"],
+                           data["per_base_qualities"]["x_labels"],)}
     </html>
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
-        sequence_lengths=self.sequence_lengths(),
-        x_labels=["0"] + self.data_categories)}
+        data["sequence_length_distribution"]["values"],
+        data["sequence_length_distribution"]["x_labels"],
+    )}
     <h2>Base content</h2>
-    {base_content_plot(self.base_content(), self.data_categories)}
+    {base_content_plot(data["base_content"]["values"],
+                       data["base_content"]["x_labeles"])}
     <h2>Per sequence GC content</h2>
-    {per_sequence_gc_content_plot(self.gc_content)}
+    {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Per sequence quality scores</h2>
-    {per_sequence_quality_scores_plot(self.phred_scores)}
+    {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
     <h2>Adapter content plot</h2>
-    {adapter_content_plot(self.all_adapter_values(),
-                          self.adapter_counter.adapters,
-                          self.data_categories)}
+    {adapter_content_plot(data["adapter_content"]["values"],
+                          data["adapter_content"]["x_labels"])}
+    <h2>Per Tile Quality</h2>
+    {data["per_tile_quality"]["skipped_reason"] if 
+        data["per_tile_quality"]["skipped_reason"]
+    else
+    per_tile_graph(
+        data["per_tile_quality"]["normalized_per_tile_averages"],
+        data["per_tile_quality"]["x_labels"]    
+    )
+    }
     </html>
     """
 
@@ -218,15 +231,11 @@ def main():
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
             progress.update(get_current_pos() - total_bytes)
-    report = QCMetricsReport(metrics, adapter_counter)
-    print(report.html_report())
-    print(
-        per_tile_graph(
-            normalized_per_tile_averages(per_tile_quality),
-            [f"{x}-{y}" for x, y in
-             equidistant_ranges(per_tile_quality.max_length, 50)]
-        )
-    )
+    json_data = calculate_stats(metrics,
+                                adapter_counter,
+                                per_tile_quality,
+                                sequence_duplication)
+    print(html_report(json_data))
 
 
 if __name__ == "__main__":  # pragma: no cover

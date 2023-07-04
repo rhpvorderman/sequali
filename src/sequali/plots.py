@@ -1,4 +1,4 @@
-from typing import List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 
@@ -25,23 +25,22 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     return scatter_plot.render(is_unicode=True)
 
 
-def per_base_quality_plot(per_base_qualities: Sequence[Sequence[float]],
-                          mean_qualities: Sequence[float],
-                          data_categories: Sequence[str]) -> str:
+def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
+                          x_labels: Sequence[str]) -> str:
     plot = pygal.Line(
         title="Per base sequence quality",
         dots_size=1,
-        x_labels=data_categories,
+        x_labels=x_labels,
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
     )
-    plot.add("A", per_base_qualities[A])
-    plot.add("C", per_base_qualities[C])
-    plot.add("G", per_base_qualities[G])
-    plot.add("T", per_base_qualities[T])
-    plot.add("mean", mean_qualities)
+    plot.add("A", per_base_qualities["A"])
+    plot.add("C", per_base_qualities["C"])
+    plot.add("G", per_base_qualities["G"])
+    plot.add("T", per_base_qualities["T"])
+    plot.add("mean", per_base_qualities["mean"])
     return plot.render(is_unicode=True)
 
 

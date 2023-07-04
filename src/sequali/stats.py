@@ -106,13 +106,13 @@ def normalized_per_tile_averages(
     return normalized_averages
 
 
-def table_iterator(count_tables: array.ArrayType[int]) -> Iterator[memoryview]:
+def table_iterator(count_tables: array.ArrayType) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
     for i in range(0, len(count_tables), TABLE_SIZE):
         yield table_view[i: i + TABLE_SIZE]
 
 
-def sequence_lengths(count_tables: array.ArrayType[int], total_reads: int):
+def sequence_lengths(count_tables: array.ArrayType, total_reads: int):
     max_length = len(count_tables) // TABLE_SIZE
     # use bytes constructor to initialize to 0
     sequence_lengths = array.array("Q", bytes(8 * (max_length + 1)))
@@ -128,8 +128,8 @@ def sequence_lengths(count_tables: array.ArrayType[int], total_reads: int):
 
 
 def aggregate_count_matrix(
-        count_tables: array.ArrayType[int],
-        data_ranges: Sequence[Tuple[int, int]]) -> array.ArrayType[int]:
+        count_tables: array.ArrayType,
+        data_ranges: Sequence[Tuple[int, int]]) -> array.ArrayType:
     count_view = memoryview(count_tables)
     aggregated_matrix = array.array("Q", bytes(8 * TABLE_SIZE * len(data_ranges)))
     ag_view = memoryview(aggregated_matrix)
@@ -144,7 +144,7 @@ def aggregate_count_matrix(
     return aggregated_matrix
 
 
-def base_content(count_tables: array.ArrayType[int]) -> List[List[float]]:
+def base_content(count_tables: array.ArrayType) -> List[List[float]]:
     total_tables = len(count_tables) // TABLE_SIZE
     base_fractions = [
         [0.0 for _ in range(total_tables)]
@@ -159,7 +159,7 @@ def base_content(count_tables: array.ArrayType[int]) -> List[List[float]]:
     return base_fractions
 
 
-def total_gc_fraction(count_tables: array.ArrayType[int]) -> float:
+def total_gc_fraction(count_tables: array.ArrayType) -> float:
     total_nucs = [
         sum(
             count_tables[
@@ -173,7 +173,7 @@ def total_gc_fraction(count_tables: array.ArrayType[int]) -> float:
     return gc / (at + gc)
 
 
-def q20_bases(count_tables: array.ArrayType[int]) -> int:
+def q20_bases(count_tables: array.ArrayType) -> int:
     q20s = 0
     for table in table_iterator(count_tables):
         q20s += sum(table[NUMBER_OF_NUCS * 5:])
@@ -187,7 +187,7 @@ def min_length(sequence_lengths: Sequence[int]) -> int:
     return 0
 
 
-def aggregate_sequence_lengths(raw_sequence_lengths: array.ArrayType[int],
+def aggregate_sequence_lengths(raw_sequence_lengths: array.ArrayType,
                                data_ranges: Iterable[Tuple[int, int]]):
     seqlength_view = memoryview(raw_sequence_lengths)[1:]
     lengths = [sum(seqlength_view[start:stop]) for start, stop in
@@ -195,7 +195,7 @@ def aggregate_sequence_lengths(raw_sequence_lengths: array.ArrayType[int],
     return [raw_sequence_lengths[0]] + lengths
 
 
-def mean_qualities(count_tables: array.ArrayType[int]) -> List[float]:
+def mean_qualities(count_tables: array.ArrayType) -> List[float]:
     total_tables = len(count_tables) // TABLE_SIZE
     mean_qualities = [0.0 for _ in range(total_tables)]
     for index, table in enumerate(table_iterator(count_tables)):
@@ -214,7 +214,7 @@ def mean_qualities(count_tables: array.ArrayType[int]) -> List[float]:
     return mean_qualities
 
 
-def per_base_qualities(count_tables: array.ArrayType[int]) -> List[List[float]]:
+def per_base_qualities(count_tables: array.ArrayType) -> List[List[float]]:
     total_tables = len(count_tables) // TABLE_SIZE
     base_qualities = [
         [0.0 for _ in range(total_tables)]
