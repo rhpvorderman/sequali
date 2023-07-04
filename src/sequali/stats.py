@@ -78,16 +78,14 @@ def cumulative_percentages(counts: Iterable[int], total: int):
 
 
 def normalized_per_tile_averages(
-        per_tile_quality: PerTileQuality) -> List[Tuple[str, List[float]]]:
-    tile_averages = per_tile_quality.get_tile_averages()
-    max_length = per_tile_quality.max_length
-    ranges = list(equidistant_ranges(max_length, 50))
-
+        tile_averages:  Sequence[Tuple[int, Sequence[float]]],
+        data_ranges: Sequence[Tuple[int, int]],
+    ) -> List[Tuple[str, List[float]]]:
     average_phreds = []
-    per_category_totals = [0.0 for i in range(len(ranges))]
+    per_category_totals = [0.0 for i in range(len(data_ranges))]
     for tile, averages in tile_averages:
         range_averages = [sum(averages[start:stop]) / (stop - start)
-                          for start, stop in ranges]
+                          for start, stop in data_ranges]
         range_phreds = []
         for i, average in enumerate(range_averages):
             phred = -10 * math.log10(average)

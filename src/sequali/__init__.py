@@ -66,6 +66,11 @@ def calculate_stats(
     total_reads = metrics.number_of_reads
     seq_lengths = sequence_lengths(count_table, total_reads)
     x_labels = stringify_ranges(data_ranges)
+    adapter_counts = adapter_counter.get_counts()
+    adapter_fractions = [[
+        sum(count_array[start:stop]) / adapter_counter.number_of_sequences
+        for start, stop in data_ranges
+    ] for count_array in adapter_counts]
     return {
         "summary": {
             "mean_length":  total_bases / total_reads,
@@ -97,9 +102,15 @@ def calculate_stats(
         },
         "adapter_content": {
             "x_labels": x_labels,
-            "adapters": dict(zip(adapter_counter.adapters,
-                                 adapter_counter.get_counts()))
+            "adapters": list(zip(adapter_counter.adapters,
+                                 adapter_fractions))
 
+        },
+        "per_tile_quality": {
+            "skipped_reason": per_tile_quality.skipped_reason,
+            "normalized_per_tile_averages": normalized_per_tile_averages(
+                per_tile_quality.get_tile_averages(), data_ranges),
+            "x_labels": x_labels,
         }
     }
 

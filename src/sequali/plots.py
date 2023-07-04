@@ -107,8 +107,7 @@ def per_sequence_quality_scores_plot(
     return plot.render(is_unicode=True)
 
 
-def adapter_content_plot(adapter_content: Sequence[Sequence[float]],
-                         adapter_labels: Sequence[str],
+def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
                          x_labels: Sequence[str],) -> str:
     plot = pygal.Line(
         title="Adapter content (%)",
@@ -118,6 +117,6 @@ def adapter_content_plot(adapter_content: Sequence[Sequence[float]],
         explicit_size=True,
         disable_xml_declaration=True,
     )
-    for label, content in zip(adapter_labels, adapter_content):
+    for label, content in adapter_content:
         plot.add(label, content)
     return plot.render(is_unicode=True)
