@@ -126,6 +126,15 @@ def calculate_stats(
 
 def html_report(data: Dict[str, Any]):
     summary = data["summary"]
+    ptq = data["per_tile_quality"]
+    skipped_reason = ptq["skipped_reason"]
+    if skipped_reason:
+        ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
+    else:
+        ptq_content =  per_tile_graph(
+        data["per_tile_quality"]["normalized_per_tile_averages"],
+        data["per_tile_quality"]["x_labels"]
+    )
     return f"""
     <html>
     <head>
@@ -172,14 +181,7 @@ def html_report(data: Dict[str, Any]):
     {adapter_content_plot(data["adapter_content"]["values"],
                           data["adapter_content"]["x_labels"])}
     <h2>Per Tile Quality</h2>
-    {data["per_tile_quality"]["skipped_reason"] if
-     data["per_tile_quality"]["skipped_reason"]
-    else
-    per_tile_graph(
-        data["per_tile_quality"]["normalized_per_tile_averages"],
-        data["per_tile_quality"]["x_labels"]
-    )
-    }
+    {ptq_content}
     </html>
     """
 
