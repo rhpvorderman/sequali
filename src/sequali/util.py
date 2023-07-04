@@ -16,7 +16,7 @@
 
 import gzip
 import os
-from typing import BinaryIO
+from typing import BinaryIO, Callable, Optional
 
 import tqdm
 
@@ -24,12 +24,27 @@ from ._qc import FastqRecordArrayView
 
 
 class ProgressUpdater():
+    """
+    A simple wrapper to update the progressbar based on the parsed
+    FastqRecordArrayView objects.
+
+    Because tqdm requires some minor execution time, only call tqdm.update()
+    every 10MiB of processed records to prevent too much time spent on
+    calling the tell() functions and calling tqdm.update().
+    """
+    _get_position: Callable[[], int]
+    previous_file_pos: int
+    current_processed_bytes = 0
+    progress_update_every: int
+    next_update_at: int
+    tqdm: tqdm.tqdm
+
     def __init__(self, filename, filereader: BinaryIO):
         self.previous_file_pos = 0
         self.current_processed_bytes = 0
         self.progress_update_every = 1024 * 1024 * 10
         self.next_update_at = self.progress_update_every
-        total = os.stat(filename).st_size
+        total: Optional[int] = os.stat(filename).st_size
         if isinstance(filereader, gzip.GzipFile):
             self._get_position = filereader.fileobj.tell
         elif filereader.seekable():
@@ -47,9 +62,11 @@ class ProgressUpdater():
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Do one last update to ensure the entire progress bar is full
+        self.tqdm.update(self._get_position() - self.previous_file_pos)
         self.tqdm.close()
 
-    def update(self, record_array = FastqRecordArrayView):
+    def update(self, record_array: FastqRecordArrayView):
         self.current_processed_bytes += len(record_array.obj)
         if self.current_processed_bytes > self.next_update_at:
             self.next_update_at += self.progress_update_every
