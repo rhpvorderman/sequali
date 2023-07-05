@@ -77,7 +77,8 @@ def main():
     if not os.path.isabs(args.html):
         args.html = os.path.join(args.dir, args.html)
     with open(args.json, "wt") as json_file:
-        json.dump(json_data, json_file, indent=2)
+        # Indent=0 is ~40% smaller than indent=2 while still human-readable
+        json.dump(json_data, json_file, indent=0)
     with open(args.html, "wt") as html_file:
         html_file.write(html_report(json_data))
 
