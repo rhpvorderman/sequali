@@ -281,6 +281,23 @@ def calculate_stats(
     x_labels = stringify_ranges(data_ranges)
     pbq = per_base_qualities(aggregated_table)
     bc = base_content(aggregated_table)
+    per_tile_phreds = normalized_per_tile_averages(
+        per_tile_quality.get_tile_counts(), data_ranges)
+    rendered_tiles = []
+    warn_tiles = []
+    error_tiles = []
+    good_tiles = []
+    for tile, tile_phreds in per_tile_phreds:
+        tile_minimum = min(tile_phreds)
+        tile_maximum = max(tile_phreds)
+        if tile_minimum > -2 and tile_maximum < 2:
+            good_tiles.append(tile)
+            continue
+        rendered_tiles.append((tile, tile_phreds))
+        if tile_minimum < -10 or tile_maximum > 10:
+            error_tiles.append(tile)
+        else:
+            warn_tiles.append(tile)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -331,8 +348,10 @@ def calculate_stats(
         },
         "per_tile_quality": {
             "skipped_reason": per_tile_quality.skipped_reason,
-            "normalized_per_tile_averages": normalized_per_tile_averages(
-                per_tile_quality.get_tile_counts(), data_ranges),
+            "good_tiles": good_tiles,
+            "warn_tiles": warn_tiles,
+            "error_tiles": error_tiles,
+            "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
         }
     }

@@ -7,7 +7,6 @@ from ._qc import PHRED_MAX
 
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
                    x_labels: List[str]) -> str:
-
     scatter_plot = pygal.Line(
         title="Sequence length distribution",
         x_labels=x_labels,
@@ -18,9 +17,24 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         stroke=False,
     )
 
-    for tile, tile_phreds in per_tile_phreds:
-        scatter_plot.add(str(tile),  tile_phreds)
+    def add_horizontal_line(name, position):
+        scatter_plot.add(name, [position for _ in range(len(x_labels))],
+                         show_dots=False, stroke=True,)
 
+    add_horizontal_line("warn", -2)
+    add_horizontal_line("warn", 2)
+    add_horizontal_line("error", -10)
+    add_horizontal_line("error", 10)
+
+    min_phred = -10.0
+    max_phred = 10.0
+    for tile, tile_phreds in per_tile_phreds:
+        cleaned_phreds = [phred if (phred > 2 or phred < -2) else None
+                          for phred in tile_phreds]
+        scatter_plot.add(str(tile),  cleaned_phreds)
+        min_phred = min(min_phred, *tile_phreds)
+        max_phred = max(max_phred, *tile_phreds)
+    scatter_plot.range = (min_phred - 1, max_phred + 1)
     return scatter_plot.render(is_unicode=True)
 
 
@@ -128,7 +142,8 @@ def html_report(data: Dict[str, Any]):
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
         ptq_content = per_tile_graph(
-            data["per_tile_quality"]["normalized_per_tile_averages"],
+            data["per_tile_quality"][
+                "normalized_per_tile_averages_for_problematic_tiles"],
             data["per_tile_quality"]["x_labels"]
         )
     return f"""
