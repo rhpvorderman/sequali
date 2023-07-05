@@ -58,7 +58,7 @@ def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
     return plot.render(is_unicode=True)
 
 
-def base_content_plot(base_content: Sequence[Sequence[float]],
+def base_content_plot(base_content: Dict[str, Sequence[float]],
                       x_labels: Sequence[str]) -> str:
     plot = pygal.StackedLine(
         title="Base content",
@@ -70,11 +70,11 @@ def base_content_plot(base_content: Sequence[Sequence[float]],
         explicit_size=True,
         disable_xml_declaration=True,
     )
-    plot.add("G", base_content[G], fill=True)
-    plot.add("C", base_content[C], fill=True)
-    plot.add("A", base_content[A], fill=True)
-    plot.add("T", base_content[T], fill=True)
-    plot.add("N", base_content[N], fill=True)
+    plot.add("G", base_content["G"], fill=True)
+    plot.add("C", base_content["C"], fill=True)
+    plot.add("A", base_content["A"], fill=True)
+    plot.add("T", base_content["T"], fill=True)
+    plot.add("N", base_content["N"], fill=True)
     return plot.render(is_unicode=True)
 
 

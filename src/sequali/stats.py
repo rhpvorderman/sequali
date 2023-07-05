@@ -17,7 +17,7 @@ import array
 import math
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
-from ._qc import A, C, G, T
+from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
@@ -280,6 +280,7 @@ def calculate_stats(
     seq_lengths = sequence_lengths(count_table, total_reads)
     x_labels = stringify_ranges(data_ranges)
     pbq = per_base_qualities(aggregated_table)
+    bc = base_content(aggregated_table)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -298,6 +299,7 @@ def calculate_stats(
                 "C": pbq[C],
                 "G": pbq[G],
                 "T": pbq[T],
+                "N": pbq[N],
             },
         },
         "sequence_length_distribution": {
@@ -306,7 +308,13 @@ def calculate_stats(
         },
         "base_content": {
             "x_labels": x_labels,
-            "values": base_content(aggregated_table),
+            "values": {
+                "A": bc[A],
+                "C": bc[C],
+                "G": bc[G],
+                "T": bc[T],
+                "N": bc[N],
+            },
         },
         "per_sequence_gc_content": {
             "x_labels": [str(i) for i in range(101)],
