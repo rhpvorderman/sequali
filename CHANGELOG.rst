@@ -9,6 +9,7 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Add a JSON report
 + Add a progressbar powered by tqdm.
 + Implement a custom parser based on memchr for finding newlines.
 + Count overrepresented sequences using a hash table implemented in C.
