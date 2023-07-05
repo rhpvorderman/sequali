@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 
-from ._qc import A, C, G, N, T
 from ._qc import PHRED_MAX
 
 
