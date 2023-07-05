@@ -23,7 +23,16 @@ Installation
 Usage
 =====
 
-    sequali /path/to/fastq/file > result.html
+    usage: sequali [-h] [--json JSON] [--html HTML] [--dir DIR] input
+
+    positional arguments:
+      input        Input FASTQ file
+
+    options:
+      -h, --help   show this help message and exit
+      --json JSON  JSON output file. default '<input>.json'
+      --html HTML  HTML output file. default '<input>.html'
+      --dir DIR    Output directory. defauly
 
 Acknowledgements
 ================
