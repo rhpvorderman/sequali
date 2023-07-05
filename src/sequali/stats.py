@@ -81,15 +81,15 @@ def cumulative_percentages(counts: Iterable[int], total: int):
 
 
 def normalized_per_tile_averages(
-        tile_averages:  Sequence[Tuple[int, Sequence[float]]],
+        tile_counts:  Sequence[Tuple[int, Sequence[float], Sequence[int]]],
         data_ranges: Sequence[Tuple[int, int]],
         ) -> List[Tuple[str, List[float]]]:
-    if not tile_averages:
+    if not tile_counts:
         return []
     average_phreds = []
     per_category_totals = [0.0 for i in range(len(data_ranges))]
-    for tile, averages in tile_averages:
-        range_averages = [sum(averages[start:stop]) / (stop - start)
+    for tile, summed_errors, counts in tile_counts:
+        range_averages = [sum(summed_errors[start:stop]) / sum(counts[start:stop])
                           for start, stop in data_ranges]
         range_phreds = []
         for i, average in enumerate(range_averages):
@@ -98,7 +98,7 @@ def normalized_per_tile_averages(
             # Averaging phreds takes geometric mean.
             per_category_totals[i] += phred
         average_phreds.append((tile, range_phreds))
-    number_of_tiles = len(tile_averages)
+    number_of_tiles = len(tile_counts)
     averages_per_category = [total / number_of_tiles
                              for total in per_category_totals]
     normalized_averages = []
@@ -332,7 +332,7 @@ def calculate_stats(
         "per_tile_quality": {
             "skipped_reason": per_tile_quality.skipped_reason,
             "normalized_per_tile_averages": normalized_per_tile_averages(
-                per_tile_quality.get_tile_averages(), data_ranges),
+                per_tile_quality.get_tile_counts(), data_ranges),
             "x_labels": x_labels,
         }
     }
