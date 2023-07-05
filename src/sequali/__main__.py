@@ -30,10 +30,11 @@ def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", help="Input FASTQ file")
     parser.add_argument("--json",
-                        help="JSON output file. default '<input>.json'")
+                        help="JSON output file. default: '<input>.json'")
     parser.add_argument("--html",
-                        help="HTML output file. default '<input>.html'")
-    parser.add_argument("--dir", help="Output directory",
+                        help="HTML output file. default: '<input>.html'")
+    parser.add_argument("--dir", help="Output directory. default: "
+                                      "current working directory",
                         default=os.getcwd())
     return parser
 
@@ -71,9 +72,13 @@ def main():
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
         args.html = os.path.basename(filename) + ".html"
-    with open(os.path.join(args.dir, args.json), "wt") as json_file:
+    if not os.path.isabs(args.json):
+        args.json = os.path.join(args.dir, args.json)
+    if not os.path.isabs(args.html):
+        args.html = os.path.join(args.dir, args.html)
+    with open(args.json, "wt") as json_file:
         json.dump(json_data, json_file, indent=2)
-    with open(os.path.join(args.dir, args.html), "wt") as html_file:
+    with open(args.html, "wt") as html_file:
         html_file.write(html_report(json_data))
 
 
