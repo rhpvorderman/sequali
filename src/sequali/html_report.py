@@ -8,7 +8,7 @@ from ._qc import PHRED_MAX
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
                    x_labels: List[str]) -> str:
     scatter_plot = pygal.Line(
-        title="Sequence length distribution",
+        title="Deviation from geometric mean in phred units.",
         x_labels=x_labels,
         truncate_label=-1,
         width=1000,
@@ -141,11 +141,19 @@ def html_report(data: Dict[str, Any]):
     if skipped_reason:
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
-        ptq_content = per_tile_graph(
+        ptq_text = """
+        This graph shows the deviation of each tile on each position from 
+        the geometric mean of all tiles at that position. The scale is 
+        expressed in phred units. -10 is 10 times more errors than the average.
+        -2 is 1.58 times more errors than the average. Only points that 
+        deviate more than 2 phred units from the average are shown. <br>
+        """
+        ptq_graph = per_tile_graph(
             data["per_tile_quality"][
                 "normalized_per_tile_averages_for_problematic_tiles"],
             data["per_tile_quality"]["x_labels"]
         )
+        ptq_content = ptq_text + ptq_graph
     return f"""
     <html>
     <head>
