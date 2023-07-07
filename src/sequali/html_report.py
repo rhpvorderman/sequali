@@ -1,12 +1,20 @@
 from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
+import pygal.style
 
 from ._qc import PHRED_MAX
 
 
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
                    x_labels: List[str]) -> str:
+    # Set different colors for the error and warn lines
+    style_class = pygal.style.Style
+    red = "#FF0000"
+    yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
+    style = style_class(
+        colors=(yellow, yellow, red, red) + style_class.colors
+    )
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
         x_labels=x_labels,
@@ -15,6 +23,7 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         explicit_size=True,
         disable_xml_declaration=True,
         stroke=False,
+        style=style,
     )
 
     def add_horizontal_line(name, position):
