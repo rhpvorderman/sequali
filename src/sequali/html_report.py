@@ -6,6 +6,11 @@ import pygal.style
 from ._qc import PHRED_MAX
 
 
+def label_values(values: Sequence[Any], labels: Sequence[Any]):
+    return [{"value": value, "label":label} for value, label
+            in zip(values, labels)]
+
+
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
                    x_labels: List[str]) -> str:
     # Set different colors for the error and warn lines
@@ -55,54 +60,69 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
 
 def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
                           x_labels: Sequence[str]) -> str:
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Per base sequence quality",
         dots_size=1,
-        x_labels=x_labels,
+        x_labels=simple_x_labels,
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=2,
+        show_minor_x_labels=False,
+        x_title="position",
+        y_title="phred score",
     )
-    plot.add("A", per_base_qualities["A"])
-    plot.add("C", per_base_qualities["C"])
-    plot.add("G", per_base_qualities["G"])
-    plot.add("T", per_base_qualities["T"])
-    plot.add("mean", per_base_qualities["mean"])
+    plot.add("A", label_values(per_base_qualities["A"], x_labels))
+    plot.add("C", label_values(per_base_qualities["C"], x_labels))
+    plot.add("G", label_values(per_base_qualities["G"], x_labels))
+    plot.add("T", label_values(per_base_qualities["T"], x_labels))
+    plot.add("mean", label_values(per_base_qualities["mean"], x_labels))
     return plot.render(is_unicode=True)
 
 
 def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
                                       x_labels: Sequence[str]) -> str:
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Bar(
         title="Sequence length distribution",
-        x_labels=x_labels,
+        x_labels=simple_x_labels,
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=2,
+        show_minor_x_labels=False,
+        x_title="sequence length",
+        y_title="number of reads"
     )
-    plot.add("Length", sequence_lengths)
+    plot.add("Length", label_values(sequence_lengths, x_labels))
     return plot.render(is_unicode=True)
 
 
 def base_content_plot(base_content: Dict[str, Sequence[float]],
                       x_labels: Sequence[str]) -> str:
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.StackedLine(
         title="Base content",
         dots_size=1,
-        x_labels=x_labels,
+        x_labels=simple_x_labels,
         y_labels=[i / 10 for i in range(11)],
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=2,
+        show_minor_x_labels=False,
+        x_title="position",
+        y_title="fraction",
     )
-    plot.add("G", base_content["G"], fill=True)
-    plot.add("C", base_content["C"], fill=True)
-    plot.add("A", base_content["A"], fill=True)
-    plot.add("T", base_content["T"], fill=True)
-    plot.add("N", base_content["N"], fill=True)
+    plot.add("G", label_values(base_content["G"], x_labels), fill=True)
+    plot.add("C", label_values(base_content["C"], x_labels), fill=True)
+    plot.add("A", label_values(base_content["A"], x_labels), fill=True)
+    plot.add("T", label_values(base_content["T"], x_labels), fill=True)
+    plot.add("N", label_values(base_content["N"], x_labels), fill=True)
     return plot.render(is_unicode=True)
 
 
@@ -113,6 +133,11 @@ def per_sequence_gc_content_plot(gc_content: Sequence[int]) -> str:
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=3,
+        show_minor_x_labels=False,
+        truncate_label=-1,
+        x_title="GC %",
+        y_title="number of reads",
     )
     plot.add("", gc_content)
     return plot.render(is_unicode=True)
@@ -126,26 +151,37 @@ def per_sequence_quality_scores_plot(
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=3,
+        show_minor_x_labels=False,
+        x_title="Phred score",
+        y_title="Percentage of total",
+        truncate_label=-1,
     )
     total = sum(per_sequence_quality_scores)
     percentage_scores = [100 * score / total
                          for score in per_sequence_quality_scores]
-    plot.add("%", percentage_scores)
+    plot.add("", percentage_scores)
     return plot.render(is_unicode=True)
 
 
 def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
                          x_labels: Sequence[str],) -> str:
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Adapter content (%)",
-        x_labels=x_labels,
+        x_labels=simple_x_labels,
         range=(0.0, 100.0),
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
+        x_labels_major_every=2,
+        show_minor_x_labels=False,
+        truncate_label=-1,
+        x_title="position",
+        y_title="%",
     )
     for label, content in adapter_content:
-        plot.add(label, content)
+        plot.add(label, label_values(content, x_labels))
     return plot.render(is_unicode=True)
 
 
