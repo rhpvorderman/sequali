@@ -15,15 +15,20 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     style = style_class(
         colors=(yellow, yellow, red, red) + style_class.colors
     )
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
-        x_labels=x_labels,
+        x_labels=simple_x_labels,
+        x_title="position",
         truncate_label=-1,
         width=1000,
         explicit_size=True,
         disable_xml_declaration=True,
         stroke=False,
         style=style,
+        x_labels_major_every=2,
+        show_minor_x_labels=False,
+        y_title="Normalized phred"
     )
 
     def add_horizontal_line(name, position):
@@ -38,8 +43,9 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     min_phred = -10.0
     max_phred = 10.0
     for tile, tile_phreds in per_tile_phreds:
-        cleaned_phreds = [phred if (phred > 2 or phred < -2) else None
-                          for phred in tile_phreds]
+        cleaned_phreds = [{'value': phred, 'label': label}
+                          if (phred > 2 or phred < -2) else None
+                          for phred, label in zip(tile_phreds, x_labels)]
         scatter_plot.add(str(tile),  cleaned_phreds)
         min_phred = min(min_phred, *tile_phreds)
         max_phred = max(max_phred, *tile_phreds)
