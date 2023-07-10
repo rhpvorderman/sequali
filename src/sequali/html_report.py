@@ -103,9 +103,19 @@ def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
 
 def base_content_plot(base_content: Dict[str, Sequence[float]],
                       x_labels: Sequence[str]) -> str:
+    style_class = pygal.style.Style
+    red = "#DC143C"  # Crimson
+    dark_red = "#8B0000"  # DarkRed
+    blue = "#00BFFF"  # DeepSkyBlue
+    dark_blue = "#1E90FF"  # DodgerBlue
+    black = "#000000"
+    style = style_class(
+        colors=(red, dark_red, blue, dark_blue, black)
+    )
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.StackedLine(
         title="Base content",
+        style=style,
         dots_size=1,
         x_labels=simple_x_labels,
         y_labels=[i / 10 for i in range(11)],
