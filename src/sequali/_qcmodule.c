@@ -2380,7 +2380,7 @@ PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
 "overrepresented_sequences($self, threshold=0.001)\n"
 "--\n"
 "\n"
-"Return a list of tuples with the fraction and the sequence. The list is "
+"Return a list of tuples with the count, fraction and the sequence. The list is "
 "sorted in reverse order with the most common sequence on top.\n"
 "\n"
 "  threshold\n"
@@ -2427,7 +2427,8 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         }
         if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
-                "(ds#)", 
+                "(kds#)",
+                count,
                 ((double)count / (double)total_sequences),
                  entry->key, entry->key_length);
             if (entry_tuple == NULL) {

@@ -66,13 +66,13 @@ def test_sequence_duplication_overrepresented_sequences():
         # Count up to 100_000 to get nice fractions for all the sequences
         seqdup.add_read(view_from_sequence("SPAM"))
     overrepresented = seqdup.overrepresented_sequences(threshold=0.001)
-    assert overrepresented[0][1] == "SPAM"
-    assert overrepresented[1][1] == "Blatantly overrepresented"
-    assert overrepresented[1][0] == 2000 / 100_000
-    assert overrepresented[2][1] == "slightly overrepresented"
-    assert overrepresented[2][0] == 200 / 100_000
-    assert overrepresented[3][1] == "mildly overrepresented"
-    assert overrepresented[3][0] == 100 / 100_000
+    assert overrepresented[0][2] == "SPAM"
+    assert overrepresented[1][2] == "Blatantly overrepresented"
+    assert overrepresented[1][0] == 2000
+    assert overrepresented[2][2] == "slightly overrepresented"
+    assert overrepresented[2][0] == 200
+    assert overrepresented[3][2] == "mildly overrepresented"
+    assert overrepresented[3][1] == 100 / 100_000
     # Assert no other sequences recorded as overrepresented.
     assert len(overrepresented) == 4
 

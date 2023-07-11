@@ -13,8 +13,8 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
-
-from typing import Any, Dict, List, Sequence, Tuple
+import io
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -200,6 +200,23 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
     return plot.render(is_unicode=True)
 
 
+def overrepresented_sequences_table(
+        overrepresented_sequences: Sequence[Tuple[int, float, str, Optional[str]]]
+) -> str:
+    table = io.StringIO()
+    table.write("<table>")
+    table.write("<tr><td>count</td><td>percentage</td>"
+                "<td>sequence</td><td>best match</td></tr>")
+    for count, fraction, sequence, best_match in overrepresented_sequences:
+        table.write(
+            f"""<tr><td align="right">{count}</td>
+                <td align="right">{fraction * 100:.2f}</td>
+                <td>{sequence}</td>
+                <td>{best_match if best_match else "No match"}</td></tr>""")
+    table.write("</table>")
+    return table.getvalue()
+
+
 def html_report(data: Dict[str, Any]):
     summary = data["summary"]
     ptq = data["per_tile_quality"]
@@ -267,5 +284,7 @@ def html_report(data: Dict[str, Any]):
                           data["adapter_content"]["x_labels"])}
     <h2>Per Tile Quality</h2>
     {ptq_content}
+    <h2>Overrepresented sequences</h2>
+    {overrepresented_sequences_table(data["overrepresented_sequences"])}
     </html>
     """

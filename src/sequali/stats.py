@@ -20,6 +20,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from .sequence_identification import identify_sequence
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -299,6 +300,11 @@ def calculate_stats(
             error_tiles.append(tile)
         else:
             warn_tiles.append(tile)
+    overrepresented_sequences = sequence_duplication.overrepresented_sequences()
+    overrepresented_with_identification = [
+        (count, fraction, sequence, identify_sequence(sequence))
+        for count, fraction, sequence in overrepresented_sequences
+    ]
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -354,5 +360,6 @@ def calculate_stats(
             "error_tiles": error_tiles,
             "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
-        }
+        },
+        "overrepresented_sequences": overrepresented_with_identification,
     }
