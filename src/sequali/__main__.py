@@ -102,4 +102,3 @@ def sequali_report():
         json_data = json.load(j)
     with open(output, "wt") as html:
         html.write(html_report(json_data))
-

@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
-import pygal.style
+import pygal.style  # type: ignore
 
 from ._qc import PHRED_MAX
 
@@ -14,7 +14,7 @@ COMMON_GRAPH_OPTIONS = dict(
 
 
 def label_values(values: Sequence[Any], labels: Sequence[Any]):
-    return [{"value": value, "label":label} for value, label
+    return [{"value": value, "label": label} for value, label
             in zip(values, labels)]
 
 
@@ -192,10 +192,10 @@ def html_report(data: Dict[str, Any]):
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
         ptq_text = """
-        This graph shows the deviation of each tile on each position from 
-        the geometric mean of all tiles at that position. The scale is 
+        This graph shows the deviation of each tile on each position from
+        the geometric mean of all tiles at that position. The scale is
         expressed in phred units. -10 is 10 times more errors than the average.
-        -2 is 1.58 times more errors than the average. Only points that 
+        -2 is 1.58 times more errors than the average. Only points that
         deviate more than 2 phred units from the average are shown. <br>
         """
         ptq_graph = per_tile_graph(
