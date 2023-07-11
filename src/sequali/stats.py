@@ -81,15 +81,15 @@ def cumulative_percentages(counts: Iterable[int], total: int):
 
 
 def normalized_per_tile_averages(
-        tile_averages:  Sequence[Tuple[int, Sequence[float]]],
+        tile_counts:  Sequence[Tuple[int, Sequence[float], Sequence[int]]],
         data_ranges: Sequence[Tuple[int, int]],
         ) -> List[Tuple[str, List[float]]]:
-    if not tile_averages:
+    if not tile_counts:
         return []
     average_phreds = []
     per_category_totals = [0.0 for i in range(len(data_ranges))]
-    for tile, averages in tile_averages:
-        range_averages = [sum(averages[start:stop]) / (stop - start)
+    for tile, summed_errors, counts in tile_counts:
+        range_averages = [sum(summed_errors[start:stop]) / sum(counts[start:stop])
                           for start, stop in data_ranges]
         range_phreds = []
         for i, average in enumerate(range_averages):
@@ -98,7 +98,7 @@ def normalized_per_tile_averages(
             # Averaging phreds takes geometric mean.
             per_category_totals[i] += phred
         average_phreds.append((tile, range_phreds))
-    number_of_tiles = len(tile_averages)
+    number_of_tiles = len(tile_counts)
     averages_per_category = [total / number_of_tiles
                              for total in per_category_totals]
     normalized_averages = []
@@ -266,13 +266,14 @@ def calculate_stats(
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
-        sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
+        sequence_duplication: SequenceDuplication,
+        graph_resolution: int = 200) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
     data_ranges = (
-        list(equidistant_ranges(metrics.max_length, 50))
+        list(equidistant_ranges(metrics.max_length, graph_resolution))
         if metrics.max_length < 500 else
-        list(base_weighted_categories(count_table, 50))
+        list(base_weighted_categories(count_table, graph_resolution))
     )
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
@@ -281,6 +282,23 @@ def calculate_stats(
     x_labels = stringify_ranges(data_ranges)
     pbq = per_base_qualities(aggregated_table)
     bc = base_content(aggregated_table)
+    per_tile_phreds = normalized_per_tile_averages(
+        per_tile_quality.get_tile_counts(), data_ranges)
+    rendered_tiles = []
+    warn_tiles = []
+    error_tiles = []
+    good_tiles = []
+    for tile, tile_phreds in per_tile_phreds:
+        tile_minimum = min(tile_phreds)
+        tile_maximum = max(tile_phreds)
+        if tile_minimum > -2 and tile_maximum < 2:
+            good_tiles.append(tile)
+            continue
+        rendered_tiles.append((tile, tile_phreds))
+        if tile_minimum < -10 or tile_maximum > 10:
+            error_tiles.append(tile)
+        else:
+            warn_tiles.append(tile)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -331,8 +349,10 @@ def calculate_stats(
         },
         "per_tile_quality": {
             "skipped_reason": per_tile_quality.skipped_reason,
-            "normalized_per_tile_averages": normalized_per_tile_averages(
-                per_tile_quality.get_tile_averages(), data_ranges),
+            "good_tiles": good_tiles,
+            "warn_tiles": warn_tiles,
+            "error_tiles": error_tiles,
+            "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
         }
     }

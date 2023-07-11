@@ -85,3 +85,20 @@ def main():
 
 if __name__ == "__main__":  # pragma: no cover
     main()
+
+
+def sequali_report():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("json", metavar="JSON", help="Sequali JSON file")
+    parser.add_argument("-o", "--html", help="Output html file default: "
+                                             "<input>.html")
+    args = parser.parse_args()
+    output = args.html
+    in_json = args.json
+    if not output:
+        # Remove json extension and add HTML
+        output = ".".join(in_json.split(".")[:-1]) + ".html"
+    with open(in_json) as j:
+        json_data = json.load(j)
+    with open(output, "wt") as html:
+        html.write(html_report(json_data))

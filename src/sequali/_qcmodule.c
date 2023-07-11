@@ -2001,7 +2001,7 @@ PerTileQuality_add_record_array(PerTileQuality *self, FastqRecordArrayView *reco
 
 
 PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
-"add_read($self, /)\n"
+"get_tile_averages($self, /)\n"
 "--\n"
 "\n"
 "Get a list of tuples with the tile IDs and a list of their averages. \n"
@@ -2055,6 +2055,63 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
     return result;
 }
 
+PyDoc_STRVAR(PerTileQuality_get_tile_counts__doc__,
+"get_tile_counts($self, /)\n"
+"--\n"
+"\n"
+"Get a list of tuples with the tile IDs and a list of their summed errors and\n"
+"a list of their counts. \n"
+);
+
+#define PerTileQuality_get_tile_counts_method METH_NOARGS
+
+static PyObject *
+PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
+{
+    BaseQuality **base_qualities = self->base_qualities;
+    size_t maximum_tile = self->number_of_tiles;
+    size_t tile_length = self->max_length;
+    PyObject *result = PyList_New(0);
+    if (result == NULL) {
+        return PyErr_NoMemory();
+    }
+
+    for (size_t i=0; i<maximum_tile; i++) {
+        BaseQuality *quals = base_qualities[i];
+        if (quals == NULL) {
+            continue;
+        }
+        PyObject *entry = PyTuple_New(3);
+        PyObject *tile_id = PyLong_FromSize_t(i);
+        PyObject *summed_error_list = PyList_New(tile_length);
+        PyObject *count_list = PyList_New(tile_length);
+        if (entry == NULL || tile_id == NULL || summed_error_list == NULL || count_list == NULL) {
+            Py_DECREF(result);
+            return PyErr_NoMemory();
+        }
+        for (size_t j=0; j<tile_length; j++) {
+            BaseQuality qual_entry = quals[j];
+            PyObject *summed_error_obj = PyFloat_FromDouble(qual_entry.total_error);
+            PyObject *count_obj = PyLong_FromUnsignedLongLong(qual_entry.total_bases);
+            if (summed_error_obj == NULL || count_obj == NULL) {
+                Py_DECREF(result);
+                return PyErr_NoMemory();
+            }
+            PyList_SET_ITEM(summed_error_list, j, summed_error_obj);
+            PyList_SET_ITEM(count_list, j, count_obj);
+        }
+        PyTuple_SET_ITEM(entry, 0, tile_id);
+        PyTuple_SET_ITEM(entry, 1, summed_error_list);
+        PyTuple_SET_ITEM(entry, 2, count_list);
+        int ret = PyList_Append(result, entry);
+        if (ret != 0) {
+            Py_DECREF(result);
+            return NULL;
+        }
+        Py_DECREF(entry);
+    }
+    return result;
+}
 
 static PyMethodDef PerTileQuality_methods[] = {
     {"add_read", (PyCFunction)PerTileQuality_add_read, 
@@ -2064,6 +2121,9 @@ static PyMethodDef PerTileQuality_methods[] = {
     {"get_tile_averages", (PyCFunction)PerTileQuality_get_tile_averages,
      PerTileQuality_get_tile_averages_method, 
      PerTileQuality_get_tile_averages__doc__},
+     {"get_tile_counts", (PyCFunction)PerTileQuality_get_tile_counts,
+     PerTileQuality_get_tile_counts_method,
+     PerTileQuality_get_tile_counts__doc__},
     {NULL},
 };
 

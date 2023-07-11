@@ -52,5 +52,8 @@ setup(
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed']},
     ext_modules=[Extension("sequali._qc", ["src/sequali/_qcmodule.c"])],
-    entry_points={"console_scripts": ['sequali=sequali.__main__:main']},
+    entry_points={"console_scripts": [
+        'sequali=sequali.__main__:main',
+        'sequali-report=sequali.__main__:sequali_report'
+    ]},
 )
