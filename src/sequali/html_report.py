@@ -5,6 +5,13 @@ import pygal.style
 
 from ._qc import PHRED_MAX
 
+COMMON_GRAPH_OPTIONS = dict(
+    truncate_label=-1,
+    width=1000,
+    explicit_size=True,
+    disable_xml_declaration=True,
+)
+
 
 def label_values(values: Sequence[Any], labels: Sequence[Any]):
     return [{"value": value, "label":label} for value, label
@@ -25,15 +32,12 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         title="Deviation from geometric mean in phred units.",
         x_labels=simple_x_labels,
         x_title="position",
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         stroke=False,
         style=style,
         x_labels_major_every=round(len(x_labels) / 30),
         show_minor_x_labels=False,
-        y_title="Normalized phred"
+        y_title="Normalized phred",
+        **COMMON_GRAPH_OPTIONS,
     )
 
     def add_horizontal_line(name, position):
@@ -65,14 +69,11 @@ def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
         title="Per base sequence quality",
         dots_size=1,
         x_labels=simple_x_labels,
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         x_labels_major_every=round(len(x_labels) / 30),
         show_minor_x_labels=False,
         x_title="position",
         y_title="phred score",
+        **COMMON_GRAPH_OPTIONS,
     )
     plot.add("A", label_values(per_base_qualities["A"], x_labels))
     plot.add("C", label_values(per_base_qualities["C"], x_labels))
@@ -88,14 +89,11 @@ def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
     plot = pygal.Bar(
         title="Sequence length distribution",
         x_labels=simple_x_labels,
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         x_labels_major_every=round(len(x_labels) / 30),
         show_minor_x_labels=False,
         x_title="sequence length",
-        y_title="number of reads"
+        y_title="number of reads",
+        **COMMON_GRAPH_OPTIONS,
     )
     plot.add("Length", label_values(sequence_lengths, x_labels))
     return plot.render(is_unicode=True)
@@ -119,14 +117,11 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
         dots_size=1,
         x_labels=simple_x_labels,
         y_labels=[i / 10 for i in range(11)],
-        truncate_label=-1,
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         x_labels_major_every=round(len(x_labels) / 30),
         show_minor_x_labels=False,
         x_title="position",
         y_title="fraction",
+        **COMMON_GRAPH_OPTIONS,
     )
     plot.add("G", label_values(base_content["G"], x_labels), fill=True)
     plot.add("C", label_values(base_content["C"], x_labels), fill=True)
@@ -140,14 +135,11 @@ def per_sequence_gc_content_plot(gc_content: Sequence[int]) -> str:
     plot = pygal.Bar(
         title="Per sequence GC content",
         x_labels=range(101),
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         x_labels_major_every=3,
         show_minor_x_labels=False,
-        truncate_label=-1,
         x_title="GC %",
         y_title="number of reads",
+        **COMMON_GRAPH_OPTIONS,
     )
     plot.add("", gc_content)
     return plot.render(is_unicode=True)
@@ -181,14 +173,11 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
         title="Adapter content (%)",
         x_labels=simple_x_labels,
         range=(0.0, 100.0),
-        width=1000,
-        explicit_size=True,
-        disable_xml_declaration=True,
         x_labels_major_every=round(len(x_labels) / 30),
         show_minor_x_labels=False,
-        truncate_label=-1,
         x_title="position",
         y_title="%",
+        **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
         plot.add(label, label_values(content, x_labels))
