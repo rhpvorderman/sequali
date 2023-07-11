@@ -266,13 +266,14 @@ def calculate_stats(
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
-        sequence_duplication: SequenceDuplication) -> Dict[str, Any]:
+        sequence_duplication: SequenceDuplication,
+        graph_resolution: int = 200) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
     data_ranges = (
-        list(equidistant_ranges(metrics.max_length, 50))
+        list(equidistant_ranges(metrics.max_length, graph_resolution))
         if metrics.max_length < 500 else
-        list(base_weighted_categories(count_table, 50))
+        list(base_weighted_categories(count_table, graph_resolution))
     )
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
