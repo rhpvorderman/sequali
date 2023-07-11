@@ -263,6 +263,37 @@ def adapter_counts(adapter_counter: AdapterCounter,
     return list(zip(adapter_counter.adapters, all_adapters))
 
 
+def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
+    named_slices = {
+        "1": slice(1, 2),
+        "2": slice(2, 3),
+        "3": slice(3, 4),
+        "4": slice(4, 5),
+        "5": slice(5, 6),
+        "6-10": slice(6, 11),
+        "11-50": slice(11, 51),
+        "51-100": slice(51, 101),
+        "101-500": slice(101, 501),
+        "501-1000": slice(501, 1001),
+        "1001-5000": slice(1001, 5001),
+        "5001-10000": slice(5001, 10_001),
+        "10001-50000": slice(10_001, 50_001),
+        "> 50000": slice(50_001, None),
+    }
+    duplication_counts = sequence_duplication.duplication_counts(50_001)
+    aggregated_counts = [
+        sum(duplication_counts[slc]) for slc in named_slices.values()
+    ]
+    return list(named_slices.keys()), aggregated_counts
+
+
+def deduplicated_fraction(sequence_duplication: SequenceDuplication):
+    count_dict = sequence_duplication.sequence_counts()
+    unique_sequences = len(count_dict)
+    sequence_count = sum(count_dict.values())
+    return unique_sequences / sequence_count
+
+
 def calculate_stats(
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
@@ -305,6 +336,7 @@ def calculate_stats(
         (count, fraction, sequence, identify_sequence(sequence))
         for count, fraction, sequence in overrepresented_sequences
     ]
+    duplicated_labels, duplicated_counts = aggregate_duplication_counts(sequence_duplication)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -362,4 +394,9 @@ def calculate_stats(
             "x_labels": x_labels,
         },
         "overrepresented_sequences": overrepresented_with_identification,
+        "duplication_counts": {
+            "remaining_percentage": deduplicated_fraction(sequence_duplication) * 100,
+            "values": duplicated_counts,
+            "x_labels": duplicated_labels,
+        }
     }
