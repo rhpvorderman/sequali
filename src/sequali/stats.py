@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import array
+import collections
+import decimal
 import math
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
@@ -263,6 +265,20 @@ def adapter_counts(adapter_counter: AdapterCounter,
     return list(zip(adapter_counter.adapters, all_adapters))
 
 
+def estimate_duplication_counts(
+        duplication_counts: Dict[int, int],
+        total_sequences: int,
+        gathered_sequences: int) -> Dict[int, int]:
+    estimated_counts: Dict[int, int] = {}
+    for duplicates, number_of_occurences in duplication_counts.items():
+        chance_of_random_draw = duplicates / total_sequences
+        chance_of_random_not_draw = 1 - chance_of_random_draw
+        chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences
+        chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
+        estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)
+    return estimated_counts
+
+
 def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
     named_slices = {
         "1": slice(1, 2),
@@ -336,6 +352,11 @@ def calculate_stats(
         (count, fraction, sequence, identify_sequence(sequence))
         for count, fraction, sequence in overrepresented_sequences
     ]
+    sequence_counts = sequence_duplication.sequence_counts()
+    duplication_counts = collections.Counter(sequence_counts.values())
+    estimated_duplication_counts = estimate_duplication_counts(
+        duplication_counts, sequence_duplication.number_of_sequences,
+        sequence_duplication.stopped_collecting_at)
     duplicated_labels, duplicated_counts = aggregate_duplication_counts(sequence_duplication)
     return {
         "summary": {
