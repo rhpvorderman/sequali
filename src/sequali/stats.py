@@ -279,6 +279,21 @@ def estimate_duplication_counts(
     return estimated_counts
 
 
+def duplication_fractions(
+        duplication_counts: Dict[int, int]) -> Dict[int, float]:
+    total_sequences = sum(duplicates * count
+                          for duplicates, count in duplication_counts.items())
+    return {duplicates: count / total_sequences for duplicates, count
+            in duplication_counts.items()}
+
+
+def deduplicated_fraction(duplication_counts: Dict[int, int]):
+    total_sequences = sum(duplicates * count
+                          for duplicates, count in duplication_counts.items())
+    unique_sequences = sum(duplication_counts.values())
+    return unique_sequences / total_sequences
+
+
 def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
     named_slices = {
         "1": slice(1, 2),
@@ -301,13 +316,6 @@ def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
         sum(duplication_counts[slc]) for slc in named_slices.values()
     ]
     return list(named_slices.keys()), aggregated_counts
-
-
-def deduplicated_fraction(sequence_duplication: SequenceDuplication):
-    count_dict = sequence_duplication.sequence_counts()
-    unique_sequences = len(count_dict)
-    sequence_count = sum(count_dict.values())
-    return unique_sequences / sequence_count
 
 
 def calculate_stats(
@@ -416,7 +424,7 @@ def calculate_stats(
         },
         "overrepresented_sequences": overrepresented_with_identification,
         "duplication_counts": {
-            "remaining_percentage": deduplicated_fraction(sequence_duplication) * 100,
+            "remaining_percentage": deduplicated_fraction(estimated_duplication_counts) * 100,
             "values": duplicated_counts,
             "x_labels": duplicated_labels,
         }
