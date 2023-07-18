@@ -17,5 +17,41 @@
 from typing import Optional
 
 
+def create_upper_table():
+    upper_table = bytearray(b"N" * 256)
+    for c in "acgtACGT":
+        upper_table[ord(c)] = ord(c.upper())
+    return bytes(upper_table)
+
+
+def create_complement_table():
+    complement_table = bytearray(create_upper_table())
+    for c, complement in zip("acgtACGT", "TGCATGCA"):
+        complement_table[ord(c)] = ord(complement)
+    return bytes(complement_table)
+
+
+COMPLEMENT_TABLE = create_complement_table()
+UPPER_TABLE = create_upper_table()
+
+
+def canonical_kmers(sequence: str, k: int):
+    if k % 2 == 0:
+        raise ValueError(f"K must be uneven, got {k}")
+    # Encoding to bytes makes translating faster
+    sequence = sequence.encode("ascii")
+    complement_table = COMPLEMENT_TABLE
+    upper_table = UPPER_TABLE
+    canonical_set = set()
+    for i in range(len(sequence) + 1 - k):
+        kmer = sequence[i:i+k].translate(upper_table)
+        revcomp = kmer.translate(complement_table)[::-1]
+        if revcomp < kmer:
+            canonical_set.add(revcomp.decode("ascii"))
+        else:
+            canonical_set.add(kmer.decode("ascii"))
+    return canonical_set
+
+
 def identify_sequence(sequence: str) -> Optional[str]:
     return None
