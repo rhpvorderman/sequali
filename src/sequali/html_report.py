@@ -200,9 +200,11 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
     return plot.render(is_unicode=True)
 
 
-def overrepresented_sequences_table(
+def overrepresented_sequences_content(
         overrepresented_sequences: Sequence[Tuple[int, float, str, Optional[str]]]
 ) -> str:
+    if not overrepresented_sequences:
+        return "No overrepresented sequences."
     table = io.StringIO()
     table.write("<table>")
     table.write("<tr><td>count</td><td>percentage</td>"
@@ -285,6 +287,6 @@ def html_report(data: Dict[str, Any]):
     <h2>Per Tile Quality</h2>
     {ptq_content}
     <h2>Overrepresented sequences</h2>
-    {overrepresented_sequences_table(data["overrepresented_sequences"])}
+    {overrepresented_sequences_content(data["overrepresented_sequences"])}
     </html>
     """
