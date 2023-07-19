@@ -24,15 +24,16 @@ from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_K, create_sequence_index, \
     identify_sequence
-from .util import sequence_file_iterator
+from .util import fasta_parser
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
 
-SEQUENCE_FILE_DIR = os.path.join(os.path.dirname(__file__), "sequence_files")
-DEFAULT_CONTAMINANTS_FILE = os.path.join(SEQUENCE_FILE_DIR, "contaminants.txt")
+CONTAMINANTS_DIR = os.path.join(os.path.dirname(__file__), "contaminants")
+DEFAULT_CONTAMINANTS_FILES = [f.path for f in os.scandir(CONTAMINANTS_DIR)
+                              if f.name != "README"]
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
@@ -361,9 +362,12 @@ def calculate_stats(
         else:
             warn_tiles.append(tile)
     overrepresented_sequences = sequence_duplication.overrepresented_sequences()
-    sequence_index = create_sequence_index(
-        sequence_file_iterator(DEFAULT_CONTAMINANTS_FILE),
-        DEFAULT_K)
+
+    def contaminant_iterator():
+        for file in DEFAULT_CONTAMINANTS_FILES:
+            yield from fasta_parser(file)
+
+    sequence_index = create_sequence_index(contaminant_iterator(), DEFAULT_K)
     overrepresented_with_identification = [
         (count, fraction, sequence, *identify_sequence(sequence, sequence_index))
         for count, fraction, sequence in overrepresented_sequences
