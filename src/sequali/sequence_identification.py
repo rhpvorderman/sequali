@@ -15,7 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import collections
-from typing import Dict, FrozenSet, Iterable, Optional, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, Set, Tuple
 
 DEFAULT_K = 13
 
@@ -80,8 +80,23 @@ def create_sequence_index(names_and_sequences: Iterable[Tuple[str, str]],
         seq_identifier = SequenceIdentifier(name, kmers)
         for kmer in kmers:
             sequence_index[kmer].add(seq_identifier)
-    return sequence_index
+    return dict(sequence_index)
 
 
-def identify_sequence(sequence: str) -> Optional[str]:
-    return None
+def identify_sequence(sequence: str,
+                      sequence_index: Dict[str, Set[SequenceIdentifier]],
+                      k: int = DEFAULT_K) -> Tuple[int, int, str]:
+    kmers = canonical_kmers(sequence, k)
+    max_matches = len(kmers)
+    candidates: Set[SequenceIdentifier] = set()
+    default_set = set()
+    for kmer in kmers:
+        candidates.update(sequence_index.get(kmer, default_set))
+    most_matches = 0
+    best_match = "No match"
+    for candidate in candidates:
+        matches = len(kmers & candidate.kmers)
+        if matches > most_matches:
+            most_matches = matches
+            best_match = candidate.name
+    return most_matches, max_matches, best_match
