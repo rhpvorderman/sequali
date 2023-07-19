@@ -206,10 +206,14 @@ def overrepresented_sequences_content(
     if not overrepresented_sequences:
         return "No overrepresented sequences."
     table = io.StringIO()
+    table.write("Identified sequences by matched kmers. The max match is "
+                "either the number of kmers in the overrepresented sequence "
+                "or the number of kmers of the database sequence, whichever "
+                "is fewer.")
     table.write("<table>")
-    table.write("<tr><td>count</td><td>percentage</td>"
-                "<td>sequence</td><td>kmers (matched/total)</td>"
-                "<td>best match</td></tr>")
+    table.write("<tr><th>count</th><th>percentage</th>"
+                "<th>sequence</th><th>kmers (matched/max)</th>"
+                "<th>best match</th></tr>")
     for count, fraction, sequence, most_matches, max_matches, best_match in \
             overrepresented_sequences:
         table.write(

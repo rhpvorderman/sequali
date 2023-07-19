@@ -15,6 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import collections
+import sys
 from typing import Dict, FrozenSet, Iterable, Set, Tuple
 
 DEFAULT_K = 13
@@ -91,16 +92,17 @@ def identify_sequence(sequence: str,
                       sequence_index: Dict[str, Set[SequenceIdentifier]],
                       k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
-    max_matches = len(kmers)
     candidates: Set[SequenceIdentifier] = set()
     default_set: Set[SequenceIdentifier] = set()
     for kmer in kmers:
         candidates.update(sequence_index.get(kmer, default_set))
     most_matches = 0
     best_match = "No match"
+    best_match_kmers = sys.maxsize
     for candidate in candidates:
         matches = len(kmers & candidate.kmers)
         if matches > most_matches:
+            best_match_kmers = len(candidate.kmers)
             most_matches = matches
             best_match = candidate.name
-    return most_matches, max_matches, best_match
+    return most_matches, min(len(kmers), best_match_kmers), best_match
