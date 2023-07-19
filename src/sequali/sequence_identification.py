@@ -46,12 +46,12 @@ def canonical_kmers(sequence: str, k: int):
     if k % 2 == 0:
         raise ValueError(f"K must be uneven, got {k}")
     # Encoding to bytes makes translating faster
-    sequence = sequence.encode("ascii")
+    seq = sequence.encode("ascii")
     complement_table = COMPLEMENT_TABLE
     upper_table = UPPER_TABLE
     canonical_set = set()
-    for i in range(len(sequence) + 1 - k):
-        kmer = sequence[i:i+k].translate(upper_table)
+    for i in range(len(seq) + 1 - k):
+        kmer = seq[i:i+k].translate(upper_table)
         revcomp = kmer.translate(complement_table)[::-1]
         if revcomp < kmer:
             canonical_set.add(revcomp.decode("ascii"))
@@ -93,7 +93,7 @@ def identify_sequence(sequence: str,
     kmers = canonical_kmers(sequence, k)
     max_matches = len(kmers)
     candidates: Set[SequenceIdentifier] = set()
-    default_set = set()
+    default_set: Set[SequenceIdentifier] = set()
     for kmer in kmers:
         candidates.update(sequence_index.get(kmer, default_set))
     most_matches = 0

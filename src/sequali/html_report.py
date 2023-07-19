@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import io
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -201,20 +201,23 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
 
 
 def overrepresented_sequences_content(
-        overrepresented_sequences: Sequence[Tuple[int, float, str, Optional[str]]]
+        overrepresented_sequences: Sequence[Tuple[int, float, str, int, int, str]]
 ) -> str:
     if not overrepresented_sequences:
         return "No overrepresented sequences."
     table = io.StringIO()
     table.write("<table>")
     table.write("<tr><td>count</td><td>percentage</td>"
-                "<td>sequence</td><td>best match</td></tr>")
-    for count, fraction, sequence, best_match in overrepresented_sequences:
+                "<td>sequence</td><td>kmers (matched/total)</td>"
+                "<td>best match</td></tr>")
+    for count, fraction, sequence, most_matches, max_matches, best_match in \
+            overrepresented_sequences:
         table.write(
             f"""<tr><td align="right">{count}</td>
                 <td align="right">{fraction * 100:.2f}</td>
                 <td>{sequence}</td>
-                <td>{best_match if best_match else "No match"}</td></tr>""")
+                <td>({most_matches}/{max_matches})</td>
+                <td>{best_match}</td></tr>""")
     table.write("</table>")
     return table.getvalue()
 
