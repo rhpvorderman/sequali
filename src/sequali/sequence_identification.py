@@ -69,7 +69,7 @@ class SequenceIdentifier:
     def __init__(self, name: str, kmers: Iterable[str]):
         self.name = name
         self.kmers = frozenset(kmers)
-        self._hash = hash(name) ^ hash(kmers)
+        self._hash = hash(self.name) ^ hash(self.kmers)
 
     def __hash__(self):
         return self._hash
