@@ -15,7 +15,6 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import array
 import collections
-import decimal
 import math
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
@@ -273,9 +272,9 @@ def estimate_duplication_counts(
     for duplicates, number_of_occurences in duplication_counts.items():
         chance_of_random_draw = duplicates / total_sequences
         chance_of_random_not_draw = 1 - chance_of_random_draw
-        chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences
+        chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences  # noqa: E501
         chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
-        estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)
+        estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)  # noqa: E501
     return estimated_counts
 
 
@@ -365,7 +364,8 @@ def calculate_stats(
     estimated_duplication_counts = estimate_duplication_counts(
         duplication_counts, sequence_duplication.number_of_sequences,
         sequence_duplication.stopped_collecting_at)
-    duplicated_labels, duplicated_counts = aggregate_duplication_counts(sequence_duplication)
+    duplicated_labels, duplicated_counts = \
+        aggregate_duplication_counts(sequence_duplication)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -424,7 +424,8 @@ def calculate_stats(
         },
         "overrepresented_sequences": overrepresented_with_identification,
         "duplication_counts": {
-            "remaining_percentage": deduplicated_fraction(estimated_duplication_counts) * 100,
+            "remaining_percentage":
+                deduplicated_fraction(estimated_duplication_counts) * 100,
             "values": duplicated_counts,
             "x_labels": duplicated_labels,
         }
