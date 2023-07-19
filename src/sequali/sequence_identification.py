@@ -38,6 +38,10 @@ COMPLEMENT_TABLE = create_complement_table()
 UPPER_TABLE = create_upper_table()
 
 
+def reverse_complement(sequence: str):
+    return sequence.encode("ascii").translate(COMPLEMENT_TABLE)[::-1].decode("ascii")
+
+
 def canonical_kmers(sequence: str, k: int):
     if k % 2 == 0:
         raise ValueError(f"K must be uneven, got {k}")
