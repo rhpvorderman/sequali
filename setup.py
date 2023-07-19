@@ -50,7 +50,8 @@ setup(
         "pygal>=3.0.0",
         "tqdm"
     ],
-    package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed']},
+    package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
+                              'sequence_files/*.txt']},
     ext_modules=[Extension("sequali._qc", ["src/sequali/_qcmodule.c"])],
     entry_points={"console_scripts": [
         'sequali=sequali.__main__:main',
