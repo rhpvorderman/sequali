@@ -16,7 +16,7 @@
 
 import collections
 import sys
-from typing import Dict, FrozenSet, Iterable, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Set, Tuple
 
 DEFAULT_K = 13
 
@@ -78,24 +78,24 @@ class SequenceIdentifier:
 
 def create_sequence_index(names_and_sequences: Iterable[Tuple[str, str]],
                           k: int = DEFAULT_K,
-                          ) -> Dict[str, Set[SequenceIdentifier]]:
-    sequence_index = collections.defaultdict(set)
+                          ) -> Dict[str, List[SequenceIdentifier]]:
+    sequence_index = collections.defaultdict(list)
     for name, sequence in names_and_sequences:
         kmers = canonical_kmers(sequence, k)
         seq_identifier = SequenceIdentifier(name, kmers)
         for kmer in kmers:
-            sequence_index[kmer].add(seq_identifier)
+            sequence_index[kmer].append(seq_identifier)
     return dict(sequence_index)
 
 
 def identify_sequence(sequence: str,
-                      sequence_index: Dict[str, Set[SequenceIdentifier]],
+                      sequence_index: Dict[str, List[SequenceIdentifier]],
                       k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
     candidates: Set[SequenceIdentifier] = set()
     default_set: Set[SequenceIdentifier] = set()
     for kmer in kmers:
-        candidates.update(sequence_index.get(kmer, default_set))
+        candidates.update(sequence_index.get(kmer, []))
     most_matches = 0
     best_match = "No match"
     best_match_kmers = sys.maxsize
