@@ -9,6 +9,9 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Classify overrepresented sequences by using NCBI's UniVec database and an
+  assortment of nanopore adapters, ligation kits and primers.
++ Estimate duplication fractions based on counted unique sequences.
 + Add a JSON report
 + Add a progressbar powered by tqdm.
 + Implement a custom parser based on memchr for finding newlines.
