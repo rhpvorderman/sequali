@@ -295,7 +295,7 @@ def deduplicated_fraction(duplication_counts: Dict[int, int]):
     return unique_sequences / total_sequences
 
 
-def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
+def estimated_counts_to_fractions(estimated_counts: Dict[int, int]):
     named_slices = {
         "1": slice(1, 2),
         "2": slice(2, 3),
@@ -312,11 +312,17 @@ def aggregate_duplication_counts(sequence_duplication: SequenceDuplication):
         "10001-50000": slice(10_001, 50_001),
         "> 50000": slice(50_001, None),
     }
-    duplication_counts = sequence_duplication.duplication_counts(50_001)
-    aggregated_counts = [
-        sum(duplication_counts[slc]) for slc in named_slices.values()
+    count_array = array.array("Q", bytes(8 * 50002))
+    for duplication, count in estimated_counts.items():
+        if duplication > 50_000:
+            count_array[50_001] += count * duplication
+        else:
+            count_array[duplication] = count * duplication
+    total = sum(count_array)
+    aggregated_fractions = [
+        sum(count_array[slc]) / total for slc in named_slices.values()
     ]
-    return list(named_slices.keys()), aggregated_counts
+    return list(named_slices.keys()), aggregated_fractions
 
 
 def calculate_stats(
@@ -375,8 +381,8 @@ def calculate_stats(
     estimated_duplication_counts = estimate_duplication_counts(
         duplication_counts, sequence_duplication.number_of_sequences,
         sequence_duplication.stopped_collecting_at)
-    duplicated_labels, duplicated_counts = \
-        aggregate_duplication_counts(sequence_duplication)
+    duplicated_labels, duplicated_fractions = \
+        estimated_counts_to_fractions(estimated_duplication_counts)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -437,7 +443,7 @@ def calculate_stats(
         "duplication_counts": {
             "remaining_percentage":
                 deduplicated_fraction(estimated_duplication_counts) * 100,
-            "values": duplicated_counts,
+            "values": duplicated_fractions,
             "x_labels": duplicated_labels,
         }
     }
