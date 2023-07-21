@@ -45,22 +45,23 @@ def reverse_complement(sequence: str):
 def canonical_kmers(sequence: str, k: int):
     if k % 2 == 0:
         raise ValueError(f"K must be uneven, got {k}")
-    # Encoding to bytes makes translating faster
-    seq = sequence.encode("ascii")
     canonical_set = set()
     # Do all the translation upfront and not for each kmer individually as
     # there will be a lot of overlapping work
-    upper_seq = seq.translate(UPPER_TABLE)
-    revcomp_seq = upper_seq.translate(COMPLEMENT_TABLE)[::-1]
-    seqlen = len(seq)
-    for i in range(len(seq) + 1 - k):
+    # Encoding to bytes makes translating faster
+    seq_bytes = sequence.encode("ascii")
+    upper_seq_bytes = seq_bytes.translate(UPPER_TABLE)
+    revcomp_seq = upper_seq_bytes.translate(COMPLEMENT_TABLE)[::-1].decode('ascii')
+    upper_seq = upper_seq_bytes.decode('ascii')
+    seqlen = len(sequence)
+    for i in range(seqlen + 1 - k):
         kmer = upper_seq[i:i+k]
         revcomp_end = seqlen - i
-        revcomp = revcomp_seq[revcomp_end -k:revcomp_end]
+        revcomp = revcomp_seq[revcomp_end - k:revcomp_end]
         if revcomp < kmer:
-            canonical_set.add(revcomp.decode("ascii"))
+            canonical_set.add(revcomp)
         else:
-            canonical_set.add(kmer.decode("ascii"))
+            canonical_set.add(kmer)
     return canonical_set
 
 
