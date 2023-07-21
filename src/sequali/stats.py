@@ -16,24 +16,19 @@
 import array
 import collections
 import math
-import os
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
-from .sequence_identification import DEFAULT_K, create_sequence_index, \
-    identify_sequence
+from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
+    create_sequence_index, identify_sequence
 from .util import fasta_parser
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
-
-CONTAMINANTS_DIR = os.path.join(os.path.dirname(__file__), "contaminants")
-DEFAULT_CONTAMINANTS_FILES = [f.path for f in os.scandir(CONTAMINANTS_DIR)
-                              if f.name != "README"]
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:

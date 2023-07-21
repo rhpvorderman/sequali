@@ -14,10 +14,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
+import os
 import sys
 from typing import Dict, FrozenSet, Iterable, List, Set, Tuple, Union
 
 DEFAULT_K = 13
+
+CONTAMINANTS_DIR = os.path.join(os.path.dirname(__file__), "contaminants")
+DEFAULT_CONTAMINANTS_FILES = [f.path for f in os.scandir(CONTAMINANTS_DIR)
+                              if f.name != "README"]
 
 
 def create_upper_table():
