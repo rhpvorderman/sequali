@@ -358,11 +358,14 @@ def calculate_stats(
             warn_tiles.append(tile)
     overrepresented_sequences = sequence_duplication.overrepresented_sequences()
 
-    def contaminant_iterator():
-        for file in DEFAULT_CONTAMINANTS_FILES:
-            yield from fasta_parser(file)
+    if overrepresented_sequences:
+        def contaminant_iterator():
+            for file in DEFAULT_CONTAMINANTS_FILES:
+                yield from fasta_parser(file)
 
-    sequence_index = create_sequence_index(contaminant_iterator(), DEFAULT_K)
+        sequence_index = create_sequence_index(contaminant_iterator(), DEFAULT_K)
+    else:  # Only spend time creating sequence index when its worth it.
+        sequence_index = {}
     overrepresented_with_identification = [
         (count, fraction, sequence, *identify_sequence(sequence, sequence_index))
         for count, fraction, sequence in overrepresented_sequences
