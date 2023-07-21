@@ -55,7 +55,7 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
 
 # TODO: investigate the memory error on windows. On linux the maximum memory
 # TODO: used does not exceed 70MB for the entire test suite.
-@pytest.mark.skipif(sys.platform == "win32" and os.environ.get("CI"),
+@pytest.mark.skipif(sys.platform == "win32", bool(os.environ.get("CI")),
                     reason="Windows somehow gets a memory error in CI.")
 def test_sequence_duplication_overrepresented_sequences():
     seqdup = SequenceDuplication()
