@@ -14,12 +14,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import array
+import collections
 import math
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
+    create_sequence_index, identify_sequence
+from .util import fasta_parser
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -262,6 +266,65 @@ def adapter_counts(adapter_counter: AdapterCounter,
     return list(zip(adapter_counter.adapters, all_adapters))
 
 
+def estimate_duplication_counts(
+        duplication_counts: Dict[int, int],
+        total_sequences: int,
+        gathered_sequences: int) -> Dict[int, int]:
+    estimated_counts: Dict[int, int] = {}
+    for duplicates, number_of_occurences in duplication_counts.items():
+        chance_of_random_draw = duplicates / total_sequences
+        chance_of_random_not_draw = 1 - chance_of_random_draw
+        chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences  # noqa: E501
+        chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
+        estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)  # noqa: E501
+    return estimated_counts
+
+
+def duplication_fractions(
+        duplication_counts: Dict[int, int]) -> Dict[int, float]:
+    total_sequences = sum(duplicates * count
+                          for duplicates, count in duplication_counts.items())
+    return {duplicates: count / total_sequences for duplicates, count
+            in duplication_counts.items()}
+
+
+def deduplicated_fraction(duplication_counts: Dict[int, int]):
+    total_sequences = sum(duplicates * count
+                          for duplicates, count in duplication_counts.items())
+    unique_sequences = sum(duplication_counts.values())
+    return unique_sequences / total_sequences
+
+
+def estimated_counts_to_fractions(estimated_counts: Dict[int, int]):
+    named_slices = {
+        "1": slice(1, 2),
+        "2": slice(2, 3),
+        "3": slice(3, 4),
+        "4": slice(4, 5),
+        "5": slice(5, 6),
+        "6-10": slice(6, 11),
+        "11-50": slice(11, 51),
+        "51-100": slice(51, 101),
+        "101-500": slice(101, 501),
+        "501-1000": slice(501, 1001),
+        "1001-5000": slice(1001, 5001),
+        "5001-10000": slice(5001, 10_001),
+        "10001-50000": slice(10_001, 50_001),
+        "> 50000": slice(50_001, None),
+    }
+    count_array = array.array("Q", bytes(8 * 50002))
+    for duplication, count in estimated_counts.items():
+        if duplication > 50_000:
+            count_array[50_001] += count * duplication
+        else:
+            count_array[duplication] = count * duplication
+    total = sum(count_array)
+    aggregated_fractions = [
+        sum(count_array[slc]) / total for slc in named_slices.values()
+    ]
+    return list(named_slices.keys()), aggregated_fractions
+
+
 def calculate_stats(
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
@@ -299,6 +362,27 @@ def calculate_stats(
             error_tiles.append(tile)
         else:
             warn_tiles.append(tile)
+    overrepresented_sequences = sequence_duplication.overrepresented_sequences()
+
+    if overrepresented_sequences:
+        def contaminant_iterator():
+            for file in DEFAULT_CONTAMINANTS_FILES:
+                yield from fasta_parser(file)
+
+        sequence_index = create_sequence_index(contaminant_iterator(), DEFAULT_K)
+    else:  # Only spend time creating sequence index when its worth it.
+        sequence_index = {}
+    overrepresented_with_identification = [
+        (count, fraction, sequence, *identify_sequence(sequence, sequence_index))
+        for count, fraction, sequence in overrepresented_sequences
+    ]
+    sequence_counts = sequence_duplication.sequence_counts()
+    duplication_counts = collections.Counter(sequence_counts.values())
+    estimated_duplication_counts = estimate_duplication_counts(
+        duplication_counts, sequence_duplication.number_of_sequences,
+        sequence_duplication.stopped_collecting_at)
+    duplicated_labels, duplicated_fractions = \
+        estimated_counts_to_fractions(estimated_duplication_counts)
     return {
         "summary": {
             "mean_length": total_bases / total_reads,
@@ -354,5 +438,12 @@ def calculate_stats(
             "error_tiles": error_tiles,
             "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
+        },
+        "overrepresented_sequences": overrepresented_with_identification,
+        "duplication_fractions": {
+            "remaining_percentage":
+                deduplicated_fraction(estimated_duplication_counts) * 100,
+            "values": duplicated_fractions,
+            "x_labels": duplicated_labels,
         }
     }

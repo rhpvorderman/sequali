@@ -1,9 +1,25 @@
+# Copyright (C) 2023 Leiden University Medical Center
+# This file is part of sequali
+#
+# sequali is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# sequali is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with sequali.  If not, see <https://www.gnu.org/licenses/
+import io
 from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
 
-from ._qc import PHRED_MAX
+from ._qc import MAX_UNIQUE_SEQUENCES, PHRED_MAX
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
@@ -184,6 +200,50 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
     return plot.render(is_unicode=True)
 
 
+def duplication_percentages_plot(duplication_fractions: Sequence[float],
+                                 x_labels: Sequence[str]) -> str:
+    plot = pygal.Bar(
+        title="Duplication levels (%)",
+        x_labels=x_labels,
+        x_title="Duplication counts",
+        y_title="Percentage of total",
+        x_label_rotation=30,
+        **COMMON_GRAPH_OPTIONS
+    )
+    plot.add("", [100 * fraction for fraction in duplication_fractions])
+    return plot.render(is_unicode=True)
+
+
+def overrepresented_sequences_content(
+        overrepresented_sequences: Sequence[Tuple[int, float, str, int, int, str]]
+) -> str:
+    if not overrepresented_sequences:
+        return "No overrepresented sequences."
+    table = io.StringIO()
+    table.write(
+        f"The first {MAX_UNIQUE_SEQUENCES} unique sequences are tracked for "
+        f"duplicates. Sequences with high occurence are presented in the "
+        f"table. <br>")
+    table.write("Identified sequences by matched kmers. The max match is "
+                "either the number of kmers in the overrepresented sequence "
+                "or the number of kmers of the database sequence, whichever "
+                "is fewer.")
+    table.write("<table>")
+    table.write("<tr><th>count</th><th>percentage</th>"
+                "<th>sequence</th><th>kmers (matched/max)</th>"
+                "<th>best match</th></tr>")
+    for count, fraction, sequence, most_matches, max_matches, best_match in \
+            overrepresented_sequences:
+        table.write(
+            f"""<tr><td align="right">{count}</td>
+                <td align="right">{fraction * 100:.2f}</td>
+                <td>{sequence}</td>
+                <td>({most_matches}/{max_matches})</td>
+                <td>{best_match}</td></tr>""")
+    table.write("</table>")
+    return table.getvalue()
+
+
 def html_report(data: Dict[str, Any]):
     summary = data["summary"]
     ptq = data["per_tile_quality"]
@@ -251,5 +311,12 @@ def html_report(data: Dict[str, Any]):
                           data["adapter_content"]["x_labels"])}
     <h2>Per Tile Quality</h2>
     {ptq_content}
+    <h2>Duplication percentages</h2>
+    This estimates the fraction of the duplication based on the first
+    {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
+    {duplication_percentages_plot(data["duplication_fractions"]["values"],
+                                  data["duplication_fractions"]["x_labels"])}
+    <h2>Overrepresented sequences</h2>
+    {overrepresented_sequences_content(data["overrepresented_sequences"])}
     </html>
     """

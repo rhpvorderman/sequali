@@ -1,0 +1,19 @@
+This folder contains sequences that are often found as contaminants in
+sequencing experiments. According to the NCBI the most common contaminations
+are:
+- Vector DNA (plasmid, phage, BAC, etc.)
+- Adapters, linkers and PCR primers
+Other sources of contaminations are:
+- Transposons and insertion sequences
+- DNA impurities
+Source : (https://www.ncbi.nlm.nih.gov/tools/vecscreen/contam/
+
+NCBI keeps a database called UniVec for vectors and updated. It was last
+updated on May 5th 2017. It can be downloaded from:
+https://ftp.ncbi.nlm.nih.gov/pub/UniVec
+
+The UniVec database contains many adapters, linkers, and primers but not yet
+a lot of those that are used in Oxford nanopore sequencing. The
+oxford_nanopore.fasta file provides the sequences as represented in the
+technical documentation. All possible barcoding sequencing adapters for
+nanopore have not yet been added.

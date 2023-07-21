@@ -16,7 +16,7 @@
 
 import gzip
 import os
-from typing import BinaryIO, Callable, Optional
+from typing import BinaryIO, Callable, Iterator, List, Optional, Tuple
 
 import tqdm
 
@@ -73,3 +73,29 @@ class ProgressUpdater():
             current_position = self._get_position()
             self.tqdm.update(current_position - self.previous_file_pos)
             self.previous_file_pos = current_position
+
+
+def sequence_file_iterator(sequence_file: str) -> Iterator[Tuple[str, str]]:
+    with open(sequence_file, "rt") as seqfile:
+        for line in seqfile:
+            line = line.strip()
+            if not line:
+                continue  # ignore empty lines
+            if line.startswith("#"):
+                continue  # Use # as a comment character
+            name, sequence = line.split("\t")
+            yield name, sequence
+
+
+def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
+    current_seq: List[str] = []
+    name = ""
+    with open(fasta_file, "rt") as fasta:
+        for line in fasta:
+            if line.startswith(">"):
+                if current_seq:
+                    yield name, "".join(current_seq)
+                name = line.strip()[1:]
+                current_seq = []
+            else:
+                current_seq.append(line.strip())

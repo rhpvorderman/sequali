@@ -2189,13 +2189,14 @@ typedef struct _HashTableEntry {
 
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
-    size_t number_of_sequences;
-    size_t number_of_uniques;
+    uint64_t number_of_sequences;
+    uint64_t number_of_uniques;
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
     /* Store hashes and entries separately as in the most common case only
        the hash is needed. */
     Py_hash_t *hashes; 
     HashTableEntry *entries;
+    uint64_t stopped_collecting_at;
 } SequenceDuplication;
 
 static void 
@@ -2228,6 +2229,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     self->number_of_sequences = 0;
     self->number_of_uniques = 0;
+    self->stopped_collecting_at = 0;
     self->hashes = hashes;
     self->entries = entries;
     self->hashfunc = hashfuncdef->hash;
@@ -2258,6 +2260,10 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
                 entry->key_length = hash_length;
                 memcpy(entry->key, sequence, hash_length);
                 self->number_of_uniques += 1;
+                /* When MAX_UNIQUE_SEQUENCES is collected. We may have drawn
+                   a larger amount of the population. Save that number for more
+                   accurate estimates. */
+                self->stopped_collecting_at = self->number_of_sequences;
             }
             break;
         } else if (hash_entry == hash) {
@@ -2380,7 +2386,7 @@ PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
 "overrepresented_sequences($self, threshold=0.001)\n"
 "--\n"
 "\n"
-"Return a list of tuples with the fraction and the sequence. The list is "
+"Return a list of tuples with the count, fraction and the sequence. The list is "
 "sorted in reverse order with the most common sequence on top.\n"
 "\n"
 "  threshold\n"
@@ -2427,7 +2433,8 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         }
         if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
-                "(ds#)", 
+                "(kds#)",
+                count,
                 ((double)count / (double)total_sequences),
                  entry->key, entry->key_length);
             if (entry_tuple == NULL) {
@@ -2532,6 +2539,10 @@ static PyMemberDef SequenceDuplication_members[] = {
     {"number_of_sequences", T_ULONGLONG, 
      offsetof(SequenceDuplication, number_of_sequences), READONLY,
      "The total number of sequences processed"},
+    {"stopped_collecting_at", T_ULONGLONG,
+      offsetof(SequenceDuplication, stopped_collecting_at), READONLY,
+      "The number of sequences collected when the last unique item was added "
+      "to the dictionary."},
     {NULL},
 };
 
@@ -2646,5 +2657,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
+    PyModule_AddIntMacro(m, MAX_UNIQUE_SEQUENCES);
     return m;
 }
