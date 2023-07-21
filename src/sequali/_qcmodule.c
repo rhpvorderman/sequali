@@ -2657,5 +2657,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
+    PyModule_AddIntMacro(m, MAX_UNIQUE_SEQUENCES);
     return m;
 }

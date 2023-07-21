@@ -440,7 +440,7 @@ def calculate_stats(
             "x_labels": x_labels,
         },
         "overrepresented_sequences": overrepresented_with_identification,
-        "duplication_counts": {
+        "duplication_fractions": {
             "remaining_percentage":
                 deduplicated_fraction(estimated_duplication_counts) * 100,
             "values": duplicated_fractions,

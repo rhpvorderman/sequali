@@ -27,6 +27,7 @@ G: int
 T: int 
 N: int 
 MAX_SEQUENCE_SIZE: int
+MAX_UNIQUE_SEQUENCES: int
 
 class FastqRecordView:
     obj: bytes
