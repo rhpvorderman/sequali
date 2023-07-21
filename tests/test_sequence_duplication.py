@@ -1,4 +1,6 @@
 import itertools
+import os
+import sys
 
 import pytest
 
@@ -51,6 +53,9 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
     error.match("1.0")
 
 
+# TODO: investigate the memory error on windows.
+@pytest.mark.skipif(sys.platform == "win32" and os.environ.get("CI"),
+                    reason="Windows somehow gets a memory error in CI.")
 def test_sequence_duplication_overrepresented_sequences():
     seqdup = SequenceDuplication()
     for i in range(100):
