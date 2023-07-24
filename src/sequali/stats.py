@@ -303,7 +303,9 @@ def estimated_counts_to_fractions(estimated_counts: Dict[int, int]):
         "4": slice(4, 5),
         "5": slice(5, 6),
         "6-10": slice(6, 11),
-        "11-50": slice(11, 51),
+        "11-20": slice(11, 21),
+        "21-30": slice(21, 31),
+        "31-50": slice(31, 51),
         "51-100": slice(51, 101),
         "101-500": slice(101, 501),
         "501-1000": slice(501, 1001),
@@ -441,8 +443,8 @@ def calculate_stats(
         },
         "overrepresented_sequences": overrepresented_with_identification,
         "duplication_fractions": {
-            "remaining_percentage":
-                deduplicated_fraction(estimated_duplication_counts) * 100,
+            "remaining_fraction":
+                deduplicated_fraction(estimated_duplication_counts),
             "values": duplicated_fractions,
             "x_labels": duplicated_labels,
         }
