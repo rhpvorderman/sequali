@@ -99,3 +99,4 @@ def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
                 current_seq = []
             else:
                 current_seq.append(line.strip())
+        yield name, "".join(current_seq)
