@@ -193,6 +193,10 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
         show_minor_x_labels=False,
         x_title="position",
         y_title="%",
+        legend_at_bottom=True,
+        legend_at_bottom_columns=1,
+        truncate_legend=-1,
+        height=800,
         **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
@@ -314,8 +318,8 @@ def html_report(data: Dict[str, Any]):
     <h2>Duplication percentages</h2>
     This estimates the fraction of the duplication based on the first
     {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
-    Estimated remaining sequences if deduplicated: 
-        {data["duplication_fractions"]["remaining_fraction"]:.2%} 
+    Estimated remaining sequences if deduplicated:
+        {data["duplication_fractions"]["remaining_fraction"]:.2%}
     <br>
     {duplication_percentages_plot(data["duplication_fractions"]["values"],
                                   data["duplication_fractions"]["x_labels"])}

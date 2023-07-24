@@ -23,7 +23,10 @@ from ._qc import AdapterCounter, FastqParser, PerTileQuality, QCMetrics, \
     SequenceDuplication
 from .html_report import html_report
 from .stats import calculate_stats
-from .util import ProgressUpdater
+from .util import ProgressUpdater, sequence_file_iterator
+
+DEFAULT_ADAPTERS_FILE = os.path.join(os.path.dirname(__file__),
+                                     "adapters", "adapter_list.txt")
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -42,14 +45,7 @@ def argument_parser() -> argparse.ArgumentParser:
 def main():
     args = argument_parser().parse_args()
     metrics = QCMetrics()
-    adapters = {
-        "Illumina Universal Adapter": "AGATCGGAAGAG",
-        "Illumina Small RNA 3' Adapter": "TGGAATTCTCGG",
-        "Illumina Small RNA 5' Adapter": "GATCGTCGGACT",
-        "Nextera Transposase Sequence": "CTGTCTCTTATA",
-        "PolyA": "AAAAAAAAAAAA",
-        "PolyG": "GGGGGGGGGGGG",
-    }
+    adapters = dict(sequence_file_iterator(DEFAULT_ADAPTERS_FILE))
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication()
@@ -67,7 +63,8 @@ def main():
     json_data = calculate_stats(metrics,
                                 adapter_counter,
                                 per_tile_quality,
-                                sequence_duplication)
+                                sequence_duplication,
+                                adapter_names=list(adapters.keys()))
     if args.json is None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:

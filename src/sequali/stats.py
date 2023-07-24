@@ -250,6 +250,7 @@ def per_base_qualities(count_tables: array.ArrayType) -> List[List[float]]:
 
 
 def adapter_counts(adapter_counter: AdapterCounter,
+                   adapter_names: List[str],
                    data_ranges: Sequence[Tuple[int, int]]):
     all_adapters = []
     total_sequences = adapter_counter.number_of_sequences
@@ -263,7 +264,7 @@ def adapter_counts(adapter_counter: AdapterCounter,
             accumulated_counts.append(total)
         all_adapters.append([count * 100 / total_sequences
                              for count in accumulated_counts])
-    return list(zip(adapter_counter.adapters, all_adapters))
+    return list(zip(adapter_names, all_adapters))
 
 
 def estimate_duplication_counts(
@@ -332,6 +333,7 @@ def calculate_stats(
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
         sequence_duplication: SequenceDuplication,
+        adapter_names: List[str],
         graph_resolution: int = 200) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
@@ -430,7 +432,7 @@ def calculate_stats(
         },
         "adapter_content": {
             "x_labels": x_labels,
-            "values": adapter_counts(adapter_counter, data_ranges)
+            "values": adapter_counts(adapter_counter, adapter_names, data_ranges)
 
         },
         "per_tile_quality": {
