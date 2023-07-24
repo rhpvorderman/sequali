@@ -193,6 +193,10 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
         show_minor_x_labels=False,
         x_title="position",
         y_title="%",
+        legend_at_bottom=True,
+        legend_at_bottom_columns=1,
+        truncate_legend=-1,
+        height=800,
         **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
