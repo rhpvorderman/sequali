@@ -63,7 +63,8 @@ def main():
     json_data = calculate_stats(metrics,
                                 adapter_counter,
                                 per_tile_quality,
-                                sequence_duplication)
+                                sequence_duplication,
+                                adapter_names=list(adapters.keys()))
     if args.json is None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
