@@ -626,10 +626,14 @@ FastqParser__next__(FastqParser *self)
     uint8_t *buffer_end = self->buffer_end;
     size_t parsed_records = 0;
     while (parsed_records == 0) {
-        size_t leftover_size = buffer_end - record_start; 
-        size_t read_in_size = self->read_in_size - leftover_size;
-        if (read_in_size == 0) {
+        size_t leftover_size = buffer_end - record_start;
+        size_t read_in_size;
+        if (leftover_size >= self->read_in_size) {
+        	// A FASTQ record does not fit, enlarge the buffer
             read_in_size = self->read_in_size;
+        } else {
+        	// Fill up the buffer up to read_in_size
+        	read_in_size = self->read_in_size - leftover_size;
         }
         PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
         if (new_bytes == NULL) {
