@@ -1,0 +1,21 @@
+# This file contains subsequences of common adapters
+# Keep in mind that the implementation stores adapters in a 64-bit word so
+# the runtime increases when the combined length of the adapters exceeds
+# 64. For this reason length 12 is chosen, so we can fit 5 adapters in a
+# single word.
+
+Illumina Universal Adapter	AGATCGGAAGAG
+Illumina Small RNA 3' adapter	TGGAATTCTCGG
+Illumina Small RNA 5' adapter	GATCGTCGGACT
+
+Nextera Transposase Sequence	CTGTCTCTTATA
+
+PolyA	AAAAAAAAAAAA
+PolyG	GGGGGGGGGGGG
+
+Oxford nanopore ligation kit or rapid adapter, top strand	TTTTTTTTCCTG
+Oxford nanopore ligation kit or Adapter Mix (AMX), bottom strand	GCAATACGTAAC
+Oxford nanopore strand switching primer (I or II)	TTTCTGTTGGTG
+Oxford nanopore RT primer, VN primer	CTTGCCTGTCGC
+Oxford nanopore cDNA RT adapter	CTTGCGGGCGGC
+Oxford nanopore CDNA primer, forward and reverse	ATCGCCTACCGTG

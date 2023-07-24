@@ -314,8 +314,8 @@ def html_report(data: Dict[str, Any]):
     <h2>Duplication percentages</h2>
     This estimates the fraction of the duplication based on the first
     {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
-    Estimated remaining sequences if deduplicated: 
-        {data["duplication_fractions"]["remaining_fraction"]:.2%} 
+    Estimated remaining sequences if deduplicated:
+        {data["duplication_fractions"]["remaining_fraction"]:.2%}
     <br>
     {duplication_percentages_plot(data["duplication_fractions"]["values"],
                                   data["duplication_fractions"]["x_labels"])}
