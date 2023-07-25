@@ -130,10 +130,12 @@ def per_base_quality_distribution_plot(
         show_minor_x_labels=False,
         x_title="position",
         y_title="fraction",
+        fill=True,
         **COMMON_GRAPH_OPTIONS,
     )
     for name, serie in per_base_quality_distribution.items():
-        plot.add(name, label_values(serie, x_labels), fill=True)
+        serie_filled = sum(serie) > 0.0
+        plot.add(name, label_values(serie, x_labels), show_dots=serie_filled)
     return plot.render(is_unicode=True)
 
 
