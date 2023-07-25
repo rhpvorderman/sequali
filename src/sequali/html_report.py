@@ -240,6 +240,8 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
         **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
+        if max(content) < 0.1:
+            continue
         plot.add(label, label_values(content, x_labels))
     return plot.render(is_unicode=True)
 
@@ -356,6 +358,9 @@ def html_report(data: Dict[str, Any]):
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Adapter content plot</h2>
+    Only adapters that are present more than 0.1% are shown. Given the 12bp
+    length of the sequences used to estimate the content, values below this
+    threshold are problably false positives. <br>
     {adapter_content_plot(data["adapter_content"]["values"],
                           data["adapter_content"]["x_labels"])}
     <h2>Duplication percentages</h2>
