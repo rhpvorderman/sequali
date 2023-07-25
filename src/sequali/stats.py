@@ -373,20 +373,20 @@ def calculate_stats(
     per_tile_phreds = normalized_per_tile_averages(
         per_tile_quality.get_tile_counts(), data_ranges)
     rendered_tiles = []
-    warn_tiles = []
-    error_tiles = []
-    good_tiles = []
+    tiles_2x_errors = []
+    tiles_10x_errors = []
+    tiles_average_errors = []
     for tile, tile_phreds in per_tile_phreds:
         tile_minimum = min(tile_phreds)
         tile_maximum = max(tile_phreds)
-        if tile_minimum > -2 and tile_maximum < 2:
-            good_tiles.append(tile)
+        if tile_minimum > -3 and tile_maximum < 3:
+            tiles_average_errors.append(tile)
             continue
         rendered_tiles.append((tile, tile_phreds))
         if tile_minimum < -10 or tile_maximum > 10:
-            error_tiles.append(tile)
+            tiles_10x_errors.append(tile)
         else:
-            warn_tiles.append(tile)
+            tiles_2x_errors.append(tile)
     overrepresented_sequences = sequence_duplication.overrepresented_sequences()
 
     if overrepresented_sequences:
@@ -473,9 +473,9 @@ def calculate_stats(
         },
         "per_tile_quality": {
             "skipped_reason": per_tile_quality.skipped_reason,
-            "good_tiles": good_tiles,
-            "warn_tiles": warn_tiles,
-            "error_tiles": error_tiles,
+            "tiles_average_errors": tiles_average_errors,
+            "tiles_2x_errors": tiles_2x_errors,
+            "tiles_10x_errors": tiles_10x_errors,
             "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
         },

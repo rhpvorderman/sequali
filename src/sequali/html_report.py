@@ -56,7 +56,7 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     red = "#FF0000"
     yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
     style = style_class(
-        colors=(yellow, yellow, red, red) + style_class.colors
+        colors=(yellow, red) + style_class.colors
     )
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
@@ -64,6 +64,7 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         stroke=False,
         style=style,
         y_title="Normalized phred",
+        truncate_legend=-1,
         **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
@@ -72,21 +73,22 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         scatter_plot.add(name, [position for _ in range(len(x_labels))],
                          show_dots=False, stroke=True,)
 
-    add_horizontal_line("warn", -2)
-    add_horizontal_line("warn", 2)
-    add_horizontal_line("error", -10)
-    add_horizontal_line("error", 10)
+    add_horizontal_line("2 times more errors", -3)
+    add_horizontal_line("10 times more errors", -10)
 
     min_phred = -10.0
-    max_phred = 10.0
+    max_phred = 0.0
     for tile, tile_phreds in per_tile_phreds:
-        cleaned_phreds = [{'value': phred, 'label': label}
-                          if (phred > 2 or phred < -2) else None
-                          for phred, label in zip(tile_phreds, x_labels)]
-        scatter_plot.add(str(tile),  cleaned_phreds)
         min_phred = min(min_phred, *tile_phreds)
         max_phred = max(max_phred, *tile_phreds)
-    scatter_plot.range = (min_phred - 1, max_phred + 1)
+        scatter_plot.range = (min_phred - 1, max_phred + 1)
+        if min(tile_phreds) > -3 and max(tile_phreds) < 3:
+            continue
+        cleaned_phreds = [{'value': phred, 'label': label}
+                          if (phred > 3 or phred < -3) else None
+                          for phred, label in zip(tile_phreds, x_labels)]
+        scatter_plot.add(str(tile),  cleaned_phreds)
+
     return scatter_plot.render(is_unicode=True)
 
 
@@ -310,11 +312,16 @@ def html_report(data: Dict[str, Any]):
     if skipped_reason:
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
-        ptq_text = """
+        ptq_text = f"""
+        Tiles with more than 2 times the average error:
+        {", ".join(ptq["tiles_2x_errors"])}<br>
+        Tiles with more than 10 times the average error:
+        {", ".join(ptq["tiles_10x_errors"])}<br>
+        <br>
         This graph shows the deviation of each tile on each position from
         the geometric mean of all tiles at that position. The scale is
         expressed in phred units. -10 is 10 times more errors than the average.
-        -2 is 1.58 times more errors than the average. Only points that
+        -3 is ~2 times more errors than the average. Only points that
         deviate more than 2 phred units from the average are shown. <br>
         """
         ptq_graph = per_tile_graph(
