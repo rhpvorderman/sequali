@@ -2155,12 +2155,12 @@ static PyTypeObject PerTileQuality_Type = {
  * SEQUENCE DUPLICATION *
  *************************/
 
-/* A module to use the first 50 bp of reads and collect the first 100_000 
+/* A module to use the first 50 bp of reads and collect the first 1_000_000
    unique sequences and see how often they occur to estimate the duplication 
    rate and overrepresented sequences. The idea to take the first 100_000 with 
-   50 bp comes from FastQC. 
+   50 bp comes from FastQC. In sequali this is increased to 1_000_000.
    
-   Below some typical figures:
+   Below some typical figures (tested with 100_000 sequences):
    For a 5 million read illumina library:
     100000  Unique sequences recorded
      13038  Duplicates of one of the 100_000
@@ -2197,8 +2197,12 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t number_of_uniques;
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
     /* Store hashes and entries separately as in the most common case only
-       the hash is needed. */
+       the hash is needed. Also store a uint32_t array of indexes to the
+       entries table. This ensures the entries table can be tightly packed
+       with no open spaces. The entries are stored in insertion order. This
+       is similar to what CPython does for its dictionary. */
     Py_hash_t *hashes; 
+    uint32_t *entry_indexes;
     HashTableEntry *entries;
     uint64_t stopped_collecting_at;
 } SequenceDuplication;
@@ -2207,6 +2211,7 @@ static void
 SequenceDuplication_dealloc(SequenceDuplication *self)
 {
     PyMem_Free(self->hashes);
+    PyMem_Free(self->entry_indexes);
     PyMem_Free(self->entries);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -2220,11 +2225,13 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     Py_hash_t *hashes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
-    HashTableEntry *entries = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(HashTableEntry));
+    uint32_t *entry_indexes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(uint32_t));
+    HashTableEntry *entries = PyMem_Calloc(MAX_UNIQUE_SEQUENCES, sizeof(HashTableEntry));
     PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
-    if ((hashes == NULL) | (entries == NULL)) {
+    if ((hashes == NULL) || (entries == NULL) || (entry_indexes == NULL)) {
         PyMem_Free(hashes);
         PyMem_Free(entries);
+        PyMem_Free(entry_indexes);
         return PyErr_NoMemory();
     }
     SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
@@ -2235,6 +2242,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->number_of_uniques = 0;
     self->stopped_collecting_at = 0;
     self->hashes = hashes;
+    self->entry_indexes = entry_indexes;
     self->entries = entries;
     self->hashfunc = hashfuncdef->hash;
     return (PyObject *)self;
@@ -2252,6 +2260,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
        setting the most significant bit, this does not affect the resulting index. */
     hash |= (1ULL << 63);  
     Py_hash_t *hashes = self->hashes;
+    uint32_t *entry_indexes = self->entry_indexes;
     size_t index = hash % HASH_TABLE_SIZE;
  
     while (1) {
@@ -2259,7 +2268,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         if (hash_entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hashes[index] = hash;
-                HashTableEntry *entry = self->entries + index;
+                uint32_t entry_index = self->number_of_uniques;
+                entry_indexes[index] = entry_index;
+                HashTableEntry *entry = self->entries + entry_index;
                 entry->count = 1;
                 entry->key_length = hash_length;
                 memcpy(entry->key, sequence, hash_length);
@@ -2271,7 +2282,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             }
             break;
         } else if (hash_entry == hash) {
-                HashTableEntry *entry = self->entries + index;
+                HashTableEntry *entry = self->entries + entry_indexes[index];
             /* There is a very small chance of a hash collision, check to make 
                sure. If not equal we simply go to the next hash_entry. */
             if (entry->key_length == hash_length && 
@@ -2359,7 +2370,7 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
     }
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
         HashTableEntry *entry = entries + i;
         if (entry->count == 0) {
             continue;
@@ -2429,7 +2440,7 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     uint64_t minimum_hits = threshold * total_sequences;
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
         if (count == 0) {
@@ -2502,7 +2513,7 @@ SequenceDuplication_duplication_counts(SequenceDuplication *self,
     }
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
         if (count == 0) {
