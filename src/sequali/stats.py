@@ -418,7 +418,7 @@ def calculate_stats(
             "q20_bases": q20_bases(aggregated_table),
             "total_gc_fraction": total_gc_fraction(aggregated_table),
         },
-        "per_base_qualities": {
+        "per_position_qualities": {
             "x_labels": x_labels,
             "values": {
                 "mean": mean_qualities(aggregated_table),
@@ -429,7 +429,7 @@ def calculate_stats(
                 "N": pbq[N],
             },
         },
-        "per_base_quality_distribution": {
+        "per_position_quality_distribution": {
             "x_labels": x_labels,
             "values": dict(zip([
                 "0-3",
@@ -454,7 +454,7 @@ def calculate_stats(
             "x_labels": x_labels,
             "values": bc,
         },
-        "per_base_n_content": {
+        "per_position_n_content": {
             "x_labels": x_labels,
             "values": n_content,
         },

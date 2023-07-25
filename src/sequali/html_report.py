@@ -90,8 +90,8 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     return scatter_plot.render(is_unicode=True)
 
 
-def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
-                          x_labels: Sequence[str]) -> str:
+def per_position_quality_plot(per_position_qualities: Dict[str, Sequence[float]],
+                              x_labels: Sequence[str]) -> str:
     plot = pygal.Line(
         title="Per base average sequence quality",
         dots_size=1,
@@ -100,16 +100,16 @@ def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
         **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
-    plot.add("A", label_values(per_base_qualities["A"], x_labels))
-    plot.add("C", label_values(per_base_qualities["C"], x_labels))
-    plot.add("G", label_values(per_base_qualities["G"], x_labels))
-    plot.add("T", label_values(per_base_qualities["T"], x_labels))
-    plot.add("mean", label_values(per_base_qualities["mean"], x_labels))
+    plot.add("A", label_values(per_position_qualities["A"], x_labels))
+    plot.add("C", label_values(per_position_qualities["C"], x_labels))
+    plot.add("G", label_values(per_position_qualities["G"], x_labels))
+    plot.add("T", label_values(per_position_qualities["T"], x_labels))
+    plot.add("mean", label_values(per_position_qualities["mean"], x_labels))
     return plot.render(is_unicode=True)
 
 
-def per_base_quality_distribution_plot(
-        per_base_quality_distribution: Dict[str, Sequence[float]],
+def per_position_quality_distribution_plot(
+        per_position_quality_distribution: Dict[str, Sequence[float]],
         x_labels: Sequence[str]) -> str:
     dark_red = "#8B0000"                # 0-3
     red = "#ff0000"                     # 4-7
@@ -139,7 +139,7 @@ def per_base_quality_distribution_plot(
         **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
-    for name, serie in per_base_quality_distribution.items():
+    for name, serie in per_position_quality_distribution.items():
         serie_filled = sum(serie) > 0.0
         plot.add(name, label_values(serie, x_labels), show_dots=serie_filled)
     return plot.render(is_unicode=True)
@@ -355,12 +355,12 @@ def html_report(data: Dict[str, Any]):
         data["sequence_length_distribution"]["x_labels"],
     )}
     <h2>Per position quality score distribution</h2>
-    {per_base_quality_distribution_plot(
-        data["per_base_quality_distribution"]["values"],
-        data["per_base_quality_distribution"]["x_labels"])}
+    {per_position_quality_distribution_plot(
+        data["per_position_quality_distribution"]["values"],
+        data["per_position_quality_distribution"]["x_labels"])}
     <h2>Per position average quality score</h2>
-    {per_base_quality_plot(data["per_base_qualities"]["values"],
-                           data["per_base_qualities"]["x_labels"], )}
+    {per_position_quality_plot(data["per_position_qualities"]["values"],
+                               data["per_position_qualities"]["x_labels"], )}
     <h2>Per sequence quality scores</h2>
     {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
     <h2>Per Tile Quality</h2>
@@ -369,8 +369,8 @@ def html_report(data: Dict[str, Any]):
     {base_content_plot(data["base_content"]["values"],
                        data["base_content"]["x_labels"])}
     <h2>Per position N content</h2>
-    {n_content_plot(data["per_base_n_content"]["values"],
-                    data["per_base_n_content"]["x_labels"])}
+    {n_content_plot(data["per_position_n_content"]["values"],
+                    data["per_position_n_content"]["x_labels"])}
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Adapter content plot</h2>
