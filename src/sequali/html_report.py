@@ -30,8 +30,23 @@ COMMON_GRAPH_OPTIONS = dict(
 
 
 def label_values(values: Sequence[Any], labels: Sequence[Any]):
+    if len(values) != len(labels):
+        raise ValueError("labels and values should have the same length")
     return [{"value": value, "label": label} for value, label
             in zip(values, labels)]
+
+
+def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
+    # Labels are ranges such as 1-5, 101-142 etc. This clutters the x axis
+    # labeling so only use the first number. The values will be labelled
+    # separately.
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
+    return dict(
+        x_labels = simple_x_labels,
+        x_labels_major_every = round(len(x_labels) / 30),
+        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
+        show_minor_x_labels=False
+    )
 
 
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
@@ -46,14 +61,11 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
-        x_labels=simple_x_labels,
         x_title="position",
         stroke=False,
         style=style,
-        x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
-        show_minor_x_labels=False,
         y_title="Normalized phred",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
 
@@ -85,12 +97,9 @@ def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
     plot = pygal.Line(
         title="Per base average sequence quality",
         dots_size=1,
-        x_labels=simple_x_labels,
-        x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
-        show_minor_x_labels=False,
         x_title="position",
         y_title="phred score",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     plot.add("A", label_values(per_base_qualities["A"], x_labels))
@@ -126,14 +135,11 @@ def per_base_quality_distribution_plot(
         title="Per base quality distribution",
         style=style,
         dots_size=1,
-        x_labels=simple_x_labels,
         y_labels=[i / 10 for i in range(11)],
-        x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
-        show_minor_x_labels=False,
         x_title="position",
         y_title="fraction",
         fill=True,
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     for name, serie in per_base_quality_distribution.items():
@@ -147,12 +153,9 @@ def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Bar(
         title="Sequence length distribution",
-        x_labels=simple_x_labels,
-        x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
-        show_minor_x_labels=False,
         x_title="sequence length",
         y_title="number of reads",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     plot.add("Length", label_values(sequence_lengths, x_labels))
@@ -175,13 +178,10 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
         title="Base content",
         style=style,
         dots_size=1,
-        x_labels=simple_x_labels,
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
         y_labels=[i / 10 for i in range(11)],
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="position",
         y_title="fraction",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     plot.add("G", label_values(base_content["G"], x_labels), fill=True)
@@ -232,17 +232,14 @@ def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Adapter content (%)",
-        x_labels=simple_x_labels,
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
         range=(0.0, 100.0),
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="position",
         y_title="%",
         legend_at_bottom=True,
         legend_at_bottom_columns=1,
         truncate_legend=-1,
         height=800,
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
