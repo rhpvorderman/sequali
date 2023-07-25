@@ -45,27 +45,16 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def base_weighted_categories(
-        count_tables: array.array, number_of_categories: int
-) -> Iterator[Tuple[int, int]]:
-    max_length = len(count_tables) // TABLE_SIZE
-    base_counts = array.array("Q", bytes((max_length + 1) * 8))
-    base_counts[0] = max_length
-    for i, table in enumerate(table_iterator(count_tables)):
-        base_counts[i+1] = sum(table)
-    total_bases = sum(base_counts)
-    per_category = total_bases // number_of_categories
-    enough_bases = per_category
+def logarithmic_ranges(length: int, parts: int):
+    exponent = math.log(length) / math.log(parts)
     start = 0
-    total = 0
-    for stop, count in enumerate(base_counts, start=1):
-        total += count
-        if total >= enough_bases:
-            yield start, stop
-            start = stop
-            enough_bases += per_category
-    if start != len(base_counts):
-        yield start, len(base_counts)
+    for i in range(1, parts + 1):
+        stop = round(i ** exponent)
+        length = stop - start
+        if length < 1:
+            continue
+        yield start, stop
+        start = stop
 
 
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
@@ -154,19 +143,35 @@ def aggregate_count_matrix(
     return aggregated_matrix
 
 
-def base_content(count_tables: array.ArrayType) -> List[List[float]]:
+def base_content(count_tables: array.ArrayType) -> Dict[str, List[float]]:
     total_tables = len(count_tables) // TABLE_SIZE
-    base_fractions = [
-        [0.0 for _ in range(total_tables)]
+    base_counts = [
+        [0 for _ in range(total_tables)]
         for _ in range(NUMBER_OF_NUCS)
     ]
     for index, table in enumerate(table_iterator(count_tables)):
-        total = sum(table)
-        if total == 0:
-            continue
         for i in range(NUMBER_OF_NUCS):
-            base_fractions[i][index] = sum(table[i::NUMBER_OF_NUCS]) / total
-    return base_fractions
+            base_counts[i][index] = sum(table[i::NUMBER_OF_NUCS])
+    named_totals = []
+    totals = []
+    for i in range(total_tables):
+        named_total = (base_counts[A][i] + base_counts[C][i] +
+                       base_counts[G][i] + base_counts[T][i])
+        total = named_total + base_counts[N][i]
+        named_totals.append(named_total)
+        totals.append(total)
+    return {
+        "A": [count / total for count, total in
+              zip(base_counts[A], named_totals)],
+        "C": [count / total for count, total in
+              zip(base_counts[C], named_totals)],
+        "G": [count / total for count, total in
+              zip(base_counts[G], named_totals)],
+        "T": [count / total for count, total in
+              zip(base_counts[T], named_totals)],
+        "N": [count / total for count, total in
+              zip(base_counts[N], totals)],
+    }
 
 
 def total_gc_fraction(count_tables: array.ArrayType) -> float:
@@ -247,6 +252,21 @@ def per_base_qualities(count_tables: array.ArrayType) -> List[List[float]]:
                 nuc_probs[i] / nuc_counts[i]
             )
     return base_qualities
+
+
+def per_base_quality_distribution(count_tables: array.ArrayType) -> List[List[float]]:
+    total_tables = len(count_tables) // TABLE_SIZE
+    quality_distribution = [
+        [0.0 for _ in range(total_tables)]
+        for _ in range(NUMBER_OF_PHREDS)
+    ]
+    for cat_index, table in enumerate(table_iterator(count_tables)):
+        total_nucs = sum(table)
+        for offset in range(0, TABLE_SIZE, NUMBER_OF_NUCS):
+            category_nucs = sum(table[offset: offset + NUMBER_OF_NUCS])
+            nuc_fraction = category_nucs / total_nucs
+            quality_distribution[offset // NUMBER_OF_NUCS][cat_index] = nuc_fraction
+    return quality_distribution
 
 
 def adapter_counts(adapter_counter: AdapterCounter,
@@ -340,7 +360,7 @@ def calculate_stats(
     data_ranges = (
         list(equidistant_ranges(metrics.max_length, graph_resolution))
         if metrics.max_length < 500 else
-        list(base_weighted_categories(count_table, graph_resolution))
+        list(logarithmic_ranges(metrics.max_length, graph_resolution))
     )
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
@@ -349,23 +369,24 @@ def calculate_stats(
     x_labels = stringify_ranges(data_ranges)
     pbq = per_base_qualities(aggregated_table)
     bc = base_content(aggregated_table)
+    n_content = bc.pop("N")
     per_tile_phreds = normalized_per_tile_averages(
         per_tile_quality.get_tile_counts(), data_ranges)
     rendered_tiles = []
-    warn_tiles = []
-    error_tiles = []
-    good_tiles = []
+    tiles_2x_errors = []
+    tiles_10x_errors = []
+    tiles_average_errors = []
     for tile, tile_phreds in per_tile_phreds:
         tile_minimum = min(tile_phreds)
         tile_maximum = max(tile_phreds)
-        if tile_minimum > -2 and tile_maximum < 2:
-            good_tiles.append(tile)
+        if tile_minimum > -3 and tile_maximum < 3:
+            tiles_average_errors.append(tile)
             continue
         rendered_tiles.append((tile, tile_phreds))
         if tile_minimum < -10 or tile_maximum > 10:
-            error_tiles.append(tile)
+            tiles_10x_errors.append(tile)
         else:
-            warn_tiles.append(tile)
+            tiles_2x_errors.append(tile)
     overrepresented_sequences = sequence_duplication.overrepresented_sequences()
 
     if overrepresented_sequences:
@@ -397,7 +418,7 @@ def calculate_stats(
             "q20_bases": q20_bases(aggregated_table),
             "total_gc_fraction": total_gc_fraction(aggregated_table),
         },
-        "per_base_qualities": {
+        "per_position_qualities": {
             "x_labels": x_labels,
             "values": {
                 "mean": mean_qualities(aggregated_table),
@@ -408,19 +429,34 @@ def calculate_stats(
                 "N": pbq[N],
             },
         },
+        "per_position_quality_distribution": {
+            "x_labels": x_labels,
+            "values": dict(zip([
+                "0-3",
+                "4-7",
+                "8-11",
+                "12-15",
+                "16-19",
+                "20-23",
+                "24-27",
+                "28-31",
+                "32-35",
+                "36-39",
+                "40-43",
+                ">=44"
+            ], per_base_quality_distribution(aggregated_table))),
+        },
         "sequence_length_distribution": {
             "x_labels": ["0"] + x_labels,
             "values": aggregate_sequence_lengths(seq_lengths, data_ranges)
         },
         "base_content": {
             "x_labels": x_labels,
-            "values": {
-                "A": bc[A],
-                "C": bc[C],
-                "G": bc[G],
-                "T": bc[T],
-                "N": bc[N],
-            },
+            "values": bc,
+        },
+        "per_position_n_content": {
+            "x_labels": x_labels,
+            "values": n_content,
         },
         "per_sequence_gc_content": {
             "x_labels": [str(i) for i in range(101)],
@@ -437,9 +473,9 @@ def calculate_stats(
         },
         "per_tile_quality": {
             "skipped_reason": per_tile_quality.skipped_reason,
-            "good_tiles": good_tiles,
-            "warn_tiles": warn_tiles,
-            "error_tiles": error_tiles,
+            "tiles_average_errors": tiles_average_errors,
+            "tiles_2x_errors": tiles_2x_errors,
+            "tiles_10x_errors": tiles_10x_errors,
             "normalized_per_tile_averages_for_problematic_tiles": rendered_tiles,
             "x_labels": x_labels,
         },

@@ -30,8 +30,23 @@ COMMON_GRAPH_OPTIONS = dict(
 
 
 def label_values(values: Sequence[Any], labels: Sequence[Any]):
+    if len(values) != len(labels):
+        raise ValueError("labels and values should have the same length")
     return [{"value": value, "label": label} for value, label
             in zip(values, labels)]
+
+
+def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
+    # Labels are ranges such as 1-5, 101-142 etc. This clutters the x axis
+    # labeling so only use the first number. The values will be labelled
+    # separately.
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
+    return dict(
+        x_labels=simple_x_labels,
+        x_labels_major_every=round(len(x_labels) / 30),
+        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else 0,
+        show_minor_x_labels=False
+    )
 
 
 def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
@@ -41,18 +56,16 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     red = "#FF0000"
     yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
     style = style_class(
-        colors=(yellow, yellow, red, red) + style_class.colors
+        colors=(yellow, red) + style_class.colors
     )
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
-        x_labels=simple_x_labels,
         x_title="position",
         stroke=False,
         style=style,
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         y_title="Normalized phred",
+        truncate_legend=-1,
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
 
@@ -60,55 +73,87 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
         scatter_plot.add(name, [position for _ in range(len(x_labels))],
                          show_dots=False, stroke=True,)
 
-    add_horizontal_line("warn", -2)
-    add_horizontal_line("warn", 2)
-    add_horizontal_line("error", -10)
-    add_horizontal_line("error", 10)
+    add_horizontal_line("2 times more errors", -3)
+    add_horizontal_line("10 times more errors", -10)
 
     min_phred = -10.0
-    max_phred = 10.0
+    max_phred = 0.0
     for tile, tile_phreds in per_tile_phreds:
-        cleaned_phreds = [{'value': phred, 'label': label}
-                          if (phred > 2 or phred < -2) else None
-                          for phred, label in zip(tile_phreds, x_labels)]
-        scatter_plot.add(str(tile),  cleaned_phreds)
         min_phred = min(min_phred, *tile_phreds)
         max_phred = max(max_phred, *tile_phreds)
-    scatter_plot.range = (min_phred - 1, max_phred + 1)
+        scatter_plot.range = (min_phred - 1, max_phred + 1)
+        if min(tile_phreds) > -3 and max(tile_phreds) < 3:
+            continue
+        cleaned_phreds = [{'value': phred, 'label': label}
+                          if (phred > 3 or phred < -3) else None
+                          for phred, label in zip(tile_phreds, x_labels)]
+        scatter_plot.add(str(tile),  cleaned_phreds)
+
     return scatter_plot.render(is_unicode=True)
 
 
-def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
-                          x_labels: Sequence[str]) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
+def per_position_quality_plot(per_position_qualities: Dict[str, Sequence[float]],
+                              x_labels: Sequence[str]) -> str:
     plot = pygal.Line(
-        title="Per base sequence quality",
+        title="Per base average sequence quality",
         dots_size=1,
-        x_labels=simple_x_labels,
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="position",
         y_title="phred score",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
-    plot.add("A", label_values(per_base_qualities["A"], x_labels))
-    plot.add("C", label_values(per_base_qualities["C"], x_labels))
-    plot.add("G", label_values(per_base_qualities["G"], x_labels))
-    plot.add("T", label_values(per_base_qualities["T"], x_labels))
-    plot.add("mean", label_values(per_base_qualities["mean"], x_labels))
+    plot.add("A", label_values(per_position_qualities["A"], x_labels))
+    plot.add("C", label_values(per_position_qualities["C"], x_labels))
+    plot.add("G", label_values(per_position_qualities["G"], x_labels))
+    plot.add("T", label_values(per_position_qualities["T"], x_labels))
+    plot.add("mean", label_values(per_position_qualities["mean"], x_labels))
+    return plot.render(is_unicode=True)
+
+
+def per_position_quality_distribution_plot(
+        per_position_quality_distribution: Dict[str, Sequence[float]],
+        x_labels: Sequence[str]) -> str:
+    dark_red = "#8B0000"                # 0-3
+    red = "#ff0000"                     # 4-7
+    light_red = "#ff9999"               # 8-11
+    white = "#FFFFFF"                   # 12-15
+    very_light_blue = "#e6e6ff"         # 16-19
+    light_blue = "#8080ff"              # 20-23
+    blue = "#0000FF"                    # 24-27
+    darker_blue = "#0000b3"             # 28-31
+    more_darker_blue = "#000080"        # 32-35
+    yet_more_darker_blue = "#00004d"    # 36-39
+    almost_black_blue = "#000033"       # 40-43
+    black = "#000000"                   # >=44
+    style = pygal.style.Style(
+        colors=(dark_red, red, light_red, white, very_light_blue, light_blue,
+                blue, darker_blue, more_darker_blue, yet_more_darker_blue,
+                almost_black_blue, black)
+    )
+    plot = pygal.StackedLine(
+        title="Per base quality distribution",
+        style=style,
+        dots_size=1,
+        y_labels=[i / 10 for i in range(11)],
+        x_title="position",
+        y_title="fraction",
+        fill=True,
+        **label_settings(x_labels),
+        **COMMON_GRAPH_OPTIONS,
+    )
+    for name, serie in per_position_quality_distribution.items():
+        serie_filled = sum(serie) > 0.0
+        plot.add(name, label_values(serie, x_labels), show_dots=serie_filled)
     return plot.render(is_unicode=True)
 
 
 def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
                                       x_labels: Sequence[str]) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Bar(
         title="Sequence length distribution",
-        x_labels=simple_x_labels,
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="sequence length",
         y_title="number of reads",
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     plot.add("Length", label_values(sequence_lengths, x_labels))
@@ -126,24 +171,37 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
     style = style_class(
         colors=(red, dark_red, blue, dark_blue, black)
     )
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.StackedLine(
         title="Base content",
         style=style,
         dots_size=1,
-        x_labels=simple_x_labels,
         y_labels=[i / 10 for i in range(11)],
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="position",
         y_title="fraction",
+        fill=True,
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
-    plot.add("G", label_values(base_content["G"], x_labels), fill=True)
-    plot.add("C", label_values(base_content["C"], x_labels), fill=True)
-    plot.add("A", label_values(base_content["A"], x_labels), fill=True)
-    plot.add("T", label_values(base_content["T"], x_labels), fill=True)
-    plot.add("N", label_values(base_content["N"], x_labels), fill=True)
+    plot.add("G", label_values(base_content["G"], x_labels))
+    plot.add("C", label_values(base_content["C"], x_labels))
+    plot.add("A", label_values(base_content["A"], x_labels))
+    plot.add("T", label_values(base_content["T"], x_labels))
+    return plot.render(is_unicode=True)
+
+
+def n_content_plot(n_content: Sequence[float],
+                   x_labels: Sequence[str]) -> str:
+    plot = pygal.Line(
+        title="N content",
+        dots_size=1,
+        y_labels=[i / 10 for i in range(11)],
+        x_title="position",
+        y_title="fraction",
+        fill=True,
+        **label_settings(x_labels),
+        **COMMON_GRAPH_OPTIONS,
+    )
+    plot.add("N", label_values(n_content, x_labels))
     return plot.render(is_unicode=True)
 
 
@@ -184,22 +242,21 @@ def per_sequence_quality_scores_plot(
 
 def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
                          x_labels: Sequence[str],) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Adapter content (%)",
-        x_labels=simple_x_labels,
         range=(0.0, 100.0),
-        x_labels_major_every=round(len(x_labels) / 30),
-        show_minor_x_labels=False,
         x_title="position",
         y_title="%",
         legend_at_bottom=True,
         legend_at_bottom_columns=1,
         truncate_legend=-1,
         height=800,
+        **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
     for label, content in adapter_content:
+        if max(content) < 0.1:
+            continue
         plot.add(label, label_values(content, x_labels))
     return plot.render(is_unicode=True)
 
@@ -255,11 +312,16 @@ def html_report(data: Dict[str, Any]):
     if skipped_reason:
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
-        ptq_text = """
+        ptq_text = f"""
+        Tiles with more than 2 times the average error:
+        {", ".join(ptq["tiles_2x_errors"])}<br>
+        Tiles with more than 10 times the average error:
+        {", ".join(ptq["tiles_10x_errors"])}<br>
+        <br>
         This graph shows the deviation of each tile on each position from
         the geometric mean of all tiles at that position. The scale is
         expressed in phred units. -10 is 10 times more errors than the average.
-        -2 is 1.58 times more errors than the average. Only points that
+        -3 is ~2 times more errors than the average. Only points that
         deviate more than 2 phred units from the average are shown. <br>
         """
         ptq_graph = per_tile_graph(
@@ -294,27 +356,36 @@ def html_report(data: Dict[str, Any]):
         {summary["total_gc_fraction"] * 100:.2f}%
     </td></tr>
     </table>
-    <h2>Quality scores</h2>
-    {per_base_quality_plot(data["per_base_qualities"]["values"],
-                           data["per_base_qualities"]["x_labels"], )}
-    </html>
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
         data["sequence_length_distribution"]["values"],
         data["sequence_length_distribution"]["x_labels"],
     )}
-    <h2>Base content</h2>
-    {base_content_plot(data["base_content"]["values"],
-                       data["base_content"]["x_labels"])}
-    <h2>Per sequence GC content</h2>
-    {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
+    <h2>Per position quality score distribution</h2>
+    {per_position_quality_distribution_plot(
+        data["per_position_quality_distribution"]["values"],
+        data["per_position_quality_distribution"]["x_labels"])}
+    <h2>Per position average quality score</h2>
+    {per_position_quality_plot(data["per_position_qualities"]["values"],
+                               data["per_position_qualities"]["x_labels"], )}
     <h2>Per sequence quality scores</h2>
     {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
-    <h2>Adapter content plot</h2>
-    {adapter_content_plot(data["adapter_content"]["values"],
-                          data["adapter_content"]["x_labels"])}
     <h2>Per Tile Quality</h2>
     {ptq_content}
+    <h2>Per position base content</h2>
+    {base_content_plot(data["base_content"]["values"],
+                       data["base_content"]["x_labels"])}
+    <h2>Per position N content</h2>
+    {n_content_plot(data["per_position_n_content"]["values"],
+                    data["per_position_n_content"]["x_labels"])}
+    <h2>Per sequence GC content</h2>
+    {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
+    <h2>Adapter content plot</h2>
+    Only adapters that are present more than 0.1% are shown. Given the 12bp
+    length of the sequences used to estimate the content, values below this
+    threshold are problably false positives. <br>
+    {adapter_content_plot(data["adapter_content"]["values"],
+                          data["adapter_content"]["x_labels"])}
     <h2>Duplication percentages</h2>
     This estimates the fraction of the duplication based on the first
     {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
