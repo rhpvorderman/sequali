@@ -334,31 +334,30 @@ def html_report(data: Dict[str, Any]):
         {summary["total_gc_fraction"] * 100:.2f}%
     </td></tr>
     </table>
-    <h2>Quality scores</h2>
-    {per_base_quality_plot(data["per_base_qualities"]["values"],
-                           data["per_base_qualities"]["x_labels"], )}
-    </html>
-    <h2>Quality score distribution</h2>
-    {per_base_quality_distribution_plot(
-        data["per_base_quality_distribution"]["values"],
-        data["per_base_quality_distribution"]["x_labels"])}
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
         data["sequence_length_distribution"]["values"],
         data["sequence_length_distribution"]["x_labels"],
     )}
-    <h2>Base content</h2>
+    <h2>Per position quality score distribution</h2>
+    {per_base_quality_distribution_plot(
+        data["per_base_quality_distribution"]["values"],
+        data["per_base_quality_distribution"]["x_labels"])}
+    <h2>Per position average quality score</h2>
+    {per_base_quality_plot(data["per_base_qualities"]["values"],
+                           data["per_base_qualities"]["x_labels"], )}
+    <h2>Per sequence quality scores</h2>
+    {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
+    <h2>Per Tile Quality</h2>
+    {ptq_content}
+    <h2>Per position base content</h2>
     {base_content_plot(data["base_content"]["values"],
                        data["base_content"]["x_labels"])}
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
-    <h2>Per sequence quality scores</h2>
-    {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
     <h2>Adapter content plot</h2>
     {adapter_content_plot(data["adapter_content"]["values"],
                           data["adapter_content"]["x_labels"])}
-    <h2>Per Tile Quality</h2>
-    {ptq_content}
     <h2>Duplication percentages</h2>
     This estimates the fraction of the duplication based on the first
     {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
