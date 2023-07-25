@@ -42,9 +42,9 @@ def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
     # separately.
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     return dict(
-        x_labels = simple_x_labels,
-        x_labels_major_every = round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else None,
+        x_labels=simple_x_labels,
+        x_labels_major_every=round(len(x_labels) / 30),
+        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else 0,
         show_minor_x_labels=False
     )
 
@@ -58,7 +58,6 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
     style = style_class(
         colors=(yellow, yellow, red, red) + style_class.colors
     )
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     scatter_plot = pygal.Line(
         title="Deviation from geometric mean in phred units.",
         x_title="position",
@@ -93,7 +92,6 @@ def per_tile_graph(per_tile_phreds: List[Tuple[str, List[float]]],
 
 def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
                           x_labels: Sequence[str]) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Per base average sequence quality",
         dots_size=1,
@@ -130,7 +128,6 @@ def per_base_quality_distribution_plot(
                 blue, darker_blue, more_darker_blue, yet_more_darker_blue,
                 almost_black_blue, black)
     )
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.StackedLine(
         title="Per base quality distribution",
         style=style,
@@ -150,7 +147,6 @@ def per_base_quality_distribution_plot(
 
 def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
                                       x_labels: Sequence[str]) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Bar(
         title="Sequence length distribution",
         x_title="sequence length",
@@ -173,7 +169,6 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
     style = style_class(
         colors=(red, dark_red, blue, dark_blue, black)
     )
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.StackedLine(
         title="Base content",
         style=style,
@@ -189,6 +184,22 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
     plot.add("C", label_values(base_content["C"], x_labels))
     plot.add("A", label_values(base_content["A"], x_labels))
     plot.add("T", label_values(base_content["T"], x_labels))
+    return plot.render(is_unicode=True)
+
+
+def n_content_plot(n_content: Sequence[float],
+                   x_labels: Sequence[str]) -> str:
+    plot = pygal.Line(
+        title="N content",
+        dots_size=1,
+        y_labels=[i / 10 for i in range(11)],
+        x_title="position",
+        y_title="fraction",
+        fill=True,
+        **label_settings(x_labels),
+        **COMMON_GRAPH_OPTIONS,
+    )
+    plot.add("N", label_values(n_content, x_labels))
     return plot.render(is_unicode=True)
 
 
@@ -229,7 +240,6 @@ def per_sequence_quality_scores_plot(
 
 def adapter_content_plot(adapter_content: Sequence[Tuple[str, Sequence[float]]],
                          x_labels: Sequence[str],) -> str:
-    simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
         title="Adapter content (%)",
         range=(0.0, 100.0),
@@ -358,6 +368,9 @@ def html_report(data: Dict[str, Any]):
     <h2>Per position base content</h2>
     {base_content_plot(data["base_content"]["values"],
                        data["base_content"]["x_labels"])}
+    <h2>Per position N content</h2>
+    {n_content_plot(data["per_base_n_content"]["values"],
+                    data["per_base_n_content"]["x_labels"])}
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Adapter content plot</h2>
