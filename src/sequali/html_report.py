@@ -82,7 +82,7 @@ def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
                           x_labels: Sequence[str]) -> str:
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     plot = pygal.Line(
-        title="Per base sequence quality",
+        title="Per base average sequence quality",
         dots_size=1,
         x_labels=simple_x_labels,
         x_labels_major_every=round(len(x_labels) / 30),
@@ -96,6 +96,44 @@ def per_base_quality_plot(per_base_qualities: Dict[str, Sequence[float]],
     plot.add("G", label_values(per_base_qualities["G"], x_labels))
     plot.add("T", label_values(per_base_qualities["T"], x_labels))
     plot.add("mean", label_values(per_base_qualities["mean"], x_labels))
+    return plot.render(is_unicode=True)
+
+
+def per_base_quality_distribution_plot(
+        per_base_quality_distribution: Dict[str, Sequence[float]],
+        x_labels: Sequence[str]) -> str:
+    dark_red = "#8B0000"                # 0-3
+    red = "#ff0000"                     # 4-7
+    light_red = "#ff9999"               # 8-11
+    white = "#FFFFFF"                   # 12-15
+    very_light_blue = "#e6e6ff"         # 16-19
+    light_blue = "#8080ff"              # 20-23
+    blue = "#0000FF"                    # 24-27
+    darker_blue = "#0000b3"             # 28-31
+    more_darker_blue = "#000080"        # 32-35
+    yet_more_darker_blue = "#00004d"    # 36-39
+    almost_black_blue = "#000033"       # 40-43
+    black = "#000000"                   # >=44
+    style = pygal.style.Style(
+        colors=(dark_red, red, light_red, white, very_light_blue, light_blue,
+                blue, darker_blue, more_darker_blue, yet_more_darker_blue,
+                almost_black_blue, black)
+    )
+    simple_x_labels = [label.split("-")[0] for label in x_labels]
+    plot = pygal.StackedLine(
+        title="Per base quality distribution",
+        style=style,
+        dots_size=1,
+        x_labels=simple_x_labels,
+        y_labels=[i / 10 for i in range(11)],
+        x_labels_major_every=round(len(x_labels) / 30),
+        show_minor_x_labels=False,
+        x_title="position",
+        y_title="fraction",
+        **COMMON_GRAPH_OPTIONS,
+    )
+    for name, serie in per_base_quality_distribution.items():
+        plot.add(name, label_values(serie, x_labels), fill=True)
     return plot.render(is_unicode=True)
 
 
@@ -298,6 +336,10 @@ def html_report(data: Dict[str, Any]):
     {per_base_quality_plot(data["per_base_qualities"]["values"],
                            data["per_base_qualities"]["x_labels"], )}
     </html>
+    <h2>Quality score distribution</h2>
+    {per_base_quality_distribution_plot(
+        data["per_base_quality_distribution"]["values"],
+        data["per_base_quality_distribution"]["x_labels"])}
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
         data["sequence_length_distribution"]["values"],

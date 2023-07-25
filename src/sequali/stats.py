@@ -249,6 +249,21 @@ def per_base_qualities(count_tables: array.ArrayType) -> List[List[float]]:
     return base_qualities
 
 
+def per_base_quality_distribution(count_tables: array.ArrayType) -> List[List[float]]:
+    total_tables = len(count_tables) // TABLE_SIZE
+    quality_distribution = [
+        [0.0 for _ in range(total_tables)]
+        for _ in range(NUMBER_OF_PHREDS)
+    ]
+    for cat_index, table in enumerate(table_iterator(count_tables)):
+        total_nucs = sum(table)
+        for offset in range(0, TABLE_SIZE, NUMBER_OF_NUCS):
+            category_nucs = sum(table[offset: offset + NUMBER_OF_NUCS])
+            nuc_fraction = category_nucs / total_nucs
+            quality_distribution[offset // NUMBER_OF_NUCS][cat_index] = nuc_fraction
+    return quality_distribution
+
+
 def adapter_counts(adapter_counter: AdapterCounter,
                    adapter_names: List[str],
                    data_ranges: Sequence[Tuple[int, int]]):
@@ -407,6 +422,23 @@ def calculate_stats(
                 "T": pbq[T],
                 "N": pbq[N],
             },
+        },
+        "per_base_quality_distribution": {
+            "x_labels": x_labels,
+            "values": dict(zip([
+                "0-3",
+                "4-7",
+                "8-11",
+                "12-15",
+                "16-19",
+                "20-23",
+                "24-27",
+                "28-31",
+                "32-35",
+                "36-39",
+                "40-43",
+                ">=44"
+            ], per_base_quality_distribution(aggregated_table))),
         },
         "sequence_length_distribution": {
             "x_labels": ["0"] + x_labels,
