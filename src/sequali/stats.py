@@ -45,27 +45,16 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def base_weighted_categories(
-        count_tables: array.array, number_of_categories: int
-) -> Iterator[Tuple[int, int]]:
-    max_length = len(count_tables) // TABLE_SIZE
-    base_counts = array.array("Q", bytes((max_length + 1) * 8))
-    base_counts[0] = max_length
-    for i, table in enumerate(table_iterator(count_tables)):
-        base_counts[i+1] = sum(table)
-    total_bases = sum(base_counts)
-    per_category = total_bases // number_of_categories
-    enough_bases = per_category
+def logarithmic_ranges(length: int, parts: int):
+    exponent = math.log(length) / math.log(parts)
     start = 0
-    total = 0
-    for stop, count in enumerate(base_counts, start=1):
-        total += count
-        if total >= enough_bases:
-            yield start, stop
-            start = stop
-            enough_bases += per_category
-    if start != len(base_counts):
-        yield start, len(base_counts)
+    for i in range(1, parts + 1):
+        stop = round(i ** exponent)
+        length = stop - start
+        if length < 1:
+            continue
+        yield start, stop
+        start = stop
 
 
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
@@ -355,7 +344,7 @@ def calculate_stats(
     data_ranges = (
         list(equidistant_ranges(metrics.max_length, graph_resolution))
         if metrics.max_length < 500 else
-        list(base_weighted_categories(count_table, graph_resolution))
+        list(logarithmic_ranges(metrics.max_length, graph_resolution))
     )
     aggregated_table = aggregate_count_matrix(count_table, data_ranges)
     total_bases = sum(aggregated_table)
