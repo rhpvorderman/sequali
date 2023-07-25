@@ -2176,12 +2176,12 @@ static PyTypeObject PerTileQuality_Type = {
    should be optimized.
 */
 
-#define MAX_UNIQUE_SEQUENCES 100000
+#define MAX_UNIQUE_SEQUENCES 1000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
-   bitwise AND by the compiler. Also this size (~262K entries) seems to work 
-   well with a 100_000 slots in use. */
-#define HASH_TABLE_SIZE (1ULL << 18)
+   bitwise AND by the compiler. Also this size (~2MiB entries) seems to work
+   well with a 1_000_000 slots in use. */
+#define HASH_TABLE_SIZE (1ULL << 21)
 
 /* This struct contains count, key_length and key on one single cache line 
    (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
