@@ -143,19 +143,35 @@ def aggregate_count_matrix(
     return aggregated_matrix
 
 
-def base_content(count_tables: array.ArrayType) -> List[List[float]]:
+def base_content(count_tables: array.ArrayType) -> Dict[str, List[float]]:
     total_tables = len(count_tables) // TABLE_SIZE
-    base_fractions = [
-        [0.0 for _ in range(total_tables)]
+    base_counts = [
+        [0 for _ in range(total_tables)]
         for _ in range(NUMBER_OF_NUCS)
     ]
     for index, table in enumerate(table_iterator(count_tables)):
-        total = sum(table)
-        if total == 0:
-            continue
         for i in range(NUMBER_OF_NUCS):
-            base_fractions[i][index] = sum(table[i::NUMBER_OF_NUCS]) / total
-    return base_fractions
+            base_counts[i][index] = sum(table[i::NUMBER_OF_NUCS])
+    named_totals = []
+    totals = []
+    for i in range(total_tables):
+        named_total = (base_counts[A][i] + base_counts[C][i] +
+                       base_counts[G][i] + base_counts[T][i])
+        total = named_total + base_counts[N][i]
+        named_totals.append(named_total)
+        totals.append(total)
+    return {
+        "A": [count / total for count, total in
+              zip(base_counts[A], named_totals)],
+        "C": [count / total for count, total in
+              zip(base_counts[C], named_totals)],
+        "G": [count / total for count, total in
+              zip(base_counts[G], named_totals)],
+        "T": [count / total for count, total in
+              zip(base_counts[T], named_totals)],
+        "N": [count / total for count, total in
+              zip(base_counts[N], totals)],
+    }
 
 
 def total_gc_fraction(count_tables: array.ArrayType) -> float:
@@ -353,6 +369,7 @@ def calculate_stats(
     x_labels = stringify_ranges(data_ranges)
     pbq = per_base_qualities(aggregated_table)
     bc = base_content(aggregated_table)
+    n_content = bc.pop("N")
     per_tile_phreds = normalized_per_tile_averages(
         per_tile_quality.get_tile_counts(), data_ranges)
     rendered_tiles = []
@@ -435,13 +452,11 @@ def calculate_stats(
         },
         "base_content": {
             "x_labels": x_labels,
-            "values": {
-                "A": bc[A],
-                "C": bc[C],
-                "G": bc[G],
-                "T": bc[T],
-                "N": bc[N],
-            },
+            "values": bc,
+        },
+        "per_base_n_content": {
+            "x_labels": x_labels,
+            "values": n_content,
         },
         "per_sequence_gc_content": {
             "x_labels": [str(i) for i in range(101)],

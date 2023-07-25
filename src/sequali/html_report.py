@@ -181,14 +181,14 @@ def base_content_plot(base_content: Dict[str, Sequence[float]],
         y_labels=[i / 10 for i in range(11)],
         x_title="position",
         y_title="fraction",
+        fill=True,
         **label_settings(x_labels),
         **COMMON_GRAPH_OPTIONS,
     )
-    plot.add("G", label_values(base_content["G"], x_labels), fill=True)
-    plot.add("C", label_values(base_content["C"], x_labels), fill=True)
-    plot.add("A", label_values(base_content["A"], x_labels), fill=True)
-    plot.add("T", label_values(base_content["T"], x_labels), fill=True)
-    plot.add("N", label_values(base_content["N"], x_labels), fill=True)
+    plot.add("G", label_values(base_content["G"], x_labels))
+    plot.add("C", label_values(base_content["C"], x_labels))
+    plot.add("A", label_values(base_content["A"], x_labels))
+    plot.add("T", label_values(base_content["T"], x_labels))
     return plot.render(is_unicode=True)
 
 
