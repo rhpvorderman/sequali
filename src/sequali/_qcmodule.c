@@ -2369,12 +2369,9 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         return PyErr_NoMemory();
     }
     HashTableEntry *entries = self->entries;
-
-    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
+	uint64_t number_of_uniques = self->number_of_uniques;
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
-        if (entry->count == 0) {
-            continue;
-        }
         PyObject *count_obj = PyLong_FromUnsignedLongLong(entry->count);
         if (count_obj == NULL) {
             goto error;
@@ -2438,14 +2435,12 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
 
     uint64_t total_sequences = self->number_of_sequences;
     uint64_t minimum_hits = threshold * total_sequences;
+	uint64_t number_of_uniques = self->number_of_uniques;
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
-        if (count == 0) {
-            continue;
-        }
         if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
                 "(kds#)",
