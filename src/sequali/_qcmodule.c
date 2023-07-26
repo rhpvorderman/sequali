@@ -2401,8 +2401,16 @@ PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
 "Return a list of tuples with the count, fraction and the sequence. The list is "
 "sorted in reverse order with the most common sequence on top.\n"
 "\n"
-"  threshold\n"
+"  threshold_fraction\n"
 "    The fraction at which a sequence is considered overrepresented.\n"
+"  min_threshold\n"
+"    the minimum threshold to uphold. Overrides the minimum number based on "
+"    the threshold_fraction if it is higher. Useful for files with very low " 
+"    numbers of sequences."
+"  max_threshold\n"
+"    the maximum threshold to uphold. Overrides the minimum number based on "
+"    the threshold_fraction if it is lower. Useful for files with very high " 
+"    numbers of sequences."
 );
 
 #define SequenceDuplication_overrepresented_sequences_method METH_VARARGS | METH_KEYWORDS
@@ -2411,9 +2419,14 @@ static PyObject *
 SequenceDuplication_overrepresented_sequences(SequenceDuplication *self, 
                                               PyObject *args, PyObject *kwargs)
 {
-    double threshold = 0.001;  // 0.1 %
-    static char *kwargnames[] = {"threshold", NULL};
-    static char *format = "|d:SequenceDuplication.overrepresented_sequences";
+    double threshold = 0.0001;  // 0.01 %
+    Py_ssize_t min_threshold = 1;
+    Py_ssize_t max_threshold = PY_SSIZE_T_MAX;
+    static char *kwargnames[] = {"threshold_fraction", 
+                                 "min_threshold", 
+                                 "max_threshold",
+                                  NULL};
+    static char *format = "|dnn:SequenceDuplication.overrepresented_sequences";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold)) {
         return NULL;
     }
@@ -2422,10 +2435,27 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         PyObject *threshold_obj = PyFloat_FromDouble(threshold);
         PyErr_Format(
             PyExc_ValueError, 
-            "threshold must be between 0.0 and 1.0 got, %R", threshold_obj, 
+            "threshold_fraction must be between 0.0 and 1.0 got, %R", threshold_obj, 
             threshold);
         Py_XDECREF(threshold_obj);
         return NULL;
+    }
+    if (min_threshold < 1) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "min_threshold must be at least 1, got %zd", min_threshold);
+        return NULL;
+    }
+    if (max_threshold < 1) {
+        PyErr_Format(
+            "max_threshold must be at least 1, got %zd", max_threshold);
+        return NULL;
+    }
+    if (max_threshold < min_threshold) {
+        PyErr_Format(
+            "max_threshold (%zd) must be greater than min_threshold (%zd)",
+            max_threshold, min_threshold
+        );
     }
 
     PyObject *result = PyList_New(0);
@@ -2434,7 +2464,9 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     }
 
     uint64_t total_sequences = self->number_of_sequences;
-    uint64_t minimum_hits = threshold * total_sequences;
+    uint64_t minimum_hits = ceil(threshold * total_sequences);
+    minimum_hits = Py_MAX(min_threshold, minimum_hits);
+    minimum_hits = Py_MIN(minimum_hits, max_threshold);
 	uint64_t number_of_uniques = self->number_of_uniques;
     HashTableEntry *entries = self->entries;
 

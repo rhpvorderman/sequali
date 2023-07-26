@@ -51,7 +51,7 @@ def test_sequence_duplication_add_read_no_view():
 def test_sequence_duplication_overrepresented_sequences_faulty_threshold(threshold):
     seqdup = SequenceDuplication()
     with pytest.raises(ValueError) as error:
-        seqdup.overrepresented_sequences(threshold=threshold)
+        seqdup.overrepresented_sequences(threshold_fraction=threshold)
     error.match(str(threshold))
     error.match("between")
     error.match("0.0")
@@ -76,7 +76,7 @@ def test_sequence_duplication_overrepresented_sequences():
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
         seqdup.add_read(view_from_sequence("SPAM"))
-    overrepresented = seqdup.overrepresented_sequences(threshold=0.001)
+    overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.001)
     assert overrepresented[0][2] == "SPAM"
     assert overrepresented[1][2] == "Blatantly overrepresented"
     assert overrepresented[1][0] == 2000
