@@ -2211,7 +2211,8 @@ sequence_to_twobit(const uint8_t *sequence, size_t sequence_length, uint8_t *two
         twobit_index += 1;
     }
     if (remainder) {
-        uint8_t last_quad[4] = {0, 0, 0, 0};
+        // Any non-ACGTN character will throw an error, so use A's as placeholder.
+        uint8_t last_quad[4] = {'A', 'A', 'A', 'A'};
         for (size_t i=0; i<remainder; i++) {
             last_quad[i] = sequence[length_no_remainder + i];
         }
@@ -2275,12 +2276,13 @@ twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *seque
    well with a 1_000_000 slots in use. */
 #define HASH_TABLE_SIZE (1ULL << 21)
 
-/* This struct contains count, key_length and key on one single cache line 
-   (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
+/* This struct contains count, key_length and key in twobit format on one 
+    single cache line so only one memory fetch is needed when a matching hash 
+    is found.*/
 typedef struct _HashTableEntry {
     uint64_t count;
     uint8_t key_length;
-    char key[55];  // 55 to align at 64 bytes. Only 50 is needed.
+    uint8_t key[15];  // 15 to align at 24 bytes. Only 13 is needed.
 } HashTableEntry;
 
 typedef struct _SequenceDuplicationStruct {
@@ -2340,13 +2342,29 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
-static void
+static int
 SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
 {
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
+    static uint8_t twobit[16];
+    size_t twobit_length = (hash_length + 3) / 4;
+    int ret = sequence_to_twobit(sequence, hash_length, twobit);
+    if (ret != TWOBIT_SUCCESS) {
+        if (ret == TWOBIT_N_CHAR) {
+            return 0;
+        }
+        if (ret == TWOBIT_UNKNOWN_CHAR) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Sequence contains a chacter that is not A, C, G, T or N: %R", 
+                PyUnicode_DecodeASCII((char *)sequence, hash_length, NULL)
+            );
+            return -1;
+        }
+    }
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
        setting the most significant bit, this does not affect the resulting index. */
@@ -2365,7 +2383,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
                 HashTableEntry *entry = self->entries + entry_index;
                 entry->count = 1;
                 entry->key_length = hash_length;
-                memcpy(entry->key, sequence, hash_length);
+                memcpy(entry->key, twobit, twobit_length);
                 self->number_of_uniques += 1;
                 /* When MAX_UNIQUE_SEQUENCES is collected. We may have drawn
                    a larger amount of the population. Save that number for more
@@ -2378,7 +2396,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             /* There is a very small chance of a hash collision, check to make 
                sure. If not equal we simply go to the next hash_entry. */
             if (entry->key_length == hash_length && 
-                memcmp(entry->key, sequence, hash_length) == 0) {
+                memcmp(entry->key, twobit, twobit_length) == 0) {
                 entry->count += 1;
                 break;
             }
@@ -2387,6 +2405,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
         index %= HASH_TABLE_SIZE;
     }
+    return 0;
 } 
 
 PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
@@ -2410,7 +2429,9 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    SequenceDuplication_add_meta(self, &read->meta);
+    if (SequenceDuplication_add_meta(self, &read->meta) !=0) {
+        return NULL;
+    }
     Py_RETURN_NONE;
 }
 
@@ -2439,7 +2460,9 @@ SequenceDuplication_add_record_array(
     Py_ssize_t number_of_records = Py_SIZE(record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i=0; i < number_of_records; i++) {
-        SequenceDuplication_add_meta(self, records + i);
+        if (SequenceDuplication_add_meta(self, records + i) !=0) {
+           return NULL;
+        }
     }
     Py_RETURN_NONE;
 }
@@ -2472,7 +2495,7 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         if (key == NULL) {
             goto error;
         }
-        memcpy(PyUnicode_DATA(key), entry->key, entry->key_length);
+        twobit_to_sequence(entry->key, entry->key_length, PyUnicode_DATA(key));
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
@@ -2570,11 +2593,18 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
         if (count >= minimum_hits) {
+            uint8_t *key = entry->key;
+            uint8_t key_length = entry->key_length;
+            PyObject *sequence_obj = PyUnicode_New(key_length, 127);
+            if (sequence_obj == NULL) {
+                goto error;
+            }
+            twobit_to_sequence(key, key_length, PyUnicode_DATA(sequence_obj));
             PyObject *entry_tuple = Py_BuildValue(
-                "(Kds#)",
+                "(KdN)",
                 count,
                 (double)((double)count / (double)total_sequences),
-                (char *)entry->key, (Py_ssize_t)entry->key_length);
+                sequence_obj);
             if (entry_tuple == NULL) {
                 goto error;
             }
