@@ -1,3 +1,4 @@
+import collections
 import itertools
 import os
 import sys
@@ -95,10 +96,9 @@ def test_sequence_duplication_duplication_counts():
         seqdup.add_read(view_from_sequence("not overrepresented"))
     seqdup.add_read(view_from_sequence("truly unique"))
     seqdup.add_read(view_from_sequence("another unique"))
-    for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
-        # Count up to 100_000 to get nice fractions for all the sequences
+    for i in range(50_000):
         seqdup.add_read(view_from_sequence("SPAM"))
-    dupcounts = seqdup.duplication_counts(max_count=50_000)
+    dupcounts = collections.Counter(seqdup.duplication_counts())
     assert dupcounts[0] == 0
     assert dupcounts[1] == 2
     assert dupcounts[10] == 1
@@ -106,4 +106,4 @@ def test_sequence_duplication_duplication_counts():
     assert dupcounts[100] == 1
     assert dupcounts[2000] == 1
     assert dupcounts[50_000] == 1
-    assert sum(dupcounts) == 7
+    assert sum(dupcounts.values()) == 7

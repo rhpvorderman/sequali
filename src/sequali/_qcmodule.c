@@ -2475,57 +2475,31 @@ error:
 }
 
 PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
-"duplication_counts($self, max_count=50_000)\n"
+"duplication_counts($self)\n"
 "--\n"
 "\n"
-"Return a count_array of values such that count_array[1] returns the count "
-"of sequences that were only seen once, count_array[5:10] returns those that "
-"were seen 5-9 times. count_array[max_count] gives the number of "
-"sequences that were equal or more than max_count.\n"
-"\n"
-"  threshold\n"
-"    The fraction at which a sequence is considered overrepresented.\n"
+"Return a array.array with only the counts.\n"
 );
 
-#define SequenceDuplication_duplication_counts_method METH_VARARGS | METH_KEYWORDS
+#define SequenceDuplication_duplication_counts_method METH_NOARGS
 
 static PyObject *
 SequenceDuplication_duplication_counts(SequenceDuplication *self, 
-                                       PyObject *args, PyObject *kwargs)
+									   PyObject *Py_UNUSED(ignore))
 {
-    static char *kwargnames[] = {"max_count", NULL};
-    static char *format = "|n:SequenceDuplication.duplication_counts";
-    Py_ssize_t max_count_signed = 50000;
-        if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
-            &max_count_signed)) {
-        return NULL;
-    }
-    if (max_count_signed < 1) {
-        PyErr_Format(PyExc_ValueError, 
-                     "Max count needs to be at least one, got %z", 
-                     max_count_signed);
-        return NULL;
-    }
-    size_t max_count = max_count_signed;
-    uint64_t *count_array = PyMem_Calloc(max_count + 1, sizeof(uint64_t));
-    if (count_array == NULL) {
+    uint64_t number_of_uniques = self->number_of_uniques;
+	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
+    if (counts == NULL) {
         return PyErr_NoMemory();
     }
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < MAX_UNIQUE_SEQUENCES; i+=1) {
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
-        uint64_t count = entry->count;
-        if (count == 0) {
-            continue;
-        }
-        if (count > max_count) {
-            count = max_count;
-        }
-        count_array[count] += 1;
+        counts[i] = entry->count;
     }
-    PyObject *result = PythonArray_FromBuffer('Q', count_array, (max_count + 1) * sizeof(uint64_t));
-    PyMem_Free(count_array);
+    PyObject *result = PythonArray_FromBuffer('Q', counts, number_of_uniques * sizeof(uint64_t));
+    PyMem_Free(counts);
     return result;
 }
 
