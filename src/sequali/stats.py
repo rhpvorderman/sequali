@@ -301,14 +301,6 @@ def estimate_duplication_counts(
     return estimated_counts
 
 
-def duplication_fractions(
-        duplication_counts: Dict[int, int]) -> Dict[int, float]:
-    total_sequences = sum(duplicates * count
-                          for duplicates, count in duplication_counts.items())
-    return {duplicates: count / total_sequences for duplicates, count
-            in duplication_counts.items()}
-
-
 def deduplicated_fraction(duplication_counts: Dict[int, int]):
     total_sequences = sum(duplicates * count
                           for duplicates, count in duplication_counts.items())
@@ -401,8 +393,8 @@ def calculate_stats(
         (count, fraction, sequence, *identify_sequence(sequence, sequence_index))
         for count, fraction, sequence in overrepresented_sequences
     ]
-    sequence_counts = sequence_duplication.sequence_counts()
-    duplication_counts = collections.Counter(sequence_counts.values())
+    duplication_counts = collections.Counter(
+        sequence_duplication.duplication_counts())
     estimated_duplication_counts = estimate_duplication_counts(
         duplication_counts, sequence_duplication.number_of_sequences,
         sequence_duplication.stopped_collecting_at)
