@@ -2155,12 +2155,12 @@ static PyTypeObject PerTileQuality_Type = {
  * SEQUENCE DUPLICATION *
  *************************/
 
-/* A module to use the first 50 bp of reads and collect the first 100_000 
+/* A module to use the first 50 bp of reads and collect the first 1_000_000
    unique sequences and see how often they occur to estimate the duplication 
    rate and overrepresented sequences. The idea to take the first 100_000 with 
-   50 bp comes from FastQC. 
+   50 bp comes from FastQC. In sequali this is increased to 1_000_000.
    
-   Below some typical figures:
+   Below some typical figures (tested with 100_000 sequences):
    For a 5 million read illumina library:
     100000  Unique sequences recorded
      13038  Duplicates of one of the 100_000
@@ -2176,12 +2176,12 @@ static PyTypeObject PerTileQuality_Type = {
    should be optimized.
 */
 
-#define MAX_UNIQUE_SEQUENCES 100000
+#define MAX_UNIQUE_SEQUENCES 1000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
-   bitwise AND by the compiler. Also this size (~262K entries) seems to work 
-   well with a 100_000 slots in use. */
-#define HASH_TABLE_SIZE (1ULL << 18)
+   bitwise AND by the compiler. Also this size (~2MiB entries) seems to work
+   well with a 1_000_000 slots in use. */
+#define HASH_TABLE_SIZE (1ULL << 21)
 
 /* This struct contains count, key_length and key on one single cache line 
    (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
@@ -2197,8 +2197,12 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t number_of_uniques;
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
     /* Store hashes and entries separately as in the most common case only
-       the hash is needed. */
+       the hash is needed. Also store a uint32_t array of indexes to the
+       entries table. This ensures the entries table can be tightly packed
+       with no open spaces. The entries are stored in insertion order. This
+       is similar to what CPython does for its dictionary. */
     Py_hash_t *hashes; 
+    uint32_t *entry_indexes;
     HashTableEntry *entries;
     uint64_t stopped_collecting_at;
 } SequenceDuplication;
@@ -2207,6 +2211,7 @@ static void
 SequenceDuplication_dealloc(SequenceDuplication *self)
 {
     PyMem_Free(self->hashes);
+    PyMem_Free(self->entry_indexes);
     PyMem_Free(self->entries);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -2220,11 +2225,13 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     Py_hash_t *hashes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
-    HashTableEntry *entries = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(HashTableEntry));
+    uint32_t *entry_indexes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(uint32_t));
+    HashTableEntry *entries = PyMem_Calloc(MAX_UNIQUE_SEQUENCES, sizeof(HashTableEntry));
     PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
-    if ((hashes == NULL) | (entries == NULL)) {
+    if ((hashes == NULL) || (entries == NULL) || (entry_indexes == NULL)) {
         PyMem_Free(hashes);
         PyMem_Free(entries);
+        PyMem_Free(entry_indexes);
         return PyErr_NoMemory();
     }
     SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
@@ -2235,6 +2242,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->number_of_uniques = 0;
     self->stopped_collecting_at = 0;
     self->hashes = hashes;
+    self->entry_indexes = entry_indexes;
     self->entries = entries;
     self->hashfunc = hashfuncdef->hash;
     return (PyObject *)self;
@@ -2252,6 +2260,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
        setting the most significant bit, this does not affect the resulting index. */
     hash |= (1ULL << 63);  
     Py_hash_t *hashes = self->hashes;
+    uint32_t *entry_indexes = self->entry_indexes;
     size_t index = hash % HASH_TABLE_SIZE;
  
     while (1) {
@@ -2259,7 +2268,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         if (hash_entry == 0) {
             if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
                 hashes[index] = hash;
-                HashTableEntry *entry = self->entries + index;
+                uint32_t entry_index = self->number_of_uniques;
+                entry_indexes[index] = entry_index;
+                HashTableEntry *entry = self->entries + entry_index;
                 entry->count = 1;
                 entry->key_length = hash_length;
                 memcpy(entry->key, sequence, hash_length);
@@ -2271,7 +2282,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             }
             break;
         } else if (hash_entry == hash) {
-                HashTableEntry *entry = self->entries + index;
+                HashTableEntry *entry = self->entries + entry_indexes[index];
             /* There is a very small chance of a hash collision, check to make 
                sure. If not equal we simply go to the next hash_entry. */
             if (entry->key_length == hash_length && 
@@ -2358,12 +2369,9 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         return PyErr_NoMemory();
     }
     HashTableEntry *entries = self->entries;
-
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+	uint64_t number_of_uniques = self->number_of_uniques;
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
-        if (entry->count == 0) {
-            continue;
-        }
         PyObject *count_obj = PyLong_FromUnsignedLongLong(entry->count);
         if (count_obj == NULL) {
             goto error;
@@ -2393,8 +2401,16 @@ PyDoc_STRVAR(SequenceDuplication_overrepresented_sequences__doc__,
 "Return a list of tuples with the count, fraction and the sequence. The list is "
 "sorted in reverse order with the most common sequence on top.\n"
 "\n"
-"  threshold\n"
+"  threshold_fraction\n"
 "    The fraction at which a sequence is considered overrepresented.\n"
+"  min_threshold\n"
+"    the minimum threshold to uphold. Overrides the minimum number based on "
+"    the threshold_fraction if it is higher. Useful for files with very low " 
+"    numbers of sequences."
+"  max_threshold\n"
+"    the maximum threshold to uphold. Overrides the minimum number based on "
+"    the threshold_fraction if it is lower. Useful for files with very high " 
+"    numbers of sequences."
 );
 
 #define SequenceDuplication_overrepresented_sequences_method METH_VARARGS | METH_KEYWORDS
@@ -2403,10 +2419,16 @@ static PyObject *
 SequenceDuplication_overrepresented_sequences(SequenceDuplication *self, 
                                               PyObject *args, PyObject *kwargs)
 {
-    double threshold = 0.001;  // 0.1 %
-    static char *kwargnames[] = {"threshold", NULL};
-    static char *format = "|d:SequenceDuplication.overrepresented_sequences";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold)) {
+    double threshold = 0.0001;  // 0.01 %
+    Py_ssize_t min_threshold = 1;
+    Py_ssize_t max_threshold = PY_SSIZE_T_MAX;
+    static char *kwargnames[] = {"threshold_fraction", 
+                                 "min_threshold", 
+                                 "max_threshold",
+                                  NULL};
+    static char *format = "|dnn:SequenceDuplication.overrepresented_sequences";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
+        &threshold, &min_threshold, &max_threshold)) {
         return NULL;
     }
     if ((threshold < 0.0) || (threshold > 1.0)) {
@@ -2414,10 +2436,29 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         PyObject *threshold_obj = PyFloat_FromDouble(threshold);
         PyErr_Format(
             PyExc_ValueError, 
-            "threshold must be between 0.0 and 1.0 got, %R", threshold_obj, 
+            "threshold_fraction must be between 0.0 and 1.0 got, %R", threshold_obj, 
             threshold);
         Py_XDECREF(threshold_obj);
         return NULL;
+    }
+    if (min_threshold < 1) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "min_threshold must be at least 1, got %zd", min_threshold);
+        return NULL;
+    }
+    if (max_threshold < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "max_threshold must be at least 1, got %zd", max_threshold);
+        return NULL;
+    }
+    if (max_threshold < min_threshold) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "max_threshold (%zd) must be greater than min_threshold (%zd)",
+            max_threshold, min_threshold
+        );
     }
 
     PyObject *result = PyList_New(0);
@@ -2426,21 +2467,22 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     }
 
     uint64_t total_sequences = self->number_of_sequences;
-    uint64_t minimum_hits = threshold * total_sequences;
+    Py_ssize_t hit_theshold = ceil(threshold * total_sequences);
+    hit_theshold = Py_MAX(min_threshold, hit_theshold);
+    hit_theshold = Py_MIN(max_threshold, hit_theshold);
+    uint64_t minimum_hits = hit_theshold;
+	uint64_t number_of_uniques = self->number_of_uniques;
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
-        if (count == 0) {
-            continue;
-        }
         if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
-                "(kds#)",
+                "(Kds#)",
                 count,
-                ((double)count / (double)total_sequences),
-                 entry->key, entry->key_length);
+                (double)((double)count / (double)total_sequences),
+                (char *)entry->key, (Py_ssize_t)entry->key_length);
             if (entry_tuple == NULL) {
                 goto error;
             }
@@ -2464,57 +2506,31 @@ error:
 }
 
 PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
-"duplication_counts($self, max_count=50_000)\n"
+"duplication_counts($self)\n"
 "--\n"
 "\n"
-"Return a count_array of values such that count_array[1] returns the count "
-"of sequences that were only seen once, count_array[5:10] returns those that "
-"were seen 5-9 times. count_array[max_count] gives the number of "
-"sequences that were equal or more than max_count.\n"
-"\n"
-"  threshold\n"
-"    The fraction at which a sequence is considered overrepresented.\n"
+"Return a array.array with only the counts.\n"
 );
 
-#define SequenceDuplication_duplication_counts_method METH_VARARGS | METH_KEYWORDS
+#define SequenceDuplication_duplication_counts_method METH_NOARGS
 
 static PyObject *
 SequenceDuplication_duplication_counts(SequenceDuplication *self, 
-                                       PyObject *args, PyObject *kwargs)
+									   PyObject *Py_UNUSED(ignore))
 {
-    static char *kwargnames[] = {"max_count", NULL};
-    static char *format = "|n:SequenceDuplication.duplication_counts";
-    Py_ssize_t max_count_signed = 50000;
-        if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
-            &max_count_signed)) {
-        return NULL;
-    }
-    if (max_count_signed < 1) {
-        PyErr_Format(PyExc_ValueError, 
-                     "Max count needs to be at least one, got %z", 
-                     max_count_signed);
-        return NULL;
-    }
-    size_t max_count = max_count_signed;
-    uint64_t *count_array = PyMem_Calloc(max_count + 1, sizeof(uint64_t));
-    if (count_array == NULL) {
+    uint64_t number_of_uniques = self->number_of_uniques;
+	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
+    if (counts == NULL) {
         return PyErr_NoMemory();
     }
     HashTableEntry *entries = self->entries;
 
-    for (size_t i=0; i < HASH_TABLE_SIZE; i+=1) {
+    for (size_t i=0; i < number_of_uniques; i+=1) {
         HashTableEntry *entry = entries + i;
-        uint64_t count = entry->count;
-        if (count == 0) {
-            continue;
-        }
-        if (count > max_count) {
-            count = max_count;
-        }
-        count_array[count] += 1;
+        counts[i] = entry->count;
     }
-    PyObject *result = PythonArray_FromBuffer('Q', count_array, (max_count + 1) * sizeof(uint64_t));
-    PyMem_Free(count_array);
+    PyObject *result = PythonArray_FromBuffer('Q', counts, number_of_uniques * sizeof(uint64_t));
+    PyMem_Free(counts);
     return result;
 }
 

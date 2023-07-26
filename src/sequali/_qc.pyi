@@ -15,6 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
+import sys
 from typing import Dict, Iterable, List, SupportsIndex, Optional, Tuple
 
 TABLE_SIZE: int
@@ -83,6 +84,9 @@ class SequenceDuplication:
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def sequence_counts(self) -> Dict[str, int]: ...
-    def overrepresented_sequences(self, threshold: float = 0.001
+    def overrepresented_sequences(self, 
+                                  threshold_fraction: float = 0.0001,
+                                  min_threshold: int = 1,
+                                  max_threshold: int = sys.maxsize,
                                   ) -> List[Tuple[int, float, str]]: ...
-    def duplication_counts(self, max_count = 50_000) -> array.ArrayType: ...
+    def duplication_counts(self) -> array.ArrayType: ...

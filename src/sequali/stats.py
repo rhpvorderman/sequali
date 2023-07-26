@@ -16,6 +16,7 @@
 import array
 import collections
 import math
+import sys
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from ._qc import A, C, G, N, T
@@ -29,6 +30,10 @@ PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
+
+DEFAULT_FRACTION_THRESHOLD = 0.0001
+DEFAULT_MIN_THRESHOLD = 100
+DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
@@ -301,14 +306,6 @@ def estimate_duplication_counts(
     return estimated_counts
 
 
-def duplication_fractions(
-        duplication_counts: Dict[int, int]) -> Dict[int, float]:
-    total_sequences = sum(duplicates * count
-                          for duplicates, count in duplication_counts.items())
-    return {duplicates: count / total_sequences for duplicates, count
-            in duplication_counts.items()}
-
-
 def deduplicated_fraction(duplication_counts: Dict[int, int]):
     total_sequences = sum(duplicates * count
                           for duplicates, count in duplication_counts.items())
@@ -354,7 +351,11 @@ def calculate_stats(
         per_tile_quality: PerTileQuality,
         sequence_duplication: SequenceDuplication,
         adapter_names: List[str],
-        graph_resolution: int = 200) -> Dict[str, Any]:
+        graph_resolution: int = 200,
+        fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
+        min_threshold: int = DEFAULT_MIN_THRESHOLD,
+        max_threshold: int = DEFAULT_MAX_THRESHOLD,
+) -> Dict[str, Any]:
     count_table = metrics.count_table()
 
     data_ranges = (
@@ -387,7 +388,11 @@ def calculate_stats(
             tiles_10x_errors.append(tile)
         else:
             tiles_2x_errors.append(tile)
-    overrepresented_sequences = sequence_duplication.overrepresented_sequences()
+    overrepresented_sequences = sequence_duplication.overrepresented_sequences(
+        threshold_fraction=fraction_threshold,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold
+    )
 
     if overrepresented_sequences:
         def contaminant_iterator():
@@ -401,8 +406,8 @@ def calculate_stats(
         (count, fraction, sequence, *identify_sequence(sequence, sequence_index))
         for count, fraction, sequence in overrepresented_sequences
     ]
-    sequence_counts = sequence_duplication.sequence_counts()
-    duplication_counts = collections.Counter(sequence_counts.values())
+    duplication_counts = collections.Counter(
+        sequence_duplication.duplication_counts())
     estimated_duplication_counts = estimate_duplication_counts(
         duplication_counts, sequence_duplication.number_of_sequences,
         sequence_duplication.stopped_collecting_at)
