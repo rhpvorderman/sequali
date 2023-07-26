@@ -2357,12 +2357,13 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             return 0;
         }
         if (ret == TWOBIT_UNKNOWN_CHAR) {
-            PyErr_Format(
-                PyExc_ValueError, 
+            PyErr_WarnFormat(
+                PyExc_UserWarning, 
+                1,
                 "Sequence contains a chacter that is not A, C, G, T or N: %R", 
                 PyUnicode_DecodeASCII((char *)sequence, hash_length, NULL)
             );
-            return -1;
+            return 0;
         }
     }
     Py_hash_t hash = self->hashfunc(sequence, hash_length);
