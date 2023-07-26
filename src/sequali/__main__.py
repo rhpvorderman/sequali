@@ -16,6 +16,7 @@
 import argparse
 import json
 import os
+import sys
 
 import xopen
 
@@ -39,11 +40,34 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dir", help="Output directory. default: "
                                       "current working directory",
                         default=os.getcwd())
+    parser.add_argument("--overrepresentation-threshold-fraction", type=float,
+                        default=0.0001,
+                        help="At what fraction a sequence is determined to be "
+                             "overrepresented. Default: 0.0001 (1 in 100 000)."
+                        )
+    parser.add_argument("--overrepresentation-min-threshold", type=int,
+                        default=100,
+                        help="The minimum amount of sequences that need to be "
+                             "present to be considered overrepresented even if "
+                             "the threshold fraction is surpassed. Useful for "
+                             "smaller files.")
+    parser.add_argument("--overrepresentation-max-threshold", type=int,
+                        default=sys.maxsize,
+                        help="The threshold above which a sequence is "
+                             "considered overrepresented even if the "
+                             "threshold fraction is not surpassed. Useful for "
+                             "very large files.")
+
     return parser
 
 
 def main():
     args = argument_parser().parse_args()
+    fraction_threshold = args.overrepresentation_threshold_fraction
+    max_threshold = args.overrepresentation_max_threshold
+    # if max_threshold is set it needs to be lower than min threshold
+    min_threshold = min(args.overrepresentation_min_threshold, max_threshold)
+
     metrics = QCMetrics()
     adapters = dict(sequence_file_iterator(DEFAULT_ADAPTERS_FILE))
     adapter_counter = AdapterCounter(adapters.values())
@@ -64,7 +88,10 @@ def main():
                                 adapter_counter,
                                 per_tile_quality,
                                 sequence_duplication,
-                                adapter_names=list(adapters.keys()))
+                                adapter_names=list(adapters.keys()),
+                                fraction_threshold=fraction_threshold,
+                                min_threshold=min_threshold,
+                                max_threshold=max_threshold)
     if args.json is None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
