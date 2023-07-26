@@ -86,6 +86,20 @@ def test_sequence_duplication_overrepresented_sequences():
     assert overrepresented[3][1] == 100 / 100_000
     # Assert no other sequences recorded as overrepresented.
     assert len(overrepresented) == 4
+    overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.00001)
+    assert overrepresented[-1][2] == "truly unique"
+    overrepresented = seqdup.overrepresented_sequences(
+        threshold_fraction=0.00001,
+        min_threshold=2,
+    )
+    assert overrepresented[-1][2] == "not overrepresented"
+    overrepresented = seqdup.overrepresented_sequences(
+        threshold_fraction=0.1,
+        min_threshold=2,
+        max_threshold=1000,
+    )
+    assert len(overrepresented) == 2
+    assert overrepresented[1][2] == "Blatantly overrepresented"
 
 
 def test_sequence_duplication_duplication_counts():

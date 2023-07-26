@@ -2427,7 +2427,8 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
                                  "max_threshold",
                                   NULL};
     static char *format = "|dnn:SequenceDuplication.overrepresented_sequences";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, 
+        &threshold, &min_threshold, &max_threshold)) {
         return NULL;
     }
     if ((threshold < 0.0) || (threshold > 1.0)) {
@@ -2448,11 +2449,13 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     }
     if (max_threshold < 1) {
         PyErr_Format(
+            PyExc_ValueError,
             "max_threshold must be at least 1, got %zd", max_threshold);
         return NULL;
     }
     if (max_threshold < min_threshold) {
         PyErr_Format(
+            PyExc_ValueError,
             "max_threshold (%zd) must be greater than min_threshold (%zd)",
             max_threshold, min_threshold
         );
@@ -2464,9 +2467,10 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     }
 
     uint64_t total_sequences = self->number_of_sequences;
-    uint64_t minimum_hits = ceil(threshold * total_sequences);
-    minimum_hits = Py_MAX(min_threshold, minimum_hits);
-    minimum_hits = Py_MIN(minimum_hits, max_threshold);
+    Py_ssize_t hit_theshold = ceil(threshold * total_sequences);
+    hit_theshold = Py_MAX(min_threshold, hit_theshold);
+    hit_theshold = Py_MIN(max_threshold, hit_theshold);
+    uint64_t minimum_hits = hit_theshold;
 	uint64_t number_of_uniques = self->number_of_uniques;
     HashTableEntry *entries = self->entries;
 
