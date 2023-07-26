@@ -59,57 +59,57 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
 def test_sequence_duplication_overrepresented_sequences():
     seqdup = SequenceDuplication()
     for i in range(100):
-        seqdup.add_read(view_from_sequence("mildly overrepresented"))
+        seqdup.add_read(view_from_sequence("A"))
     for i in range(200):
-        seqdup.add_read(view_from_sequence("slightly overrepresented"))
+        seqdup.add_read(view_from_sequence("C"))
     for i in range(2000):
-        seqdup.add_read(view_from_sequence("Blatantly overrepresented"))
+        seqdup.add_read(view_from_sequence("G"))
     for i in range(10):
-        seqdup.add_read(view_from_sequence("not overrepresented"))
-    seqdup.add_read(view_from_sequence("truly unique"))
+        seqdup.add_read(view_from_sequence("T"))
+    seqdup.add_read(view_from_sequence("GATTACA"))
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
-        seqdup.add_read(view_from_sequence("SPAM"))
+        seqdup.add_read(view_from_sequence("CAT"))
     overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.001)
-    assert overrepresented[0][2] == "SPAM"
-    assert overrepresented[1][2] == "Blatantly overrepresented"
+    assert overrepresented[0][2] == "CAT"
+    assert overrepresented[1][2] == "G"
     assert overrepresented[1][0] == 2000
-    assert overrepresented[2][2] == "slightly overrepresented"
+    assert overrepresented[2][2] == "C"
     assert overrepresented[2][0] == 200
-    assert overrepresented[3][2] == "mildly overrepresented"
+    assert overrepresented[3][2] == "A"
     assert overrepresented[3][1] == 100 / 100_000
     # Assert no other sequences recorded as overrepresented.
     assert len(overrepresented) == 4
     overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.00001)
-    assert overrepresented[-1][2] == "truly unique"
+    assert overrepresented[-1][2] == "GATTACA"
     overrepresented = seqdup.overrepresented_sequences(
         threshold_fraction=0.00001,
         min_threshold=2,
     )
-    assert overrepresented[-1][2] == "not overrepresented"
+    assert overrepresented[-1][2] == "T"
     overrepresented = seqdup.overrepresented_sequences(
         threshold_fraction=0.1,
         min_threshold=2,
         max_threshold=1000,
     )
     assert len(overrepresented) == 2
-    assert overrepresented[1][2] == "Blatantly overrepresented"
+    assert overrepresented[1][2] == "G"
 
 
 def test_sequence_duplication_duplication_counts():
     seqdup = SequenceDuplication()
     for i in range(100):
-        seqdup.add_read(view_from_sequence("mildly overrepresented"))
+        seqdup.add_read(view_from_sequence("A"))
     for i in range(200):
-        seqdup.add_read(view_from_sequence("slightly overrepresented"))
+        seqdup.add_read(view_from_sequence("C"))
     for i in range(2000):
-        seqdup.add_read(view_from_sequence("Blatantly overrepresented"))
+        seqdup.add_read(view_from_sequence("G"))
     for i in range(10):
-        seqdup.add_read(view_from_sequence("not overrepresented"))
-    seqdup.add_read(view_from_sequence("truly unique"))
-    seqdup.add_read(view_from_sequence("another unique"))
+        seqdup.add_read(view_from_sequence("T"))
+    seqdup.add_read(view_from_sequence("GATTACA"))
+    seqdup.add_read(view_from_sequence("TACCAGA"))
     for i in range(50_000):
-        seqdup.add_read(view_from_sequence("SPAM"))
+        seqdup.add_read(view_from_sequence("CAT"))
     dupcounts = collections.Counter(seqdup.duplication_counts())
     assert dupcounts[0] == 0
     assert dupcounts[1] == 2
