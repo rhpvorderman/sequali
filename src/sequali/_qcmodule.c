@@ -2248,10 +2248,10 @@ twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *seque
  * SEQUENCE DUPLICATION *
  *************************/
 
-/* A module to use the first 50 bp of reads and collect the first 1_000_000
-   unique sequences and see how often they occur to estimate the duplication 
+/* A module to use the first 50 bp of reads and collect the first
+   MAX_UNIQUE_SEQUENCES and see how often they occur to estimate the duplication
    rate and overrepresented sequences. The idea to take the first 100_000 with 
-   50 bp comes from FastQC. In sequali this is increased to 1_000_000.
+   50 bp comes from FastQC. In sequali this is increased to MAX_UNIQUE_SEQUENCES.
    
    Below some typical figures (tested with 100_000 sequences):
    For a 5 million read illumina library:
@@ -2269,12 +2269,12 @@ twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *seque
    should be optimized.
 */
 
-#define MAX_UNIQUE_SEQUENCES 1000000
+#define MAX_UNIQUE_SEQUENCES 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
    bitwise AND by the compiler. Also this size (~2MiB entries) seems to work
    well with a 1_000_000 slots in use. */
-#define HASH_TABLE_SIZE (1ULL << 21)
+#define HASH_TABLE_SIZE (1ULL << 23)
 
 /* This struct contains count, key_length and key in twobit format on one 
     single cache line so only one memory fetch is needed when a matching hash 
