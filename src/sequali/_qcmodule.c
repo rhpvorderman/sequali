@@ -23,6 +23,7 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 #include "math.h"
 #include "score_to_error_rate.h"
+#include "twobit_to_nucleotides.h"
 
 #ifdef __SSE2__
 #include "emmintrin.h"
@@ -2151,6 +2152,97 @@ static PyTypeObject PerTileQuality_Type = {
     .tp_methods = PerTileQuality_methods,
 };
 
+/**********************
+ * TWOBIT CONVERSIONS *
+ **********************/
+
+/* To be used in the sequence duplication part */
+
+static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
+// Control characters
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+// Interpunction numbers etc
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  P, Q, R, S, T, U, V, W, X, Y, Z,  
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  p, q, r, s, t, u, v, w, x, y, z, 
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
+};
+
+#define TWOBIT_UNKNOWN_CHAR -1
+#define TWOBIT_N_CHAR -2 
+#define TWOBIT_SUCCESS 0
+
+static inline int quadword_to_twobit(const uint8_t *quadword, uint8_t *twobit) {
+    uint8_t one = NUCLEOTIDE_TO_TWOBIT[quadword[0]];
+    uint8_t two = NUCLEOTIDE_TO_TWOBIT[quadword[1]];
+    uint8_t three = NUCLEOTIDE_TO_TWOBIT[quadword[2]];
+    uint8_t four = NUCLEOTIDE_TO_TWOBIT[quadword[3]];
+    uint8_t check = one | two | three | four;
+    if (check > 3) {
+        if (check & 4) {
+            return TWOBIT_UNKNOWN_CHAR;
+        }
+        if (check & 8) {
+            return TWOBIT_N_CHAR;
+        }
+    }
+    twobit[0] = (one << 6) | (two << 4) | (three << 2) | four;
+    return TWOBIT_SUCCESS;
+}
+
+static int 
+sequence_to_twobit(const uint8_t *sequence, size_t sequence_length, uint8_t *twobit) 
+{
+    size_t remainder = sequence_length % 4;
+    size_t length_no_remainder = sequence_length - remainder;
+    size_t twobit_index = 0; 
+    for (size_t i=0; i < length_no_remainder; i +=4) {
+        int ret = quadword_to_twobit(sequence + i, twobit + twobit_index);
+        if (ret != TWOBIT_SUCCESS) {
+            return ret;
+        }
+        twobit_index += 1;
+    }
+    if (remainder) {
+        uint8_t last_quad[4] = {0, 0, 0, 0};
+        for (size_t i=0; i<remainder; i++) {
+            last_quad[i] = sequence[length_no_remainder + i];
+        }
+        int ret = quadword_to_twobit(last_quad,
+                                     twobit+twobit_index);
+        if (ret != TWOBIT_SUCCESS) {
+            return ret;
+        }
+    }
+    return TWOBIT_SUCCESS;
+}
+
+static void
+twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *sequence)
+{
+    size_t remainder = sequence_length %4;
+    size_t length_no_remainder = sequence_length - remainder;
+    size_t twobit_index = 0; 
+    for (size_t i=0; i < length_no_remainder; i += 4) {
+        uint8_t twobit_c = twobit[twobit_index];
+        twobit_index += 1;
+        memcpy(sequence + i, TWOBIT_TO_NUCLEOTIDES[twobit_c], 4);
+    }
+    if (remainder) {
+        uint8_t twobit_c = twobit[twobit_index];
+        memcpy(sequence + length_no_remainder, 
+               TWOBIT_TO_NUCLEOTIDES[twobit_c], 
+               remainder);
+    }
+}
+                              
 /*************************
  * SEQUENCE DUPLICATION *
  *************************/
