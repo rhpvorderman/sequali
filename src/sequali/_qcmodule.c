@@ -2479,10 +2479,10 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         uint64_t count = entry->count;
         if (count >= minimum_hits) {
             PyObject *entry_tuple = Py_BuildValue(
-                "(kds#)",
+                "(Kds#)",
                 count,
-                ((double)count / (double)total_sequences),
-                 entry->key, entry->key_length);
+                (double)((double)count / (double)total_sequences),
+                (char *)entry->key, (Py_ssize_t)entry->key_length);
             if (entry_tuple == NULL) {
                 goto error;
             }
