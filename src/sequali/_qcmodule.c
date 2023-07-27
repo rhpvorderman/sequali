@@ -2366,7 +2366,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             return 0;
         }
     }
-    Py_hash_t hash = self->hashfunc(sequence, hash_length);
+    /* By taking the hash from the twobit, we ensure sequences are matched
+       case insensitively */
+    Py_hash_t hash = self->hashfunc(twobit, twobit_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
        setting the most significant bit, this does not affect the resulting index. */
     hash |= (1ULL << 63);  
