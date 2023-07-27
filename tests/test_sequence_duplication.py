@@ -119,3 +119,13 @@ def test_sequence_duplication_duplication_counts():
     assert dupcounts[2000] == 1
     assert dupcounts[50_000] == 1
     assert sum(dupcounts.values()) == 7
+
+
+def test_sequence_duplication_case_insensitive():
+    seqdup = SequenceDuplication()
+    seqdup.add_read(view_from_sequence("gaTTaca"))
+    seqdup.add_read(view_from_sequence("GAttACA"))
+    seqcounts = seqdup.sequence_counts()
+    assert seqdup.number_of_sequences == 2
+    assert len(seqcounts) == 1
+    assert seqcounts["GATTACA"] == 2
