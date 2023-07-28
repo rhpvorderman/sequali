@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 import pygal  # type: ignore
 import pygal.style  # type: ignore
 
-from ._qc import MAX_UNIQUE_SEQUENCES, PHRED_MAX
+from ._qc import PHRED_MAX
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
@@ -276,13 +276,14 @@ def duplication_percentages_plot(duplication_fractions: Sequence[float],
 
 
 def overrepresented_sequences_content(
-        overrepresented_sequences: Sequence[Tuple[int, float, str, int, int, str]]
+        overrepresented_sequences: Sequence[Tuple[int, float, str, int, int, str]],
+        max_unique_sequences: int,
 ) -> str:
     if not overrepresented_sequences:
         return "No overrepresented sequences."
     table = io.StringIO()
     table.write(
-        f"The first {MAX_UNIQUE_SEQUENCES} unique sequences are tracked for "
+        f"The first {max_unique_sequences} unique sequences are tracked for "
         f"duplicates. Sequences with high occurence are presented in the "
         f"table. <br>")
     table.write("Identified sequences by matched kmers. The max match is "
@@ -309,6 +310,7 @@ def html_report(data: Dict[str, Any]):
     summary = data["summary"]
     ptq = data["per_tile_quality"]
     skipped_reason = ptq["skipped_reason"]
+    max_unique_sequences = data["meta"]["max_unique_sequences"]
     if skipped_reason:
         ptq_content = f"Per tile quality skipped. Reason: {skipped_reason}"
     else:
@@ -388,13 +390,14 @@ def html_report(data: Dict[str, Any]):
                           data["adapter_content"]["x_labels"])}
     <h2>Duplication percentages</h2>
     This estimates the fraction of the duplication based on the first
-    {MAX_UNIQUE_SEQUENCES} unique sequences. <br>
+    {max_unique_sequences} unique sequences. <br>
     Estimated remaining sequences if deduplicated:
         {data["duplication_fractions"]["remaining_fraction"]:.2%}
     <br>
     {duplication_percentages_plot(data["duplication_fractions"]["values"],
                                   data["duplication_fractions"]["x_labels"])}
     <h2>Overrepresented sequences</h2>
-    {overrepresented_sequences_content(data["overrepresented_sequences"])}
+    {overrepresented_sequences_content(data["overrepresented_sequences"],
+                                       max_unique_sequences)}
     </html>
     """

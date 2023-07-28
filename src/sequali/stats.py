@@ -19,6 +19,7 @@ import math
 import sys
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
+from . import __version__
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
@@ -414,6 +415,10 @@ def calculate_stats(
     duplicated_labels, duplicated_fractions = \
         estimated_counts_to_fractions(estimated_duplication_counts)
     return {
+        "meta": {
+            "sequali_version": __version__,
+            "max_unique_sequences": sequence_duplication.max_unique_sequences,
+        },
         "summary": {
             "mean_length": total_bases / total_reads,
             "minimum_length": min_length(seq_lengths),

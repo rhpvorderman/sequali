@@ -31,3 +31,5 @@ __all__ = [
     "PHRED_MAX",
     "TABLE_SIZE"
 ]
+
+__version__ = "0.1.0-dev"

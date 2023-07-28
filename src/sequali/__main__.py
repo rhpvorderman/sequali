@@ -20,8 +20,8 @@ import sys
 
 import xopen
 
-from ._qc import AdapterCounter, FastqParser, PerTileQuality, QCMetrics, \
-    SequenceDuplication
+from ._qc import AdapterCounter, DEFAULT_MAX_UNIQUE_SEQUENCES, FastqParser, \
+    PerTileQuality, QCMetrics, SequenceDuplication
 from .html_report import html_report
 from .stats import calculate_stats
 from .util import ProgressUpdater, sequence_file_iterator
@@ -57,6 +57,14 @@ def argument_parser() -> argparse.ArgumentParser:
                              "considered overrepresented even if the "
                              "threshold fraction is not surpassed. Useful for "
                              "very large files.")
+    parser.add_argument("--max-unique-sequences", type=int,
+                        default=DEFAULT_MAX_UNIQUE_SEQUENCES,
+                        help="The maximum amount of unique sequences to "
+                             "gather. Larger amounts increase the sensitivity "
+                             "of finding overrepresented sequences and "
+                             "increase the accuracy of the duplication "
+                             "estimate, at the cost of increasing memory "
+                             "usage at about 50 bytes per sequence.")
 
     return parser
 
@@ -72,7 +80,7 @@ def main():
     adapters = dict(sequence_file_iterator(DEFAULT_ADAPTERS_FILE))
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
-    sequence_duplication = SequenceDuplication()
+    sequence_duplication = SequenceDuplication(args.max_unique_sequences)
     filename = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)

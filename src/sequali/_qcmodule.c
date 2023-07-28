@@ -23,6 +23,7 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 #include "math.h"
 #include "score_to_error_rate.h"
+#include "twobit_to_nucleotides.h"
 
 #ifdef __SSE2__
 #include "emmintrin.h"
@@ -2151,14 +2152,106 @@ static PyTypeObject PerTileQuality_Type = {
     .tp_methods = PerTileQuality_methods,
 };
 
+/**********************
+ * TWOBIT CONVERSIONS *
+ **********************/
+
+/* To be used in the sequence duplication part */
+
+static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
+// Control characters
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+// Interpunction numbers etc
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  P, Q, R, S, T, U, V, W, X, Y, Z,  
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  p, q, r, s, t, u, v, w, x, y, z, 
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
+};
+
+#define TWOBIT_UNKNOWN_CHAR -1
+#define TWOBIT_N_CHAR -2 
+#define TWOBIT_SUCCESS 0
+
+static inline int quadword_to_twobit(const uint8_t *quadword, uint8_t *twobit) {
+    uint8_t one = NUCLEOTIDE_TO_TWOBIT[quadword[0]];
+    uint8_t two = NUCLEOTIDE_TO_TWOBIT[quadword[1]];
+    uint8_t three = NUCLEOTIDE_TO_TWOBIT[quadword[2]];
+    uint8_t four = NUCLEOTIDE_TO_TWOBIT[quadword[3]];
+    uint8_t check = one | two | three | four;
+    if (check > 3) {
+        if (check & 4) {
+            return TWOBIT_UNKNOWN_CHAR;
+        }
+        if (check & 8) {
+            return TWOBIT_N_CHAR;
+        }
+    }
+    twobit[0] = (one << 6) | (two << 4) | (three << 2) | four;
+    return TWOBIT_SUCCESS;
+}
+
+static int 
+sequence_to_twobit(const uint8_t *sequence, size_t sequence_length, uint8_t *twobit) 
+{
+    size_t remainder = sequence_length % 4;
+    size_t length_no_remainder = sequence_length - remainder;
+    size_t twobit_index = 0; 
+    for (size_t i=0; i < length_no_remainder; i +=4) {
+        int ret = quadword_to_twobit(sequence + i, twobit + twobit_index);
+        if (ret != TWOBIT_SUCCESS) {
+            return ret;
+        }
+        twobit_index += 1;
+    }
+    if (remainder) {
+        // Any non-ACGTN character will throw an error, so use A's as placeholder.
+        uint8_t last_quad[4] = {'A', 'A', 'A', 'A'};
+        for (size_t i=0; i<remainder; i++) {
+            last_quad[i] = sequence[length_no_remainder + i];
+        }
+        int ret = quadword_to_twobit(last_quad,
+                                     twobit+twobit_index);
+        if (ret != TWOBIT_SUCCESS) {
+            return ret;
+        }
+    }
+    return TWOBIT_SUCCESS;
+}
+
+static void
+twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *sequence)
+{
+    size_t remainder = sequence_length %4;
+    size_t length_no_remainder = sequence_length - remainder;
+    size_t twobit_index = 0; 
+    for (size_t i=0; i < length_no_remainder; i += 4) {
+        uint8_t twobit_c = twobit[twobit_index];
+        twobit_index += 1;
+        memcpy(sequence + i, TWOBIT_TO_NUCLEOTIDES[twobit_c], 4);
+    }
+    if (remainder) {
+        uint8_t twobit_c = twobit[twobit_index];
+        memcpy(sequence + length_no_remainder, 
+               TWOBIT_TO_NUCLEOTIDES[twobit_c], 
+               remainder);
+    }
+}
+                              
 /*************************
  * SEQUENCE DUPLICATION *
  *************************/
 
-/* A module to use the first 50 bp of reads and collect the first 1_000_000
-   unique sequences and see how often they occur to estimate the duplication 
+/* A module to use the first 50 bp of reads and collect the first
+   MAX_UNIQUE_SEQUENCES and see how often they occur to estimate the duplication
    rate and overrepresented sequences. The idea to take the first 100_000 with 
-   50 bp comes from FastQC. In sequali this is increased to 1_000_000.
+   50 bp comes from FastQC. In sequali this is increased to MAX_UNIQUE_SEQUENCES.
    
    Below some typical figures (tested with 100_000 sequences):
    For a 5 million read illumina library:
@@ -2176,25 +2269,22 @@ static PyTypeObject PerTileQuality_Type = {
    should be optimized.
 */
 
-#define MAX_UNIQUE_SEQUENCES 1000000
+#define DEFAULT_MAX_UNIQUE_SEQUENCES 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
-/* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
-   bitwise AND by the compiler. Also this size (~2MiB entries) seems to work
-   well with a 1_000_000 slots in use. */
-#define HASH_TABLE_SIZE (1ULL << 21)
 
-/* This struct contains count, key_length and key on one single cache line 
-   (64 bytes) so only one memory fetch is needed when a matching hash is found.*/
+/* This struct contains count, key_length and key in twobit format on one 
+    single cache line so only one memory fetch is needed when a matching hash 
+    is found.*/
 typedef struct _HashTableEntry {
     uint64_t count;
     uint8_t key_length;
-    char key[55];  // 55 to align at 64 bytes. Only 50 is needed.
+    uint8_t key[15];  // 15 to align at 24 bytes. Only 13 is needed.
 } HashTableEntry;
 
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     uint64_t number_of_sequences;
-    uint64_t number_of_uniques;
+    uint64_t hash_table_size;
     Py_hash_t (*hashfunc)(const void *, Py_ssize_t);
     /* Store hashes and entries separately as in the most common case only
        the hash is needed. Also store a uint32_t array of indexes to the
@@ -2204,6 +2294,8 @@ typedef struct _SequenceDuplicationStruct {
     Py_hash_t *hashes; 
     uint32_t *entry_indexes;
     HashTableEntry *entries;
+    uint64_t max_unique_sequences;
+    uint64_t number_of_uniques;
     uint64_t stopped_collecting_at;
 } SequenceDuplication;
 
@@ -2219,14 +2311,28 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 static PyObject *
 SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    static char *kwargnames[] = {NULL};
-    static char *format = ":SequenceDuplication";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+    Py_ssize_t max_unique_sequences = DEFAULT_MAX_UNIQUE_SEQUENCES;
+    static char *kwargnames[] = {"max_unique_sequences", NULL};
+    static char *format = "|n:SequenceDuplication";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+            &max_unique_sequences)) {
         return NULL;
     }
-    Py_hash_t *hashes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(Py_hash_t));
-    uint32_t *entry_indexes = PyMem_Calloc(HASH_TABLE_SIZE, sizeof(uint32_t));
-    HashTableEntry *entries = PyMem_Calloc(MAX_UNIQUE_SEQUENCES, sizeof(HashTableEntry));
+    if (max_unique_sequences < 1) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "max_unique_sequences should be at least 1, got: %zd", 
+            max_unique_sequences);
+        return NULL;
+    }
+    /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
+       bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
+       utilized for at most 2/3. (Increased business degrades performance.) */
+    uint64_t hash_table_bits = (uint64_t)(log2(max_unique_sequences * 1.5) + 1);
+    uint64_t hash_table_size = 1 << hash_table_bits;
+    Py_hash_t *hashes = PyMem_Calloc(hash_table_size, sizeof(Py_hash_t));
+    uint32_t *entry_indexes = PyMem_Calloc(hash_table_size, sizeof(uint32_t));
+    HashTableEntry *entries = PyMem_Calloc(max_unique_sequences, sizeof(HashTableEntry));
     PyHash_FuncDef *hashfuncdef = PyHash_GetFuncDef();
     if ((hashes == NULL) || (entries == NULL) || (entry_indexes == NULL)) {
         PyMem_Free(hashes);
@@ -2240,6 +2346,8 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     self->number_of_sequences = 0;
     self->number_of_uniques = 0;
+    self->max_unique_sequences = max_unique_sequences;
+    self->hash_table_size = hash_table_size;
     self->stopped_collecting_at = 0;
     self->hashes = hashes;
     self->entry_indexes = entry_indexes;
@@ -2248,34 +2356,56 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
-static void
+static int
 SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
 {
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t hash_length = Py_MIN(sequence_length, UNIQUE_SEQUENCE_LENGTH);
-    Py_hash_t hash = self->hashfunc(sequence, hash_length);
+    static uint8_t twobit[16];
+    size_t twobit_length = (hash_length + 3) / 4;
+    int ret = sequence_to_twobit(sequence, hash_length, twobit);
+    if (ret != TWOBIT_SUCCESS) {
+        if (ret == TWOBIT_N_CHAR) {
+            return 0;
+        }
+        if (ret == TWOBIT_UNKNOWN_CHAR) {
+            PyErr_WarnFormat(
+                PyExc_UserWarning, 
+                1,
+                "Sequence contains a chacter that is not A, C, G, T or N: %R", 
+                PyUnicode_DecodeASCII((char *)sequence, hash_length, NULL)
+            );
+            return 0;
+        }
+    }
+    /* By taking the hash from the twobit, we ensure sequences are matched
+       case insensitively */
+    Py_hash_t hash = self->hashfunc(twobit, twobit_length);
     /* Ensure hash is never 0, because that is reserved for empty slots. By 
        setting the most significant bit, this does not affect the resulting index. */
     hash |= (1ULL << 63);  
+    /* hash_table_size is always a power of 2. So hash & (hash_table_size - 1) 
+     == hash % hash_table_size. */
+    uint64_t hash_to_index_int = self->hash_table_size - 1;
     Py_hash_t *hashes = self->hashes;
     uint32_t *entry_indexes = self->entry_indexes;
-    size_t index = hash % HASH_TABLE_SIZE;
+    size_t index = hash & hash_to_index_int;
  
     while (1) {
         Py_hash_t hash_entry = hashes[index];
         if (hash_entry == 0) {
-            if (self->number_of_uniques < MAX_UNIQUE_SEQUENCES) {
+            if (self->number_of_uniques < self->max_unique_sequences) {
                 hashes[index] = hash;
                 uint32_t entry_index = self->number_of_uniques;
                 entry_indexes[index] = entry_index;
                 HashTableEntry *entry = self->entries + entry_index;
                 entry->count = 1;
                 entry->key_length = hash_length;
-                memcpy(entry->key, sequence, hash_length);
+                memcpy(entry->key, twobit, twobit_length);
                 self->number_of_uniques += 1;
-                /* When MAX_UNIQUE_SEQUENCES is collected. We may have drawn
+                /* When max_unique_sequences is collected. We may have drawn
                    a larger amount of the population. Save that number for more
                    accurate estimates. */
                 self->stopped_collecting_at = self->number_of_sequences;
@@ -2286,15 +2416,16 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             /* There is a very small chance of a hash collision, check to make 
                sure. If not equal we simply go to the next hash_entry. */
             if (entry->key_length == hash_length && 
-                memcmp(entry->key, sequence, hash_length) == 0) {
+                memcmp(entry->key, twobit, twobit_length) == 0) {
                 entry->count += 1;
                 break;
             }
         }
         index += 1;
-        /* Make sure the index round trips when it reaches HASH_TABLE_SIZE.*/
-        index %= HASH_TABLE_SIZE;
+        /* Make sure the index round trips when it reaches hash_table_size.*/
+        index &= hash_to_index_int;
     }
+    return 0;
 } 
 
 PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
@@ -2318,7 +2449,9 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    SequenceDuplication_add_meta(self, &read->meta);
+    if (SequenceDuplication_add_meta(self, &read->meta) !=0) {
+        return NULL;
+    }
     Py_RETURN_NONE;
 }
 
@@ -2347,7 +2480,9 @@ SequenceDuplication_add_record_array(
     Py_ssize_t number_of_records = Py_SIZE(record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i=0; i < number_of_records; i++) {
-        SequenceDuplication_add_meta(self, records + i);
+        if (SequenceDuplication_add_meta(self, records + i) !=0) {
+           return NULL;
+        }
     }
     Py_RETURN_NONE;
 }
@@ -2380,7 +2515,7 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         if (key == NULL) {
             goto error;
         }
-        memcpy(PyUnicode_DATA(key), entry->key, entry->key_length);
+        twobit_to_sequence(entry->key, entry->key_length, PyUnicode_DATA(key));
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
@@ -2478,11 +2613,18 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         HashTableEntry *entry = entries + i;
         uint64_t count = entry->count;
         if (count >= minimum_hits) {
+            uint8_t *key = entry->key;
+            uint8_t key_length = entry->key_length;
+            PyObject *sequence_obj = PyUnicode_New(key_length, 127);
+            if (sequence_obj == NULL) {
+                goto error;
+            }
+            twobit_to_sequence(key, key_length, PyUnicode_DATA(sequence_obj));
             PyObject *entry_tuple = Py_BuildValue(
-                "(Kds#)",
+                "(KdN)",
                 count,
                 (double)((double)count / (double)total_sequences),
-                (char *)entry->key, (Py_ssize_t)entry->key_length);
+                sequence_obj);
             if (entry_tuple == NULL) {
                 goto error;
             }
@@ -2563,6 +2705,10 @@ static PyMemberDef SequenceDuplication_members[] = {
       offsetof(SequenceDuplication, stopped_collecting_at), READONLY,
       "The number of sequences collected when the last unique item was added "
       "to the dictionary."},
+    {"max_unique_sequences", T_ULONGLONG, 
+      offsetof(SequenceDuplication, max_unique_sequences), READONLY,
+      "The maximum number of unique sequences stored in the object."
+    },
     {NULL},
 };
 
@@ -2677,6 +2823,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
-    PyModule_AddIntMacro(m, MAX_UNIQUE_SEQUENCES);
+    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
     return m;
 }
