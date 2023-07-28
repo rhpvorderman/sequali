@@ -25,6 +25,7 @@ from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 from .util import fasta_parser
+from . import __version__
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -414,6 +415,10 @@ def calculate_stats(
     duplicated_labels, duplicated_fractions = \
         estimated_counts_to_fractions(estimated_duplication_counts)
     return {
+        "meta": {
+            "sequali_version": __version__,
+            "max_unique_sequences": sequence_duplication.max_unique_sequences,
+        },
         "summary": {
             "mean_length": total_bases / total_reads,
             "minimum_length": min_length(seq_lengths),

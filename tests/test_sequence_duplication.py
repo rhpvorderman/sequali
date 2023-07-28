@@ -5,7 +5,6 @@ import math
 import pytest
 
 from sequali import FastqRecordView, SequenceDuplication
-from sequali._qc import MAX_UNIQUE_SEQUENCES
 
 
 def view_from_sequence(sequence: str) -> FastqRecordView:
@@ -17,18 +16,20 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
 
 
 def test_sequence_duplication():
-    seqdup = SequenceDuplication()
+    max_unique_sequences = 100_000
+    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences)
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
-    number_of_letters = math.ceil(math.log(MAX_UNIQUE_SEQUENCES) / math.log(4))
+    number_of_letters = math.ceil(math.log(max_unique_sequences) / math.log(4))
     for combo in itertools.product(*(("ACGT",) * number_of_letters)):
         sequence = "".join(combo) + 91 * "A"
         read = FastqRecordView("name", sequence, "H" * len(sequence))
         seqdup.add_read(read)
     assert seqdup.number_of_sequences == 4 ** number_of_letters
     sequence_counts = seqdup.sequence_counts()
-    assert len(sequence_counts) == MAX_UNIQUE_SEQUENCES
+    assert len(sequence_counts) == max_unique_sequences
+    assert seqdup.max_unique_sequences == max_unique_sequences
     for sequence, count in sequence_counts.items():
         assert len(sequence) == 50
         assert count == 1

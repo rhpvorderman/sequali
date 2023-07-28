@@ -28,7 +28,7 @@ G: int
 T: int 
 N: int 
 MAX_SEQUENCE_SIZE: int
-MAX_UNIQUE_SEQUENCES: int
+DEFAULT_MAX_UNIQUE_SEQUENCES: int
 
 class FastqRecordView:
     obj: bytes
@@ -79,8 +79,9 @@ class PerTileQuality:
 class SequenceDuplication:
     number_of_sequences: int
     stopped_collecting_at: int
+    max_unique_sequences: int
 
-    def __init__(self): ...
+    def __init__(self, max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def sequence_counts(self) -> Dict[str, int]: ...
