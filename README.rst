@@ -23,16 +23,40 @@ Installation
 Usage
 =====
 
-    usage: sequali [-h] [--json JSON] [--html HTML] [--dir DIR] input
+    usage: sequali [-h] [--json JSON] [--html HTML] [--dir DIR]
+                   [--overrepresentation-threshold-fraction OVERREPRESENTATION_THRESHOLD_FRACTION]
+                   [--overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD]
+                   [--overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD]
+                   [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
+                   input
 
     positional arguments:
-      input        Input FASTQ file
+      input                 Input FASTQ file
 
     options:
-      -h, --help   show this help message and exit
-      --json JSON  JSON output file. default: '<input>.json'
-      --html HTML  HTML output file. default: '<input>.html'
-      --dir DIR    Output directory. default: current working directory
+      -h, --help            show this help message and exit
+      --json JSON           JSON output file. default: '<input>.json'
+      --html HTML           HTML output file. default: '<input>.html'
+      --dir DIR             Output directory. default: current working directory
+      --overrepresentation-threshold-fraction OVERREPRESENTATION_THRESHOLD_FRACTION
+                            At what fraction a sequence is determined to be
+                            overrepresented. Default: 0.0001 (1 in 100 000).
+      --overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD
+                            The minimum amount of sequences that need to be
+                            present to be considered overrepresented even if the
+                            threshold fraction is surpassed. Useful for smaller
+                            files.
+      --overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD
+                            The threshold above which a sequence is considered
+                            overrepresented even if the threshold fraction is not
+                            surpassed. Useful for very large files.
+      --max-unique-sequences MAX_UNIQUE_SEQUENCES
+                            The maximum amount of unique sequences to gather.
+                            Larger amounts increase the sensitivity of finding
+                            overrepresented sequences and increase the accuracy of
+                            the duplication estimate, at the cost of increasing
+                            memory usage at about 50 bytes per sequence.
+
 
 Acknowledgements
 ================
