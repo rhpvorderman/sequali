@@ -19,13 +19,13 @@ import math
 import sys
 from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
+from . import __version__
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 from .util import fasta_parser
-from . import __version__
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4

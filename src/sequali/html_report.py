@@ -397,7 +397,7 @@ def html_report(data: Dict[str, Any]):
     {duplication_percentages_plot(data["duplication_fractions"]["values"],
                                   data["duplication_fractions"]["x_labels"])}
     <h2>Overrepresented sequences</h2>
-    {overrepresented_sequences_content(data["overrepresented_sequences"], 
+    {overrepresented_sequences_content(data["overrepresented_sequences"],
                                        max_unique_sequences)}
     </html>
     """
