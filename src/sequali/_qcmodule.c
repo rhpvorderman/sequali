@@ -2721,6 +2721,53 @@ static PyTypeObject SequenceDuplication_Type = {
     .tp_methods = SequenceDuplication_methods,
 };
 
+/********************
+ * NANOSTATS MODULE *
+*********************/
+
+struct NanoInfo {
+    time_t start_time; 
+    uint64_t read;
+    uint32_t channel_id;
+    uint32_t length;
+    double average_quality;
+};
+
+typedef struct _NanoStatsStruct {
+    PyObject_HEAD;
+    size_t number_of_reads;
+    size_t nano_infos_size;
+    struct NanoInfo *nano_infos;
+} NanoStats;
+
+static void NanoStats_dealloc(NanoStats *self) {
+    PyMem_Free(self->nano_infos);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+};
+
+static PyObject *
+NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
+    static char *format = {":_qc.NanoStats"};
+    static char *kwarg_names[] = {NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwarg_names)) {
+        return NULL;
+    }
+    NanoStats *self = PyObject_New(NanoStats, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->nano_infos = NULL;
+    self->nano_infos_size = 0;
+    self->number_of_reads = 0;
+    return (PyObject *)self;
+}
+
+static PyTypeObject NanoStats_Type = {
+    .tp_name = "_qc.NanoStats",
+    .tp_basicsize = sizeof(SequenceDuplication),
+    .tp_dealloc = (destructor)NanoStats_dealloc,
+    .tp_new = (newfunc)NanoStats__new__, 
+};
 
 /*************************
  * MODULE INITIALIZATION *
@@ -2812,6 +2859,9 @@ PyInit__qc(void)
     if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
         return NULL;
     }  
+    if (python_module_add_type(m, &NanoStats_Type) != 0) {
+        return NULL;
+    }
 
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
