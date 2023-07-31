@@ -2767,6 +2767,28 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     return (PyObject *)self;
 }
 
+/***
+ * Convert a date to seconds since epoch according to:
+ * https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16
+ * With a little help from Eric S. Raymond's solution in this stackoverflow
+ * answer:
+ * https://stackoverflow.com/questions/530519/stdmktime-and-timezone-info
+*/
+static inline time_t 
+posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
+{
+    /* Following code is only true for years greater than 1970*/
+    if (year < 1970) {
+        return -1;
+    } 
+    year -= 1900; // Years are relative to 1900
+    static int mday_to_yday[12] = { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    int yday = mday_to_yday[month - 1] + mday - 1;
+    return second + minute*60 + hour*3600 + yday*86400 +
+    (year-70)*31536000 + ((year-69)/4)*86400 -
+    ((year-1)/100)*86400 + ((year+299)/400)*86400;
+}
+
 /**
  * @brief Convert a timestring in Nanopore format to a timestamp. 
  * 
@@ -2789,17 +2811,7 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
     if (ret != 6) {
         return -1;
     }
-    struct tm timestruct = {
-        .tm_gmtoff = 0,
-        .tm_isdst = 0,
-        .tm_year = year - 1900,  // Years are relative to 1900
-        .tm_mon = month - 1,  // January == 0
-        .tm_mday = day,
-        .tm_hour = hour,
-        .tm_min = minute,
-        .tm_sec = second,
-    };
-    return mktime(&timestruct);
+    return posix_gm_time(year, month, day, hour, minute, second);
 }
 
 /**
