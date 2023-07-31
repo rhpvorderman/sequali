@@ -2730,18 +2730,21 @@ struct NanoInfo {
     int64_t read;
     int32_t channel_id;
     uint32_t length;
-    double average_quality;
+    double cumulative_error_rate;
 };
 
 typedef struct _NanoStatsStruct {
     PyObject_HEAD;
+    bool skipped;
     size_t number_of_reads;
     size_t nano_infos_size;
     struct NanoInfo *nano_infos;
+    PyObject *skipped_reason;
 } NanoStats;
 
 static void NanoStats_dealloc(NanoStats *self) {
     PyMem_Free(self->nano_infos);
+    Py_XDECREF(self->skipped_reason);
     Py_TYPE(self)->tp_free((PyObject *)self);
 };
 
@@ -2759,6 +2762,7 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->nano_infos = NULL;
     self->nano_infos_size = 0;
     self->number_of_reads = 0;
+    self->skipped = false;
     return (PyObject *)self;
 }
 
@@ -2798,8 +2802,8 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
 }
 
 /**
- * @brief Parser read, channel_id and start_time fields from a nanopore FASTQ
- *        header. Other fields are untouched
+ * @brief Parse read, channel_id and start_time fields from a nanopore FASTQ
+ *        header. Other fields are untouched.
  * 
  * @param header The header.
  * @param header_length size of the header.
@@ -2875,11 +2879,142 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
     return 0;
 }
 
+/**
+ * @brief Add a FASTQ record to the NanoStats module
+ * 
+ * @param self 
+ * @param meta 
+ * @return int 0 on success or when not a nanopore FASTQ. -1 on error.
+ */
+static int 
+NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
+{
+    if (self->skipped) {
+        return 0;
+    }
+    if (self->number_of_reads == self->nano_infos_size) {
+        size_t old_size = self->nano_infos_size;
+        size_t new_size = Py_MAX(old_size * 2, 16 * 1024);
+        struct NanoInfo *tmp = PyMem_Realloc(self->nano_infos, new_size * sizeof(struct NanoInfo));
+        if (tmp == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp + old_size, 0, (new_size - old_size) * sizeof(struct NanoInfo)); 
+        self->nano_infos = tmp;
+        self->nano_infos_size = new_size;
+    };
+    struct NanoInfo *info = self->nano_infos + self->number_of_reads;
+    size_t sequence_length = meta->sequence_length;
+    uint8_t *qualities = meta->record_start + meta->qualities_offset;
+    info->length = sequence_length;
+    if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
+        self->skipped = true;
+        return 0;
+    }
+    double cumulative_error_rate = 0.0; 
+    for (size_t i=0; i < sequence_length; i++) {
+        uint8_t q = qualities[i] - 33;
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Not a valid phred character: %c", qualities[i]
+            );
+            return -1;
+        }
+        cumulative_error_rate += SCORE_TO_ERROR_RATE[q];
+    }
+    info->cumulative_error_rate = cumulative_error_rate;
+    self->number_of_reads += 1;
+    return 0;
+}
+
+PyDoc_STRVAR(NanoStats_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the NanoStats module. \n"
+"\n"
+"  read\n"
+"    A FastqRecordView object.\n"
+);
+
+#define NanoStats_add_read_method METH_O 
+
+static PyObject *
+NanoStats_add_read(NanoStats *self, FastqRecordView *read) 
+{
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    if (NanoStats_add_meta(self, &read->meta) !=0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(NanoStats_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the NanoStats module. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define NanoStats_add_record_array_method METH_O
+
+static PyObject * 
+NanoStats_add_record_array(
+    NanoStats *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    if (self->skipped) {
+        Py_RETURN_NONE;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        if (NanoStats_add_meta(self, records + i) !=0) {
+           return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef NanoStats_methods[] = {
+    {"add_read", (PyCFunction)NanoStats_add_read, NanoStats_add_read_method,
+     NanoStats_add_read__doc__},
+    {"add_record_array", (PyCFunction)NanoStats_add_record_array, 
+     NanoStats_add_record_array_method, NanoStats_add_record_array__doc__},
+    {NULL},
+};
+
+static PyMemberDef NanoStats_members[] = {
+    {"number_of_reads", T_ULONGLONG, offsetof(NanoStats, number_of_reads), 
+     READONLY, "The total amount of reads counted"},
+    {"skipped_reason", T_OBJECT, offsetof(NanoStats, skipped_reason),
+     READONLY, "What the reason is for skipping the module if skipped." 
+               "Set to None if not skipped."},
+    {NULL},
+};
+
 static PyTypeObject NanoStats_Type = {
     .tp_name = "_qc.NanoStats",
-    .tp_basicsize = sizeof(SequenceDuplication),
+    .tp_basicsize = sizeof(NanoStats),
     .tp_dealloc = (destructor)NanoStats_dealloc,
     .tp_new = (newfunc)NanoStats__new__, 
+    .tp_methods = NanoStats_methods,
+    .tp_members = NanoStats_members,
 };
 
 /*************************
