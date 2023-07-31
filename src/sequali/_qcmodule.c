@@ -2727,8 +2727,8 @@ static PyTypeObject SequenceDuplication_Type = {
 
 struct NanoInfo {
     time_t start_time; 
-    uint64_t read;
-    uint32_t channel_id;
+    int64_t read;
+    int32_t channel_id;
     uint32_t length;
     double average_quality;
 };
@@ -2760,6 +2760,119 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->nano_infos_size = 0;
     self->number_of_reads = 0;
     return (PyObject *)self;
+}
+
+/**
+ * @brief Convert a timestring in Nanopore format to a timestamp. 
+ * 
+ * @param time_string A string in year-month-dateThour:minute:secondZ format.
+ * @return time_t The unix timestamp, -1 on failure. Nanopore was not invented 
+ *          on New Year's eve 1969 so this should not lead to confusion ;-).
+ */
+static time_t time_string_to_timestamp(const uint8_t *time_string) {
+    // Time format used 2019-01-26T18:52:46Z
+
+    int16_t year = 0;
+    int8_t month = 0;
+    int8_t day = 0;
+    int8_t hour = 0;
+    int8_t minute = 0;
+    int8_t second = 0;
+    int ret = sscanf((char *)time_string, 
+                     "%4hd-%2hhd-%2hhdT%2hhd:%2hhd:%2hhdZ", 
+                     &year, &month, &day, &hour, &minute, &second);
+    if (ret != 6) {
+        return -1;
+    }
+    struct tm timestruct = {
+        .tm_gmtoff = 0,
+        .tm_isdst = 0,
+        .tm_year = year - 1900,  // Years are relative to 1900
+        .tm_mon = month - 1,  // January == 0
+        .tm_mday = day,
+        .tm_hour = hour,
+        .tm_min = minute,
+        .tm_sec = second,
+    };
+    return mktime(&timestruct);
+}
+
+/**
+ * @brief Parser read, channel_id and start_time fields from a nanopore FASTQ
+ *        header. Other fields are untouched
+ * 
+ * @param header The header.
+ * @param header_length size of the header.
+ * @param info Pointer to the info object to be populated.
+ * @return int 0 on success, -1 on parsing error.
+ */
+static int 
+NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInfo *info) 
+{  
+    const uint8_t *cursor = header;
+    const uint8_t *end_ptr = header + header_length;  
+    cursor = memchr(cursor, ' ', header_length);
+    if (cursor == NULL) {
+        return -1;
+    }
+    cursor += 1; 
+    int64_t read = -1;
+    int32_t channel_id = -1;
+    time_t start_time = 0;
+    while (cursor < end_ptr) {
+        const uint8_t *field_name = cursor; 
+        const uint8_t *equals = memchr(field_name, '=', end_ptr - field_name);
+        const uint8_t *field_end = NULL;
+        if (equals == NULL) {
+            return -1;
+        } 
+        size_t field_name_length = equals - field_name;
+        const uint8_t *field_value = equals + 1;
+        switch(field_name_length) {
+            case 2: 
+                if (!memcmp(field_name, "ch", 2) == 0) {
+                    break;
+                }
+                channel_id = strtol((char *)field_value, (char **)&field_end, 10);
+                if (channel_id == 0 && errno != 0) {
+                    // clear errno before returning
+                    errno = 0;
+                    return -1;
+                }
+                break;
+            case 4:
+                if (!memcmp(field_name, "read", 4)) {
+                    break;
+                }
+                read = strtoll((char *)field_value, (char **)&field_end, 10);
+                if (read == 0 && errno != 0) {
+                    // clear errno before returning
+                    errno = 0;
+                    return -1;
+                }
+                break;
+            case 10:
+                if (!memcmp(field_name, "start_time", 10)) {
+                    break;
+                }
+                start_time = time_string_to_timestamp(field_value);
+                if (start_time < 0) {
+                    return -1;
+                }
+                field_end = field_value + 20;
+                break;
+            default:
+                field_end = field_value + strcspn((char *)field_value, " \n");
+        }
+        uint8_t field_end_char = field_end[0];
+        if (field_end_char != ' ' || field_end_char != '\n') {
+            return -1;
+        };
+    }
+    info->read = read; 
+    info->channel_id = channel_id;
+    info->start_time = start_time;
+    return 0;
 }
 
 static PyTypeObject NanoStats_Type = {
