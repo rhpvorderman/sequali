@@ -2910,6 +2910,10 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     info->length = sequence_length;
     if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
         self->skipped = true;
+        self->skipped_reason = PyUnicode_FromFormat(
+            "Can not parse header: %R",
+            PyUnicode_DecodeASCII((const char *)meta->record_start + 1, 
+                meta->name_length, NULL));
         return 0;
     }
     double cumulative_error_rate = 0.0; 
@@ -2999,7 +3003,7 @@ PyDoc_STRVAR(NanoStats_nano_info_list__doc__,
 "(start_time, read, channel_id, length, cumulative error_rate). \n"
 );
 
-#define NanoStats_nano_info_list_method METH_O
+#define NanoStats_nano_info_list_method METH_NOARGS
 
 static PyObject *
 NanoStats_nano_info_list(NanoStats *self, PyObject *Py_UNUSED(ignore)) 
