@@ -1,3 +1,5 @@
+import datetime
+
 from sequali import FastqRecordView
 from sequali._qc import NanoStats
 
@@ -12,8 +14,11 @@ def test_nano_stats():
                            "sample_id=SS_A1",
                             "ACGT",
                             "AAAA")
+    cumulative_error_rate = 4 * 10 ** (-(ord("A") - 33) / 10)
+    tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08Z")
+    timestamp = tm.timestamp()
     nanostats = NanoStats()
     nanostats.add_read(view)
     nano_info_list = nanostats.nano_info_list()
     assert len(nano_info_list) == 1
-    assert nano_info_list[0] == (0, 10, 444, 4, 4 * 10 ** ((ord("A") - 33) / 10))
+    assert nano_info_list[0] == (timestamp, 10, 444, 4, cumulative_error_rate)
