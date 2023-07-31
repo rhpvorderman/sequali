@@ -21,7 +21,7 @@ import sys
 import xopen
 
 from ._qc import AdapterCounter, DEFAULT_MAX_UNIQUE_SEQUENCES, FastqParser, \
-    PerTileQuality, QCMetrics, SequenceDuplication
+    NanoStats, PerTileQuality, QCMetrics, SequenceDuplication
 from .html_report import html_report
 from .stats import calculate_stats
 from .util import ProgressUpdater, sequence_file_iterator
@@ -81,6 +81,7 @@ def main():
     adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
+    nanostats = NanoStats()
     filename = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
@@ -91,6 +92,7 @@ def main():
                 per_tile_quality.add_record_array(record_array)
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
+                nanostats.add_record_array(record_array)
                 progress.update(record_array)
     json_data = calculate_stats(metrics,
                                 adapter_counter,
