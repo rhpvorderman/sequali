@@ -2869,9 +2869,10 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
                 field_end = field_value + strcspn((char *)field_value, " \n");
         }
         uint8_t field_end_char = field_end[0];
-        if (field_end_char != ' ' || field_end_char != '\n') {
+        if (field_end_char != ' ' && field_end_char != '\n') {
             return -1;
         };
+        cursor = field_end + 1;
     }
     info->read = read; 
     info->channel_id = channel_id;
