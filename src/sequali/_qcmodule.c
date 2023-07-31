@@ -2734,7 +2734,7 @@ struct NanoInfo {
 };
 
 typedef struct _NanoStatsStruct {
-    PyObject_HEAD;
+    PyObject_HEAD
     bool skipped;
     size_t number_of_reads;
     size_t nano_infos_size;
@@ -2763,6 +2763,7 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->nano_infos_size = 0;
     self->number_of_reads = 0;
     self->skipped = false;
+    self->skipped_reason = NULL;
     return (PyObject *)self;
 }
 
