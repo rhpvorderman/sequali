@@ -2991,11 +2991,52 @@ NanoStats_add_record_array(
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(NanoStats_nano_info_list__doc__,
+"nano_info_list($self, record_array, /)\n"
+"--\n"
+"\n"
+"Return a list of tuples of \n"
+"(start_time, read, channel_id, length, cumulative error_rate). \n"
+);
+
+#define NanoStats_nano_info_list_method METH_O
+
+static PyObject *
+NanoStats_nano_info_list(NanoStats *self, PyObject *Py_UNUSED(ignore)) 
+{
+    size_t number_of_reads = self->number_of_reads;
+    PyObject *return_list = PyList_New(number_of_reads);
+    if (return_list == NULL) {
+        return PyErr_NoMemory();
+    }
+    struct NanoInfo *nano_infos = self->nano_infos;
+    for (size_t i=0; i < number_of_reads; i++) {
+        struct NanoInfo *info = nano_infos + i;
+        PyObject *tup = Py_BuildValue(
+            "(lLlId)", 
+            info->start_time, 
+            info->read, 
+            info->channel_id, 
+            info->length,
+            info->cumulative_error_rate
+        );
+        if (tup == NULL) {
+            Py_DECREF(return_list);
+            return NULL;
+        }
+        PyList_SET_ITEM(return_list, i, tup);
+    }
+    return return_list;
+}
+
+
 static PyMethodDef NanoStats_methods[] = {
     {"add_read", (PyCFunction)NanoStats_add_read, NanoStats_add_read_method,
      NanoStats_add_read__doc__},
     {"add_record_array", (PyCFunction)NanoStats_add_record_array, 
      NanoStats_add_record_array_method, NanoStats_add_record_array__doc__},
+    {"nano_info_list", (PyCFunction)NanoStats_nano_info_list, 
+     NanoStats_nano_info_list_method, NanoStats_nano_info_list__doc__},
     {NULL},
 };
 
