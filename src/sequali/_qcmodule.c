@@ -2845,7 +2845,7 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
                 }
                 break;
             case 4:
-                if (!memcmp(field_name, "read", 4)) {
+                if (!memcmp(field_name, "read", 4) == 0) {
                     break;
                 }
                 read = strtoll((char *)field_value, (char **)&field_end, 10);
@@ -2856,7 +2856,7 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
                 }
                 break;
             case 10:
-                if (!memcmp(field_name, "start_time", 10)) {
+                if (!memcmp(field_name, "start_time", 10) == 0) {
                     break;
                 }
                 start_time = time_string_to_timestamp(field_value);
