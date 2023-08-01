@@ -21,4 +21,4 @@ def test_nano_stats():
     nanostats.add_read(view)
     nano_info_list = nanostats.nano_info_list()
     assert len(nano_info_list) == 1
-    assert nano_info_list[0] == (timestamp, 10, 444, 4, cumulative_error_rate)
+    assert nano_info_list[0] == (timestamp, 444, 4, cumulative_error_rate)

@@ -2727,7 +2727,6 @@ static PyTypeObject SequenceDuplication_Type = {
 
 struct NanoInfo {
     time_t start_time; 
-    int64_t read;
     int32_t channel_id;
     uint32_t length;
     double cumulative_error_rate;
@@ -2833,7 +2832,6 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
         return -1;
     }
     cursor += 1; 
-    int64_t read = -1;
     int32_t channel_id = -1;
     time_t start_time = 0;
     while (cursor < end_ptr) {
@@ -2852,17 +2850,6 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
                 }
                 channel_id = strtol((char *)field_value, (char **)&field_end, 10);
                 if (channel_id == 0 && errno != 0) {
-                    // clear errno before returning
-                    errno = 0;
-                    return -1;
-                }
-                break;
-            case 4:
-                if (!memcmp(field_name, "read", 4) == 0) {
-                    break;
-                }
-                read = strtoll((char *)field_value, (char **)&field_end, 10);
-                if (read == 0 && errno != 0) {
                     // clear errno before returning
                     errno = 0;
                     return -1;
@@ -2887,7 +2874,6 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
         };
         cursor = field_end + 1;
     }
-    info->read = read; 
     info->channel_id = channel_id;
     info->start_time = start_time;
     return 0;
@@ -3031,9 +3017,8 @@ NanoStats_nano_info_list(NanoStats *self, PyObject *Py_UNUSED(ignore))
     for (size_t i=0; i < number_of_reads; i++) {
         struct NanoInfo *info = nano_infos + i;
         PyObject *tup = Py_BuildValue(
-            "(lLlId)", 
+            "(llId)", 
             info->start_time, 
-            info->read, 
             info->channel_id, 
             info->length,
             info->cumulative_error_rate
