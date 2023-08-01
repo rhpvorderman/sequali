@@ -39,6 +39,8 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 static PyTypeObject *PythonArray;  // array.array
 
+#define PHRED_MAX 93
+
 
 /*********
  * Utils *
@@ -172,6 +174,9 @@ struct FastqMeta {
         uint32_t qualities_length;
     };
     uint32_t qualities_offset;
+    /* Store the accumulated error once calculated so it can be reused by
+       the NanoStats module */
+    double accumulated_error_rate;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -259,7 +264,22 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             PyExc_OverflowError, 
             "Total length of FASTQ record exceeds 4 GiB. Record name: %R",
             name_obj);
+        return NULL;
     }
+
+    double accumulated_error_rate = 0.0;
+    for (size_t i=0; i < sequence_length; i++) {
+        uint8_t q = qualities[i] - 33;
+        if (q > PHRED_MAX) {
+                PyErr_Format(
+                    PyExc_ValueError, 
+                    "Not a valid phred character: %c", qualities[i]
+                );
+                return NULL;
+            }
+        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+    }
+
     PyObject *bytes_obj = PyBytes_FromStringAndSize(NULL, total_length);
     if (bytes_obj == NULL) {
         return PyErr_NoMemory();
@@ -269,12 +289,14 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(bytes_obj);
         return PyErr_NoMemory();
     }
+
     uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
     self->meta.record_start = buffer;
     self->meta.name_length = name_length;
     self->meta.sequence_offset = 2 + name_length;
     self->meta.sequence_length = sequence_length;
     self->meta.qualities_offset = 5 + name_length + sequence_length;
+    self->meta.accumulated_error_rate = accumulated_error_rate;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -765,6 +787,8 @@ FastqParser__next__(FastqParser *self)
             meta->sequence_offset = sequence_start - record_start;
             meta->sequence_length = sequence_length;
             meta->qualities_offset = qualities_start - record_start;
+            meta->accumulated_error_rate
+     = 0.0;
             record_start = qualities_end + 1;
         }
     }
@@ -819,7 +843,6 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define G 3
 #define T 4
 #define NUC_TABLE_SIZE 5
-#define PHRED_MAX 93 
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
@@ -1005,6 +1028,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     assert(gc_content_index <= 100);
     self->gc_content[gc_content_index] += 1;
 
+    meta->accumulated_error_rate = accumulated_error_rate;
     double average_error_rate = accumulated_error_rate / (double)sequence_length;
     double average_phred = -10.0 * log10(average_error_rate);
     uint64_t phred_score_index = (uint64_t)round(average_phred);
@@ -2910,7 +2934,6 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     };
     struct NanoInfo *info = self->nano_infos + self->number_of_reads;
     size_t sequence_length = meta->sequence_length;
-    uint8_t *qualities = meta->record_start + meta->qualities_offset;
     info->length = sequence_length;
     if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
         self->skipped = true;
@@ -2920,19 +2943,7 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
                 meta->name_length, NULL));
         return 0;
     }
-    double cumulative_error_rate = 0.0; 
-    for (size_t i=0; i < sequence_length; i++) {
-        uint8_t q = qualities[i] - 33;
-        if (q > PHRED_MAX) {
-            PyErr_Format(
-                PyExc_ValueError, 
-                "Not a valid phred character: %c", qualities[i]
-            );
-            return -1;
-        }
-        cumulative_error_rate += SCORE_TO_ERROR_RATE[q];
-    }
-    info->cumulative_error_rate = cumulative_error_rate;
+    info->cumulative_error_rate = meta->accumulated_error_rate;
     time_t timestamp = info->start_time;
     if (timestamp > self->max_time) {
         self->max_time = timestamp;
