@@ -1899,22 +1899,17 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
        @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
        The tile ID is after the fourth colon.
     */
-    size_t colon_count = 0;
-    size_t tile_number_offset = -1; 
-    for (size_t i=0; i < header_length; i++) {
-        if (header[i] == ':') {
-            colon_count += 1;
-            if (colon_count == 4) {
-                tile_number_offset = i + 1;
-                break;
-            }
+    const uint8_t *header_end = header + header_length;
+    const uint8_t *cursor = header;
+    for (size_t i=0; i<4; i++) {
+        cursor = memchr(cursor, ':', header_end - cursor);
+        if (cursor == NULL) {
+            return -1;
         }
-    }
-    if (colon_count != 4) {
-        return -1;
-    }
-    const uint8_t *tile_start = header + tile_number_offset;
-    const uint8_t *tile_end = memchr(tile_start, ':', header + header_length - tile_start );
+        cursor += 1;
+    } 
+    const uint8_t *tile_start = cursor;
+    const uint8_t *tile_end = memchr(tile_start, ':', header_end - tile_start);
     if (tile_end == NULL) {
         return -1;
     }
