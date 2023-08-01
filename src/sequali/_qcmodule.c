@@ -1901,25 +1901,24 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
     */
     size_t colon_count = 0;
     size_t tile_number_offset = -1; 
-    size_t tile_number_end = -1;
     for (size_t i=0; i < header_length; i++) {
         if (header[i] == ':') {
             colon_count += 1;
             if (colon_count == 4) {
                 tile_number_offset = i + 1;
-            }
-            else if (colon_count == 5)
-            {
-                tile_number_end = i;
                 break;
             }
         }
     }
-    if (colon_count != 5) {
+    if (colon_count != 4) {
         return -1;
     }
     const uint8_t *tile_start = header + tile_number_offset;
-    size_t tile_length = tile_number_end - tile_number_offset;
+    const uint8_t *tile_end = memchr(tile_start, ':', header + header_length - tile_start );
+    if (tile_end == NULL) {
+        return -1;
+    }
+    size_t tile_length = tile_end - tile_start;
     return unsigned_decimal_integer_from_string(tile_start, tile_length);
 }
 
