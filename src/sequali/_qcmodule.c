@@ -2935,10 +2935,12 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
                 field_end = field_value + 20;
                 break;
             default:
-                field_end = field_value + strcspn((char *)field_value, " \n");
+                field_end = memchr(field_value, ' ', end_ptr - field_value);
+                if (field_end == NULL) {
+                    field_end = end_ptr;
+                }
         }
-        uint8_t field_end_char = field_end[0];
-        if (field_end_char != ' ' && field_end_char != '\n') {
+        if (field_end != end_ptr && field_end[0] != ' ') {
             return -1;
         };
         cursor = field_end + 1;
