@@ -2865,19 +2865,22 @@ posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
  *          on New Year's eve 1969 so this should not lead to confusion ;-).
  */
 static time_t time_string_to_timestamp(const uint8_t *time_string) {
-    // Time format used 2019-01-26T18:52:46Z
-
-    int16_t year = 0;
-    int8_t month = 0;
-    int8_t day = 0;
-    int8_t hour = 0;
-    int8_t minute = 0;
-    int8_t second = 0;
-    int ret = sscanf((char *)time_string, 
-                     "%4hd-%2hhd-%2hhdT%2hhd:%2hhd:%2hhdZ", 
-                     &year, &month, &day, &hour, &minute, &second);
-    if (ret != 6) {
-        return -1;
+    /* Time format used 2019-01-26T18:52:46Z
+       Could be parsed with sscanf, but it is much quicker to completely inline
+       the call by using an inlinable function. */
+    const uint8_t *s = time_string;
+    ssize_t year = unsigned_decimal_integer_from_string(s, 4);
+    ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
+    ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
+    ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
+    ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
+    ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
+    /* If one of year, month etc. is -1 the signed bit is set. Bitwise OR 
+       allows checking them all at once for this. */
+    if ((year | month | day | hour | minute | second) < 0 || 
+         s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || 
+         s[16] != ':' || s[19] != 'Z') {
+            return -1;
     }
     return posix_gm_time(year, month, day, hour, minute, second);
 }
