@@ -102,6 +102,31 @@ unsigned_decimal_integer_from_string(const uint8_t *string, size_t length)
     return result;
 }
 
+/**
+ * @brief Small inline memchr function to replace memchr for calls that have
+ *        a very short distance.
+ * 
+ * Normal memchr is optimized for longer distances. Shorter distances
+ * that span only a few characters experience a lot of overhead.
+ * 
+ * @param string The string
+ * @param c The character to look for
+ * @param length The length of the string
+ * @return void* The pointer pointing to the character or NULL
+ */
+static inline const void *
+short_memchr(const void *string, uint8_t c, size_t length) {
+    const uint8_t *cursor = string;
+    const uint8_t *end = string + length;
+    while (cursor < end) {
+        if (*cursor == c) {
+            return cursor;
+        }
+        cursor += 1;
+    }
+    return NULL;
+}
+
 #define ASCII_MASK_8BYTE 0x8080808080808080ULL
 #define ASCII_MASK_1BYTE 0x80
 
@@ -1902,14 +1927,14 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
     const uint8_t *header_end = header + header_length;
     const uint8_t *cursor = header;
     for (size_t i=0; i<4; i++) {
-        cursor = memchr(cursor, ':', header_end - cursor);
+        cursor = short_memchr(cursor, ':', header_end - cursor);
         if (cursor == NULL) {
             return -1;
         }
         cursor += 1;
     } 
     const uint8_t *tile_start = cursor;
-    const uint8_t *tile_end = memchr(tile_start, ':', header_end - tile_start);
+    const uint8_t *tile_end = short_memchr(tile_start, ':', header_end - tile_start);
     if (tile_end == NULL) {
         return -1;
     }
