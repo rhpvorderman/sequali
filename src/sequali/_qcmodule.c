@@ -69,6 +69,39 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
     return array;
 }
 
+/**
+ * @brief Simple strtoul replacement.
+ * 
+ * Can be inlined easily by the compiler, as well as quick loop unrolling and
+ * removing checks if the number of digits is given.
+ * 
+ * @param string The string pointing to an unsigned decimal number
+ * @param length The length of the number string
+ * @return ssize_t the answer, or -1 on error. 
+ */
+static inline ssize_t 
+unsigned_decimal_integer_from_string(const uint8_t *string, size_t length) 
+{
+    /* There should be at least one digit and larger than 18 digits can not 
+       be stored due to overflow */
+    if (length < 1 || length > 18) {
+        return -1;
+    }
+    size_t result = 0;
+    for (size_t i=0; i < length; i++) {
+        uint8_t c = string[i];
+        /* 0-9 range check. Only one side needs to be checked because of 
+            unsigned number */
+        c -= '0';
+        if (c > 9) {
+            return -1;
+        }
+        /* Shift already found digits one decimal place and add current digit */
+        result = result * 10 + c;
+    }
+    return result;
+}
+
 #define ASCII_MASK_8BYTE 0x8080808080808080ULL
 #define ASCII_MASK_1BYTE 0x80
 
@@ -1868,37 +1901,26 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
     */
     size_t colon_count = 0;
     size_t tile_number_offset = -1; 
+    size_t tile_number_end = -1;
     for (size_t i=0; i < header_length; i++) {
         if (header[i] == ':') {
             colon_count += 1;
             if (colon_count == 4) {
                 tile_number_offset = i + 1;
+            }
+            else if (colon_count == 5)
+            {
+                tile_number_end = i;
                 break;
             }
         }
     }
-    if (colon_count != 4) {
+    if (colon_count != 5) {
         return -1;
     }
-    ssize_t tile_id = 0;
     const uint8_t *tile_start = header + tile_number_offset;
-    size_t remaining_length = header_length - tile_number_offset;
-    for (size_t i=0; i < remaining_length; i++) {
-        uint8_t c = tile_start[i];
-        /* 0-9 range check. Only one side needs to be checked because of unsigned number */
-        c -= '0';
-        if (c > 9) {
-            if ((i > 0) && ((c + '0') == ':')) {
-                /* successfully parsed a number between the colons */
-                return tile_id;
-            }
-            return -1;
-        }
-        /* Shift already found digits one decimal place and add current digit */
-        tile_id = tile_id * 10 + c;
-    }
-    /* No colon found at the end of the string, this is an invalid header */
-    return -1;
+    size_t tile_length = tile_number_end - tile_number_offset;
+    return unsigned_decimal_integer_from_string(tile_start, tile_length);
 }
 
 static int 
