@@ -2738,6 +2738,8 @@ typedef struct _NanoStatsStruct {
     size_t number_of_reads;
     size_t nano_infos_size;
     struct NanoInfo *nano_infos;
+    time_t min_time;
+    time_t max_time;
     PyObject *skipped_reason;
 } NanoStats;
 
@@ -2763,6 +2765,8 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->number_of_reads = 0;
     self->skipped = false;
     self->skipped_reason = NULL;
+    self->min_time = 0;
+    self->max_time = 0;
     return (PyObject *)self;
 }
 
@@ -2929,6 +2933,13 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
         cumulative_error_rate += SCORE_TO_ERROR_RATE[q];
     }
     info->cumulative_error_rate = cumulative_error_rate;
+    time_t timestamp = info->start_time;
+    if (timestamp > self->max_time) {
+        self->max_time = timestamp;
+    }
+    if (timestamp < self->min_time) {
+        self->min_time = timestamp;
+    }
     self->number_of_reads += 1;
     return 0;
 }
