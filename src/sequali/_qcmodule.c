@@ -3019,7 +3019,7 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     if (timestamp > self->max_time) {
         self->max_time = timestamp;
     }
-    if (timestamp < self->min_time) {
+    if (self->min_time == 0 || timestamp < self->min_time) {
         self->min_time = timestamp;
     }
     self->number_of_reads += 1;
@@ -3136,6 +3136,10 @@ static PyMemberDef NanoStats_members[] = {
     {"skipped_reason", T_OBJECT, offsetof(NanoStats, skipped_reason),
      READONLY, "What the reason is for skipping the module if skipped." 
                "Set to None if not skipped."},
+    {"minimum_time", T_LONG, offsetof(NanoStats, min_time), READONLY,
+     "The earliest timepoint found in the headers",},
+    {"maximum_time", T_LONG, offsetof(NanoStats, max_time), READONLY,
+     "The latest timepoint found in the headers"},
     {NULL},
 };
 
