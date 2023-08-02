@@ -2819,7 +2819,8 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
 }
 
 /***
- * Convert a date to seconds since epoch according to:
+ * Seconds since epoch for years of 1970 and higher is defined in the POSIX 
+ * specification.:
  * https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16
  * With a little help from Eric S. Raymond's solution in this stackoverflow
  * answer:
@@ -2828,7 +2829,7 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
 static inline time_t 
 posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
 {
-    /* Following code is only true for years greater than 1970*/
+    /* Following code is only true for years equal or greater than 1970*/
     if (year < 1970) {
         return -1;
     } 
