@@ -12,8 +12,8 @@ def test_nano_stats():
                            "flow_cell_id=PAI09842 "
                            "protocol_group_id=SS_210930_10xCDNA "
                            "sample_id=SS_A1",
-                            "ACGT",
-                            "AAAA")
+                           "ACGT",
+                           "AAAA")
     cumulative_error_rate = 4 * 10 ** (-(ord("A") - 33) / 10)
     tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08Z")
     timestamp = tm.timestamp()
@@ -21,4 +21,8 @@ def test_nano_stats():
     nanostats.add_read(view)
     nano_info_list = nanostats.nano_info_list()
     assert len(nano_info_list) == 1
-    assert nano_info_list[0] == (timestamp, 444, 4, cumulative_error_rate)
+    info = nano_info_list[0]
+    assert info.start_time == timestamp
+    assert info.channel_id == 444
+    assert info.length == 4
+    assert info.cumulative_error_rate == cumulative_error_rate
