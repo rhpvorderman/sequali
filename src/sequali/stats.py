@@ -21,7 +21,8 @@ from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from . import __version__
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, PerTileQuality, QCMetrics, SequenceDuplication
+from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
+    SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
@@ -346,11 +347,40 @@ def estimated_counts_to_fractions(estimated_counts: Dict[int, int]):
     return list(named_slices.keys()), aggregated_fractions
 
 
+def nanostats_time_series(nanostats: NanoStats, divisor = 600):
+    run_start_time = nanostats.minimum_time
+    run_end_time = nanostats.maximum_time
+    duration = run_end_time - run_start_time
+    time_slots = (duration + divisor - 1) // divisor
+    time_active_slots_sets = [set() for _ in range(time_slots)]
+    time_bases = [0 for _ in range(time_slots)]
+    time_reads = [0 for _ in range(time_slots)]
+    time_qualities = [[0 for _ in range(12)] for _ in range(time_slots)]
+    for readinfo in nanostats.nano_info_list():
+        relative_start_time = readinfo.start_time - run_start_time
+        timeslot = relative_start_time // divisor
+        length = readinfo.length
+        phred = round(-10 * math.log10(readinfo.cumulative_error_rate / length))
+        phred_index = min(phred, 47) >> 2
+        time_active_slots_sets[timeslot].add(readinfo.channel_id)
+        time_bases[timeslot] += length
+        time_reads[timeslot] += 1
+        time_qualities[timeslot][phred_index] += 1
+    qual_percentages = [[] for _ in range(12)]
+    for quals in time_qualities:
+        total = sum(quals)
+        for i, q in enumerate(quals):
+            qual_percentages[i].append(q / max(total, 1))
+    time_active_slots = [len(s) for s in time_active_slots_sets]
+    return qual_percentages, time_active_slots, time_bases, time_reads
+
+
 def calculate_stats(
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
         sequence_duplication: SequenceDuplication,
+        nanostats: NanoStats,
         adapter_names: List[str],
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,

@@ -98,6 +98,7 @@ def main():
                                 adapter_counter,
                                 per_tile_quality,
                                 sequence_duplication,
+                                nanostats,
                                 adapter_names=list(adapters.keys()),
                                 fraction_threshold=fraction_threshold,
                                 min_threshold=min_threshold,
