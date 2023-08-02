@@ -2780,6 +2780,47 @@ struct NanoInfo {
     double cumulative_error_rate;
 };
 
+typedef struct {
+    PyObject_HEAD
+    struct NanoInfo info;
+} NanoporeReadInfo;
+
+static PyObject *
+NanoporeReadInfo_get_start_time(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromLong(self->info.start_time);
+}    
+static PyObject *
+NanoporeReadInfo_get_channel_id(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromLong(self->info.channel_id);
+}
+static PyObject *
+NanoporeReadInfo_get_length(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromUnsignedLong(self->info.length);
+}
+static PyObject *
+NanoporeReadInfo_get_cumulative_error_rate(NanoporeReadInfo *self, void *closure) {
+    return PyFloat_FromDouble(self->info.cumulative_error_rate);
+}
+
+static PyGetSetDef NanoporeReadInfo_properties[] = {
+    {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL, 
+     "unix UTC timestamp for start time", NULL},
+    {"channel_id", (getter)NanoporeReadInfo_get_channel_id, NULL, 
+     "channel number", NULL},
+    {"length", (getter)NanoporeReadInfo_get_length, NULL, NULL, NULL},
+    {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
+     NULL, "sum off all the bases' error rates.", NULL},
+    {NULL},
+};
+
+static PyTypeObject NanoporeReadInfo_Type = {
+    .tp_name = "_qc.NanoporeReadInfo",
+    .tp_basicsize = sizeof(NanoporeReadInfo),
+    .tp_dealloc = (destructor)PyObject_Del,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+    .tp_getset = NanoporeReadInfo_properties,
+};
+
 typedef struct _NanoStatsStruct {
     PyObject_HEAD
     bool skipped;
@@ -3067,19 +3108,13 @@ NanoStats_nano_info_list(NanoStats *self, PyObject *Py_UNUSED(ignore))
     }
     struct NanoInfo *nano_infos = self->nano_infos;
     for (size_t i=0; i < number_of_reads; i++) {
-        struct NanoInfo *info = nano_infos + i;
-        PyObject *tup = Py_BuildValue(
-            "(llId)", 
-            info->start_time, 
-            info->channel_id, 
-            info->length,
-            info->cumulative_error_rate
-        );
-        if (tup == NULL) {
+        NanoporeReadInfo *info = PyObject_New(NanoporeReadInfo, &NanoporeReadInfo_Type);
+        if (info == NULL) {
             Py_DECREF(return_list);
             return NULL;
         }
-        PyList_SET_ITEM(return_list, i, tup);
+        memcpy(&info->info, nano_infos + i, sizeof(struct NanoInfo));
+        PyList_SET_ITEM(return_list, i, info);
     }
     return return_list;
 }
@@ -3202,7 +3237,10 @@ PyInit__qc(void)
     }
     if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
         return NULL;
-    }  
+    }
+    if (python_module_add_type(m, &NanoporeReadInfo_Type) != 0) {
+        return NULL;
+    }
     if (python_module_add_type(m, &NanoStats_Type) != 0) {
         return NULL;
     }
