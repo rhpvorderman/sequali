@@ -2930,48 +2930,36 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInf
     }
     cursor += 1; 
     int32_t channel_id = -1;
-    time_t start_time = 0;
+    time_t start_time = -1;
     while (cursor < end_ptr) {
         const uint8_t *field_name = cursor; 
         const uint8_t *equals = memchr(field_name, '=', end_ptr - field_name);
-        const uint8_t *field_end = NULL;
         if (equals == NULL) {
             return -1;
         } 
         size_t field_name_length = equals - field_name;
         const uint8_t *field_value = equals + 1;
+        const uint8_t *field_end = memchr(field_value, ' ', end_ptr - field_value);
+        if (field_end == NULL) {
+            field_end = end_ptr;
+        }
+        cursor = field_end + 1;
         switch(field_name_length) {
             case 2: 
-                if (!memcmp(field_name, "ch", 2) == 0) {
-                    break;
-                }
-                channel_id = strtol((char *)field_value, (char **)&field_end, 10);
-                if (channel_id == 0 && errno != 0) {
-                    // clear errno before returning
-                    errno = 0;
-                    return -1;
-                }
+                if (memcmp(field_name, "ch", 2) == 0) {
+                    channel_id = unsigned_decimal_integer_from_string(
+                        field_value, field_end - field_value);
+                }                
                 break;
             case 10:
-                if (!memcmp(field_name, "start_time", 10) == 0) {
-                    break;
+                if (memcmp(field_name, "start_time", 10) == 0) {
+                    start_time = time_string_to_timestamp(field_value);
                 }
-                start_time = time_string_to_timestamp(field_value);
-                if (start_time < 0) {
-                    return -1;
-                }
-                field_end = field_value + 20;
                 break;
-            default:
-                field_end = memchr(field_value, ' ', end_ptr - field_value);
-                if (field_end == NULL) {
-                    field_end = end_ptr;
-                }
         }
-        if (field_end != end_ptr && field_end[0] != ' ') {
-            return -1;
-        };
-        cursor = field_end + 1;
+    }
+    if (channel_id == -1 || start_time == -1) {
+        return -1;
     }
     info->channel_id = channel_id;
     info->start_time = start_time;
