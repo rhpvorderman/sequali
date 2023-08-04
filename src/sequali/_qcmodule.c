@@ -2871,11 +2871,12 @@ static inline time_t
 posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
 {
     /* Following code is only true for years equal or greater than 1970*/
-    if (year < 1970) {
+    if (year < 1970 || month < 1 || month > 12) {
         return -1;
     } 
     year -= 1900; // Years are relative to 1900
-    static int mday_to_yday[12] = { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    static const int mday_to_yday[12] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
     int yday = mday_to_yday[month - 1] + mday - 1;
     return second + minute*60 + hour*3600 + yday*86400 +
     (year-70)*31536000 + ((year-69)/4)*86400 -
