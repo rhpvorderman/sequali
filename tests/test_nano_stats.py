@@ -21,7 +21,7 @@ def test_nano_stats():
     nanostats.add_read(view)
     assert nanostats.minimum_time == timestamp
     assert nanostats.maximum_time == timestamp
-    nano_info_list = nanostats.nano_info_list()
+    nano_info_list = list(nanostats.nano_info_iterator())
     assert len(nano_info_list) == 1
     info = nano_info_list[0]
     assert info.start_time == timestamp

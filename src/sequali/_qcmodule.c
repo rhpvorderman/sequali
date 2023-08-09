@@ -2838,6 +2838,69 @@ static void NanoStats_dealloc(NanoStats *self) {
     Py_TYPE(self)->tp_free((PyObject *)self);
 };
 
+typedef struct {
+    PyObject_HEAD
+    size_t number_of_reads;
+    struct NanoInfo *nano_infos;
+    size_t current_pos;
+    PyObject *nano_stats;
+} NanoStatsIterator;
+
+static void NanoStatsIterator_dealloc(NanoStatsIterator *self) {
+    Py_DECREF(self->nano_stats);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyTypeObject NanoStatsIterator_Type;
+
+static PyObject *
+NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
+{
+    NanoStatsIterator *self = PyObject_New(NanoStatsIterator, &NanoStatsIterator_Type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->nano_infos = nano_stats->nano_infos;
+    self->number_of_reads = nano_stats->number_of_reads;
+    self->current_pos = 0;
+    Py_INCREF(nano_stats);
+    self->nano_stats = (PyObject *)nano_stats;
+    return (PyObject *)self;
+}
+
+static PyObject *
+NanoStatsIterator__iter__(NanoStatsIterator *self)
+{
+    Py_INCREF(self);
+    return (PyObject *)self;
+} 
+
+static PyObject *
+NanoStatsIterator__next__(NanoStatsIterator *self) {
+    size_t current_pos = self->current_pos;
+    if (current_pos == self->number_of_reads) {
+        PyErr_SetNone(PyExc_StopIteration);
+        return NULL;
+    }
+    NanoporeReadInfo *info = PyObject_New(NanoporeReadInfo, &NanoporeReadInfo_Type);
+    if (info == NULL) {
+        return PyErr_NoMemory();
+    }
+    memcpy(&info->info, self->nano_infos + current_pos, sizeof(struct NanoInfo));
+    self->current_pos = current_pos + 1;
+    return (PyObject *)info;
+}
+
+static PyTypeObject NanoStatsIterator_Type = {
+    .tp_name = "_qc.NanoStatsIterator",
+    .tp_basicsize = sizeof(NanoStatsIterator),
+    .tp_dealloc = (destructor)NanoStatsIterator_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+    .tp_iter = (iternextfunc)NanoStatsIterator__iter__,
+    .tp_iternext = (iternextfunc)NanoStatsIterator__next__,
+};
+
+
 static PyObject *
 NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     static char *format = {":_qc.NanoStats"};
@@ -2858,6 +2921,7 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->max_time = 0;
     return (PyObject *)self;
 }
+
 
 /***
  * Seconds since epoch for years of 1970 and higher is defined in the POSIX 
@@ -3077,35 +3141,19 @@ NanoStats_add_record_array(
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(NanoStats_nano_info_list__doc__,
-"nano_info_list($self, record_array, /)\n"
+PyDoc_STRVAR(NanoStats_nano_info_iterator__doc__,
+"nano_info_iterator($self, /)\n"
 "--\n"
 "\n"
-"Return a list of tuples of \n"
-"(start_time, read, channel_id, length, cumulative error_rate). \n"
+"Return an iterator of NanoporeReadInfo objects. \n"
 );
 
-#define NanoStats_nano_info_list_method METH_NOARGS
+#define NanoStats_nano_info_iterator_method METH_NOARGS
 
 static PyObject *
-NanoStats_nano_info_list(NanoStats *self, PyObject *Py_UNUSED(ignore)) 
+NanoStats_nano_info_iterator(NanoStats *self, PyObject *Py_UNUSED(ignore)) 
 {
-    size_t number_of_reads = self->number_of_reads;
-    PyObject *return_list = PyList_New(number_of_reads);
-    if (return_list == NULL) {
-        return PyErr_NoMemory();
-    }
-    struct NanoInfo *nano_infos = self->nano_infos;
-    for (size_t i=0; i < number_of_reads; i++) {
-        NanoporeReadInfo *info = PyObject_New(NanoporeReadInfo, &NanoporeReadInfo_Type);
-        if (info == NULL) {
-            Py_DECREF(return_list);
-            return NULL;
-        }
-        memcpy(&info->info, nano_infos + i, sizeof(struct NanoInfo));
-        PyList_SET_ITEM(return_list, i, info);
-    }
-    return return_list;
+    return NanoStatsIterator_FromNanoStats(self);
 }
 
 
@@ -3114,8 +3162,8 @@ static PyMethodDef NanoStats_methods[] = {
      NanoStats_add_read__doc__},
     {"add_record_array", (PyCFunction)NanoStats_add_record_array, 
      NanoStats_add_record_array_method, NanoStats_add_record_array__doc__},
-    {"nano_info_list", (PyCFunction)NanoStats_nano_info_list, 
-     NanoStats_nano_info_list_method, NanoStats_nano_info_list__doc__},
+    {"nano_info_iterator", (PyCFunction)NanoStats_nano_info_iterator, 
+     NanoStats_nano_info_iterator_method, NanoStats_nano_info_iterator__doc__},
     {NULL},
 };
 
@@ -3235,6 +3283,9 @@ PyInit__qc(void)
         return NULL;
     }
     if (python_module_add_type(m, &NanoStats_Type) != 0) {
+        return NULL;
+    }
+    if (python_module_add_type(m, &NanoStatsIterator_Type) != 0) {
         return NULL;
     }
 

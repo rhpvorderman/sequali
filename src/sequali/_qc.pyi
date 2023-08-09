@@ -16,7 +16,7 @@
 
 import array
 import sys
-from typing import Dict, Iterable, List, SupportsIndex, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, SupportsIndex, Optional, Tuple
 
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
@@ -106,4 +106,4 @@ class NanoStats:
     maximum_time: int
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
-    def nano_info_list(self) -> List[NanoporeReadInfo]: ...
+    def nano_info_iterator(self) -> Iterator[NanoporeReadInfo]: ...
