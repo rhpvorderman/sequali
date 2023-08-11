@@ -356,7 +356,7 @@ def nanostats_time_series(nanostats: NanoStats, divisor = 600):
     time_bases = [0 for _ in range(time_slots)]
     time_reads = [0 for _ in range(time_slots)]
     time_qualities = [[0 for _ in range(12)] for _ in range(time_slots)]
-    for readinfo in nanostats.nano_info_list():
+    for readinfo in nanostats.nano_info_iterator():
         relative_start_time = readinfo.start_time - run_start_time
         timeslot = relative_start_time // divisor
         length = readinfo.length
@@ -366,13 +366,13 @@ def nanostats_time_series(nanostats: NanoStats, divisor = 600):
         time_bases[timeslot] += length
         time_reads[timeslot] += 1
         time_qualities[timeslot][phred_index] += 1
-    qual_percentages = [[] for _ in range(12)]
+    qual_percentages_over_time = [[] for _ in range(12)]
     for quals in time_qualities:
         total = sum(quals)
         for i, q in enumerate(quals):
-            qual_percentages[i].append(q / max(total, 1))
+            qual_percentages_over_time[i].append(q / max(total, 1))
     time_active_slots = [len(s) for s in time_active_slots_sets]
-    return qual_percentages, time_active_slots, time_bases, time_reads
+    return qual_percentages_over_time, time_active_slots, time_bases, time_reads
 
 
 def calculate_stats(
