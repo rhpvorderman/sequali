@@ -15,7 +15,10 @@ def test_nano_stats():
                            "ACGT",
                            "AAAA")
     cumulative_error_rate = 4 * 10 ** (-(ord("A") - 33) / 10)
-    tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08Z")
+    # The 'Z' at the end of the start_time string is only supported from
+    # python 3.11 onwards.
+    tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08")
+    tm = tm.replace(tzinfo=datetime.UTC)
     timestamp = tm.timestamp()
     nanostats = NanoStats()
     nanostats.add_read(view)
