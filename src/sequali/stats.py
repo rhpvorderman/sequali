@@ -17,7 +17,7 @@ import array
 import collections
 import math
 import sys
-from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Sequence, Set, Tuple
 
 from . import __version__
 from ._qc import A, C, G, N, T
@@ -347,12 +347,12 @@ def estimated_counts_to_fractions(estimated_counts: Dict[int, int]):
     return list(named_slices.keys()), aggregated_fractions
 
 
-def nanostats_time_series(nanostats: NanoStats, divisor = 600):
+def nanostats_time_series(nanostats: NanoStats, divisor: int = 600):
     run_start_time = nanostats.minimum_time
     run_end_time = nanostats.maximum_time
     duration = run_end_time - run_start_time
     time_slots = (duration + divisor - 1) // divisor
-    time_active_slots_sets = [set() for _ in range(time_slots)]
+    time_active_slots_sets: List[Set[int]] = [set() for _ in range(time_slots)]
     time_bases = [0 for _ in range(time_slots)]
     time_reads = [0 for _ in range(time_slots)]
     time_qualities = [[0 for _ in range(12)] for _ in range(time_slots)]
@@ -366,7 +366,7 @@ def nanostats_time_series(nanostats: NanoStats, divisor = 600):
         time_bases[timeslot] += length
         time_reads[timeslot] += 1
         time_qualities[timeslot][phred_index] += 1
-    qual_percentages_over_time = [[] for _ in range(12)]
+    qual_percentages_over_time: List[List[float]] = [[] for _ in range(12)]
     for quals in time_qualities:
         total = sum(quals)
         for i, q in enumerate(quals):
