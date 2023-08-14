@@ -2817,7 +2817,7 @@ static PyTypeObject NanoporeReadInfo_Type = {
     .tp_name = "_qc.NanoporeReadInfo",
     .tp_basicsize = sizeof(NanoporeReadInfo),
     .tp_dealloc = (destructor)PyObject_Del,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_getset = NanoporeReadInfo_properties,
 };
 
@@ -2895,7 +2895,7 @@ static PyTypeObject NanoStatsIterator_Type = {
     .tp_name = "_qc.NanoStatsIterator",
     .tp_basicsize = sizeof(NanoStatsIterator),
     .tp_dealloc = (destructor)NanoStatsIterator_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_DISALLOW_INSTANTIATION,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
     .tp_iter = (iternextfunc)NanoStatsIterator__iter__,
     .tp_iternext = (iternextfunc)NanoStatsIterator__next__,
 };
