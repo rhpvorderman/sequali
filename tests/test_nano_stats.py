@@ -18,7 +18,7 @@ def test_nano_stats():
     # The 'Z' at the end of the start_time string is only supported from
     # python 3.11 onwards.
     tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08")
-    tm = tm.replace(tzinfo=datetime.UTC)
+    tm = tm.replace(tzinfo=datetime.timezone.utc)
     timestamp = tm.timestamp()
     nanostats = NanoStats()
     nanostats.add_read(view)
