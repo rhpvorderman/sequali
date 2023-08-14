@@ -16,7 +16,7 @@
 
 import array
 import sys
-from typing import Dict, Iterable, List, SupportsIndex, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, SupportsIndex, Optional, Tuple
 
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
@@ -76,6 +76,7 @@ class PerTileQuality:
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def get_tile_averages(self) -> List[Tuple[int, List[float]]]: ...
     def get_tile_counts(self) -> List[Tuple[int, List[float], List[int]]]: ...
+
 class SequenceDuplication:
     number_of_sequences: int
     stopped_collecting_at: int
@@ -91,3 +92,18 @@ class SequenceDuplication:
                                   max_threshold: int = sys.maxsize,
                                   ) -> List[Tuple[int, float, str]]: ...
     def duplication_counts(self) -> array.ArrayType: ...
+
+class NanoporeReadInfo:
+    start_time: int
+    channel_id: int
+    length: int
+    cumulative_error_rate: float
+
+class NanoStats:
+    number_of_reads: int
+    skipped_reason: Optional[str]
+    minimum_time: int
+    maximum_time: int
+    def add_read(self, __read: FastqRecordView) -> None: ...
+    def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
+    def nano_info_iterator(self) -> Iterator[NanoporeReadInfo]: ...

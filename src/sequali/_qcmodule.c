@@ -39,6 +39,8 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 static PyTypeObject *PythonArray;  // array.array
 
+#define PHRED_MAX 93
+
 
 /*********
  * Utils *
@@ -66,6 +68,40 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
     }
     return array;
 }
+
+/**
+ * @brief Simple strtoul replacement.
+ * 
+ * Can be inlined easily by the compiler, as well as quick loop unrolling and
+ * removing checks if the number of digits is given.
+ * 
+ * @param string The string pointing to an unsigned decimal number
+ * @param length The length of the number string
+ * @return ssize_t the answer, or -1 on error. 
+ */
+static inline ssize_t 
+unsigned_decimal_integer_from_string(const uint8_t *string, size_t length) 
+{
+    /* There should be at least one digit and larger than 18 digits can not 
+       be stored due to overflow */
+    if (length < 1 || length > 18) {
+        return -1;
+    }
+    size_t result = 0;
+    for (size_t i=0; i < length; i++) {
+        uint8_t c = string[i];
+        /* 0-9 range check. Only one side needs to be checked because of 
+            unsigned number */
+        c -= '0';
+        if (c > 9) {
+            return -1;
+        }
+        /* Shift already found digits one decimal place and add current digit */
+        result = result * 10 + c;
+    }
+    return result;
+}
+
 
 #define ASCII_MASK_8BYTE 0x8080808080808080ULL
 #define ASCII_MASK_1BYTE 0x80
@@ -172,6 +208,9 @@ struct FastqMeta {
         uint32_t qualities_length;
     };
     uint32_t qualities_offset;
+    /* Store the accumulated error once calculated so it can be reused by
+       the NanoStats module */
+    double accumulated_error_rate;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -259,7 +298,22 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             PyExc_OverflowError, 
             "Total length of FASTQ record exceeds 4 GiB. Record name: %R",
             name_obj);
+        return NULL;
     }
+
+    double accumulated_error_rate = 0.0;
+    for (size_t i=0; i < sequence_length; i++) {
+        uint8_t q = qualities[i] - 33;
+        if (q > PHRED_MAX) {
+                PyErr_Format(
+                    PyExc_ValueError, 
+                    "Not a valid phred character: %c", qualities[i]
+                );
+                return NULL;
+            }
+        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+    }
+
     PyObject *bytes_obj = PyBytes_FromStringAndSize(NULL, total_length);
     if (bytes_obj == NULL) {
         return PyErr_NoMemory();
@@ -269,12 +323,14 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(bytes_obj);
         return PyErr_NoMemory();
     }
+
     uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
     self->meta.record_start = buffer;
     self->meta.name_length = name_length;
     self->meta.sequence_offset = 2 + name_length;
     self->meta.sequence_length = sequence_length;
     self->meta.qualities_offset = 5 + name_length + sequence_length;
+    self->meta.accumulated_error_rate = accumulated_error_rate;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -765,6 +821,8 @@ FastqParser__next__(FastqParser *self)
             meta->sequence_offset = sequence_start - record_start;
             meta->sequence_length = sequence_length;
             meta->qualities_offset = qualities_start - record_start;
+            meta->accumulated_error_rate
+     = 0.0;
             record_start = qualities_end + 1;
         }
     }
@@ -819,7 +877,6 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define G 3
 #define T 4
 #define NUC_TABLE_SIZE 5
-#define PHRED_MAX 93 
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
@@ -1005,6 +1062,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     assert(gc_content_index <= 100);
     self->gc_content[gc_content_index] += 1;
 
+    meta->accumulated_error_rate = accumulated_error_rate;
     double average_error_rate = accumulated_error_rate / (double)sequence_length;
     double average_phred = -10.0 * log10(average_error_rate);
     uint64_t phred_score_index = (uint64_t)round(average_phred);
@@ -1842,38 +1900,28 @@ ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) 
        @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
        The tile ID is after the fourth colon.
     */
-    size_t colon_count = 0;
-    size_t tile_number_offset = -1; 
-    for (size_t i=0; i < header_length; i++) {
-        if (header[i] == ':') {
-            colon_count += 1;
-            if (colon_count == 4) {
-                tile_number_offset = i + 1;
+    const uint8_t *header_end = header + header_length;
+    const uint8_t *cursor = header;
+    size_t cursor_count = 0;
+    while (cursor < header_end) {
+        if (*cursor == ':') {
+            cursor_count += 1;
+            if (cursor_count == 4) {
                 break;
             }
         }
+        cursor += 1;
     }
-    if (colon_count != 4) {
-        return -1;
-    }
-    ssize_t tile_id = 0;
-    const uint8_t *tile_start = header + tile_number_offset;
-    size_t remaining_length = header_length - tile_number_offset;
-    for (size_t i=0; i < remaining_length; i++) {
-        uint8_t c = tile_start[i];
-        /* 0-9 range check. Only one side needs to be checked because of unsigned number */
-        c -= '0';
-        if (c > 9) {
-            if ((i > 0) && ((c + '0') == ':')) {
-                /* successfully parsed a number between the colons */
-                return tile_id;
-            }
-            return -1;
+    cursor += 1;
+    const uint8_t *tile_start = cursor;
+    while(cursor < header_end) {
+        if (*cursor == ':') {
+            const uint8_t *tile_end = cursor;
+             size_t tile_length = tile_end - tile_start;
+            return unsigned_decimal_integer_from_string(tile_start, tile_length);
         }
-        /* Shift already found digits one decimal place and add current digit */
-        tile_id = tile_id * 10 + c;
+        cursor += 1;
     }
-    /* No colon found at the end of the string, this is an invalid header */
     return -1;
 }
 
@@ -2721,6 +2769,425 @@ static PyTypeObject SequenceDuplication_Type = {
     .tp_methods = SequenceDuplication_methods,
 };
 
+/********************
+ * NANOSTATS MODULE *
+*********************/
+
+struct NanoInfo {
+    time_t start_time; 
+    int32_t channel_id;
+    uint32_t length;
+    double cumulative_error_rate;
+};
+
+typedef struct {
+    PyObject_HEAD
+    struct NanoInfo info;
+} NanoporeReadInfo;
+
+static PyObject *
+NanoporeReadInfo_get_start_time(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromLong(self->info.start_time);
+}    
+static PyObject *
+NanoporeReadInfo_get_channel_id(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromLong(self->info.channel_id);
+}
+static PyObject *
+NanoporeReadInfo_get_length(NanoporeReadInfo *self, void *closure) {
+    return PyLong_FromUnsignedLong(self->info.length);
+}
+static PyObject *
+NanoporeReadInfo_get_cumulative_error_rate(NanoporeReadInfo *self, void *closure) {
+    return PyFloat_FromDouble(self->info.cumulative_error_rate);
+}
+
+static PyGetSetDef NanoporeReadInfo_properties[] = {
+    {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL, 
+     "unix UTC timestamp for start time", NULL},
+    {"channel_id", (getter)NanoporeReadInfo_get_channel_id, NULL, 
+     "channel number", NULL},
+    {"length", (getter)NanoporeReadInfo_get_length, NULL, NULL, NULL},
+    {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
+     NULL, "sum off all the bases' error rates.", NULL},
+    {NULL},
+};
+
+static PyTypeObject NanoporeReadInfo_Type = {
+    .tp_name = "_qc.NanoporeReadInfo",
+    .tp_basicsize = sizeof(NanoporeReadInfo),
+    .tp_dealloc = (destructor)PyObject_Del,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_getset = NanoporeReadInfo_properties,
+};
+
+typedef struct _NanoStatsStruct {
+    PyObject_HEAD
+    bool skipped;
+    size_t number_of_reads;
+    size_t nano_infos_size;
+    struct NanoInfo *nano_infos;
+    time_t min_time;
+    time_t max_time;
+    PyObject *skipped_reason;
+} NanoStats;
+
+static void NanoStats_dealloc(NanoStats *self) {
+    PyMem_Free(self->nano_infos);
+    Py_XDECREF(self->skipped_reason);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+};
+
+typedef struct {
+    PyObject_HEAD
+    size_t number_of_reads;
+    struct NanoInfo *nano_infos;
+    size_t current_pos;
+    PyObject *nano_stats;
+} NanoStatsIterator;
+
+static void NanoStatsIterator_dealloc(NanoStatsIterator *self) {
+    Py_DECREF(self->nano_stats);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyTypeObject NanoStatsIterator_Type;
+
+static PyObject *
+NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
+{
+    NanoStatsIterator *self = PyObject_New(NanoStatsIterator, &NanoStatsIterator_Type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->nano_infos = nano_stats->nano_infos;
+    self->number_of_reads = nano_stats->number_of_reads;
+    self->current_pos = 0;
+    Py_INCREF(nano_stats);
+    self->nano_stats = (PyObject *)nano_stats;
+    return (PyObject *)self;
+}
+
+static PyObject *
+NanoStatsIterator__iter__(NanoStatsIterator *self)
+{
+    Py_INCREF(self);
+    return (PyObject *)self;
+} 
+
+static PyObject *
+NanoStatsIterator__next__(NanoStatsIterator *self) {
+    size_t current_pos = self->current_pos;
+    if (current_pos == self->number_of_reads) {
+        PyErr_SetNone(PyExc_StopIteration);
+        return NULL;
+    }
+    NanoporeReadInfo *info = PyObject_New(NanoporeReadInfo, &NanoporeReadInfo_Type);
+    if (info == NULL) {
+        return PyErr_NoMemory();
+    }
+    memcpy(&info->info, self->nano_infos + current_pos, sizeof(struct NanoInfo));
+    self->current_pos = current_pos + 1;
+    return (PyObject *)info;
+}
+
+static PyTypeObject NanoStatsIterator_Type = {
+    .tp_name = "_qc.NanoStatsIterator",
+    .tp_basicsize = sizeof(NanoStatsIterator),
+    .tp_dealloc = (destructor)NanoStatsIterator_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_iter = (iternextfunc)NanoStatsIterator__iter__,
+    .tp_iternext = (iternextfunc)NanoStatsIterator__next__,
+};
+
+
+static PyObject *
+NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
+    static char *format = {":_qc.NanoStats"};
+    static char *kwarg_names[] = {NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwarg_names)) {
+        return NULL;
+    }
+    NanoStats *self = PyObject_New(NanoStats, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->nano_infos = NULL;
+    self->nano_infos_size = 0;
+    self->number_of_reads = 0;
+    self->skipped = false;
+    self->skipped_reason = NULL;
+    self->min_time = 0;
+    self->max_time = 0;
+    return (PyObject *)self;
+}
+
+
+/***
+ * Seconds since epoch for years of 1970 and higher is defined in the POSIX 
+ * specification.:
+ * https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16
+ * With a little help from Eric S. Raymond's solution in this stackoverflow
+ * answer:
+ * https://stackoverflow.com/questions/530519/stdmktime-and-timezone-info
+*/
+static inline time_t 
+posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
+{
+    /* Following code is only true for years equal or greater than 1970*/
+    if (year < 1970 || month < 1 || month > 12) {
+        return -1;
+    } 
+    year -= 1900; // Years are relative to 1900
+    static const int mday_to_yday[12] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    int yday = mday_to_yday[month - 1] + mday - 1;
+    return second + minute*60 + hour*3600 + yday*86400 +
+    (year-70)*31536000 + ((year-69)/4)*86400 -
+    ((year-1)/100)*86400 + ((year+299)/400)*86400;
+}
+
+/**
+ * @brief Convert a timestring in Nanopore format to a timestamp. 
+ * 
+ * @param time_string A string in year-month-dateThour:minute:secondZ format.
+ * @return time_t The unix timestamp, -1 on failure. Nanopore was not invented 
+ *          on New Year's eve 1969 so this should not lead to confusion ;-).
+ */
+static time_t time_string_to_timestamp(const uint8_t *time_string) {
+    /* Time format used 2019-01-26T18:52:46Z
+       Could be parsed with sscanf, but it is much quicker to completely inline
+       the call by using an inlinable function. */
+    const uint8_t *s = time_string;
+    ssize_t year = unsigned_decimal_integer_from_string(s, 4);
+    ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
+    ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
+    ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
+    ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
+    ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
+    /* If one of year, month etc. is -1 the signed bit is set. Bitwise OR 
+       allows checking them all at once for this. */
+    if ((year | month | day | hour | minute | second) < 0 || 
+         s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || 
+         s[16] != ':' || s[19] != 'Z') {
+            return -1;
+    }
+    return posix_gm_time(year, month, day, hour, minute, second);
+}
+
+/**
+ * @brief Parse read, channel_id and start_time fields from a nanopore FASTQ
+ *        header. Other fields are untouched.
+ * 
+ * @param header The header.
+ * @param header_length size of the header.
+ * @param info Pointer to the info object to be populated.
+ * @return int 0 on success, -1 on parsing error.
+ */
+static int 
+NanoInfo_from_header(const uint8_t *header, size_t header_length, struct NanoInfo *info) 
+{  
+    const uint8_t *cursor = header;
+    const uint8_t *end_ptr = header + header_length;  
+    cursor = memchr(cursor, ' ', header_length);
+    if (cursor == NULL) {
+        return -1;
+    }
+    cursor += 1; 
+    int32_t channel_id = -1;
+    time_t start_time = -1;
+    while (cursor < end_ptr) {
+        const uint8_t *field_name = cursor; 
+        const uint8_t *equals = memchr(field_name, '=', end_ptr - field_name);
+        if (equals == NULL) {
+            return -1;
+        } 
+        size_t field_name_length = equals - field_name;
+        const uint8_t *field_value = equals + 1;
+        const uint8_t *field_end = memchr(field_value, ' ', end_ptr - field_value);
+        if (field_end == NULL) {
+            field_end = end_ptr;
+        }
+        cursor = field_end + 1;
+        switch(field_name_length) {
+            case 2: 
+                if (memcmp(field_name, "ch", 2) == 0) {
+                    channel_id = unsigned_decimal_integer_from_string(
+                        field_value, field_end - field_value);
+                }                
+                break;
+            case 10:
+                if (memcmp(field_name, "start_time", 10) == 0) {
+                    start_time = time_string_to_timestamp(field_value);
+                }
+                break;
+        }
+    }
+    if (channel_id == -1 || start_time == -1) {
+        return -1;
+    }
+    info->channel_id = channel_id;
+    info->start_time = start_time;
+    return 0;
+}
+
+/**
+ * @brief Add a FASTQ record to the NanoStats module
+ * 
+ * @param self 
+ * @param meta 
+ * @return int 0 on success or when not a nanopore FASTQ. -1 on error.
+ */
+static int 
+NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
+{
+    if (self->skipped) {
+        return 0;
+    }
+    if (self->number_of_reads == self->nano_infos_size) {
+        size_t old_size = self->nano_infos_size;
+        size_t new_size = Py_MAX(old_size * 2, 16 * 1024);
+        struct NanoInfo *tmp = PyMem_Realloc(self->nano_infos, new_size * sizeof(struct NanoInfo));
+        if (tmp == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp + old_size, 0, (new_size - old_size) * sizeof(struct NanoInfo)); 
+        self->nano_infos = tmp;
+        self->nano_infos_size = new_size;
+    };
+    struct NanoInfo *info = self->nano_infos + self->number_of_reads;
+    size_t sequence_length = meta->sequence_length;
+    info->length = sequence_length;
+    if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
+        self->skipped = true;
+        self->skipped_reason = PyUnicode_FromFormat(
+            "Can not parse header: %R",
+            PyUnicode_DecodeASCII((const char *)meta->record_start + 1, 
+                meta->name_length, NULL));
+        return 0;
+    }
+    info->cumulative_error_rate = meta->accumulated_error_rate;
+    time_t timestamp = info->start_time;
+    if (timestamp > self->max_time) {
+        self->max_time = timestamp;
+    }
+    if (self->min_time == 0 || timestamp < self->min_time) {
+        self->min_time = timestamp;
+    }
+    self->number_of_reads += 1;
+    return 0;
+}
+
+PyDoc_STRVAR(NanoStats_add_read__doc__,
+"add_read($self, read, /)\n"
+"--\n"
+"\n"
+"Add a read to the NanoStats module. \n"
+"\n"
+"  read\n"
+"    A FastqRecordView object.\n"
+);
+
+#define NanoStats_add_read_method METH_O 
+
+static PyObject *
+NanoStats_add_read(NanoStats *self, FastqRecordView *read) 
+{
+    if (!FastqRecordView_CheckExact(read)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "read should be a FastqRecordView object, got %s", 
+                     Py_TYPE(read)->tp_name);
+        return NULL;
+    }
+    if (NanoStats_add_meta(self, &read->meta) !=0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(NanoStats_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the NanoStats module. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define NanoStats_add_record_array_method METH_O
+
+static PyObject * 
+NanoStats_add_record_array(
+    NanoStats *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    if (self->skipped) {
+        Py_RETURN_NONE;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        if (NanoStats_add_meta(self, records + i) !=0) {
+           return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(NanoStats_nano_info_iterator__doc__,
+"nano_info_iterator($self, /)\n"
+"--\n"
+"\n"
+"Return an iterator of NanoporeReadInfo objects. \n"
+);
+
+#define NanoStats_nano_info_iterator_method METH_NOARGS
+
+static PyObject *
+NanoStats_nano_info_iterator(NanoStats *self, PyObject *Py_UNUSED(ignore)) 
+{
+    return NanoStatsIterator_FromNanoStats(self);
+}
+
+
+static PyMethodDef NanoStats_methods[] = {
+    {"add_read", (PyCFunction)NanoStats_add_read, NanoStats_add_read_method,
+     NanoStats_add_read__doc__},
+    {"add_record_array", (PyCFunction)NanoStats_add_record_array, 
+     NanoStats_add_record_array_method, NanoStats_add_record_array__doc__},
+    {"nano_info_iterator", (PyCFunction)NanoStats_nano_info_iterator, 
+     NanoStats_nano_info_iterator_method, NanoStats_nano_info_iterator__doc__},
+    {NULL},
+};
+
+static PyMemberDef NanoStats_members[] = {
+    {"number_of_reads", T_ULONGLONG, offsetof(NanoStats, number_of_reads), 
+     READONLY, "The total amount of reads counted"},
+    {"skipped_reason", T_OBJECT, offsetof(NanoStats, skipped_reason),
+     READONLY, "What the reason is for skipping the module if skipped." 
+               "Set to None if not skipped."},
+    {"minimum_time", T_LONG, offsetof(NanoStats, min_time), READONLY,
+     "The earliest timepoint found in the headers",},
+    {"maximum_time", T_LONG, offsetof(NanoStats, max_time), READONLY,
+     "The latest timepoint found in the headers"},
+    {NULL},
+};
+
+static PyTypeObject NanoStats_Type = {
+    .tp_name = "_qc.NanoStats",
+    .tp_basicsize = sizeof(NanoStats),
+    .tp_dealloc = (destructor)NanoStats_dealloc,
+    .tp_new = (newfunc)NanoStats__new__, 
+    .tp_methods = NanoStats_methods,
+    .tp_members = NanoStats_members,
+};
 
 /*************************
  * MODULE INITIALIZATION *
@@ -2811,7 +3278,16 @@ PyInit__qc(void)
     }
     if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
         return NULL;
-    }  
+    }
+    if (python_module_add_type(m, &NanoporeReadInfo_Type) != 0) {
+        return NULL;
+    }
+    if (python_module_add_type(m, &NanoStats_Type) != 0) {
+        return NULL;
+    }
+    if (python_module_add_type(m, &NanoStatsIterator_Type) != 0) {
+        return NULL;
+    }
 
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);

@@ -9,6 +9,7 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Add a module to retrieve nanopore specific information from the header.
 + Classify overrepresented sequences by using NCBI's UniVec database and an
   assortment of nanopore adapters, ligation kits and primers.
 + Estimate duplication fractions based on counted unique sequences.
