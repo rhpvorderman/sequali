@@ -339,25 +339,6 @@ def html_report(data: Dict[str, Any]):
         <title>sequali report</title>
     </head>
     <h1>sequali report</h1>
-    <h2>Summary</h2>
-    <table>
-    <tr><td>Mean length</td><td align="right">
-        {summary["mean_length"]:.2f}</td></tr>
-    <tr><td>Length range (min-max)</td><td align="right">
-        {summary["minimum_length"]}-{summary["maximum_length"]}</td></tr>
-    <tr><td>total reads</td><td align="right">{summary["total_reads"]}</td></tr>
-    <tr><td>total bases</td><td align="right">{summary["total_bases"]}</td></tr>
-    <tr>
-        <td>Q20 bases</td>
-        <td align="right">
-            {summary["q20_bases"]} ({summary["q20_bases"] * 100 /
-                                     summary["total_bases"]:.2f}%)
-        </td>
-    </tr>
-    <tr><td>GC content</td><td align="right">
-        {summary["total_gc_fraction"] * 100:.2f}%
-    </td></tr>
-    </table>
     <h2>Sequence length distribution</h2>
     {sequence_length_distribution_plot(
         data["sequence_length_distribution"]["values"],

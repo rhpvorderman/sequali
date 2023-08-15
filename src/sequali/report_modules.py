@@ -1,25 +1,25 @@
 import dataclasses
-import typing
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 class ReportModule(ABC):
-    @classmethod
-    @abstractmethod
-    def from_dict(cls, d: Dict[str, Any]):
+    def __init__(self, *args, **kwargs):
         pass
 
-    @abstractmethod
+    def from_dict(cls, d: Dict[str, Any]):
+        return cls.__init__(**d)
+
     def to_dict(self) -> Dict[str, Any]:
-        pass
+        return dataclasses.asdict(self)
 
     @abstractmethod
     def to_html(self) -> str:
         pass
 
 
-class Summary(typing.NamedTuple):
+@dataclasses.dataclass
+class Summary(ReportModule):
     mean_length: float
     minimum_length: int
     maximum_length: int
@@ -28,32 +28,24 @@ class Summary(typing.NamedTuple):
     q20_bases: int
     total_gc_fraction: float
 
-
-class QCMetricsReportModule(ReportModule, typing.NamedTuple):
-    summary: Summary
-    x_labels: List[str]
-    per_position_qualities: Dict[str, List[float]]
-    per_position_quality_distribution: Dict[str, List[float]]
-    sequence_length_distribution: list[int]
-    base_content: Dict[str, List[float]]
-    per_position_n_content: Dict[str, List[float]]
-    per_sequence_gc_content: List[int]
-    per_sequence_quality_scores: List[int]
-
-    def to_dict(self):
-        return {
-            "summary": self.summary._asdict(),
-            "per_position_qualities": {
-                "x_labels": self.x_labels,
-                "values": self.per_position_qualities,
-            },
-            "per_position_quality_distribution": {
-                x_labels
-            }
-        }
-
-    def from_dict(cls, d: Dict[str, Any]):
-        return cls(**d["summary"])
-
-
-
+    def to_html(self) -> str:
+        return f"""
+            <h2>Summary</h2>
+            <table>
+            <tr><td>Mean length</td><td align="right">
+                {self.mean_length:.2f}</td></tr>
+            <tr><td>Length range (min-max)</td><td align="right">
+                {self.minimum_length}-{self.maximum_length}</td></tr>
+            <tr><td>total reads</td><td align="right">{self.total_reads}</td></tr>
+            <tr><td>total bases</td><td align="right">{self.total_bases}</td></tr>
+            <tr>
+                <td>Q20 bases</td>
+                <td align="right">
+                    {self.q20_bases} ({self.q20_bases * 100 / self.total_bases:.2f}%)
+                </td>
+            </tr>
+            <tr><td>GC content</td><td align="right">
+                {self.total_gc_fraction * 100:.2f}%
+            </td></tr>
+            </table>
+        """
