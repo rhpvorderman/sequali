@@ -1,6 +1,9 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+from .html_report import sequence_length_distribution_plot, \
+    per_position_quality_distribution_plot
 
 
 class ReportModule(ABC):
@@ -48,4 +51,35 @@ class Summary(ReportModule):
                 {self.total_gc_fraction * 100:.2f}%
             </td></tr>
             </table>
+        """
+
+
+@dataclasses.dataclass
+class SequenceLengthDistribution(ReportModule):
+    x_labels: List[str]
+    values: List[int]
+
+    def to_html(self):
+        return  f"""
+            <h2>Sequence length distribution</h2>
+            {sequence_length_distribution_plot(self.values, self.x_labels)}
+        """
+
+
+@dataclasses.dataclass
+class PerPositionQualities(ReportModule):
+    x_labels: List[str]
+    A: List[float]
+    C: List[float]
+    G: List[float]
+    T: List[float]
+    N: List[float]
+    mean: List[float]
+
+    def to_html(self):
+        series = self.to_dict()
+        x_labels = series.pop("x_labels")
+        return f"""
+            <h2>Per position quality score distribution</h2>
+            {per_position_quality_distribution_plot(series, x_labels)}
         """

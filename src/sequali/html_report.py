@@ -339,15 +339,7 @@ def html_report(data: Dict[str, Any]):
         <title>sequali report</title>
     </head>
     <h1>sequali report</h1>
-    <h2>Sequence length distribution</h2>
-    {sequence_length_distribution_plot(
-        data["sequence_length_distribution"]["values"],
-        data["sequence_length_distribution"]["x_labels"],
-    )}
-    <h2>Per position quality score distribution</h2>
-    {per_position_quality_distribution_plot(
-        data["per_position_quality_distribution"]["values"],
-        data["per_position_quality_distribution"]["x_labels"])}
+
     <h2>Per position average quality score</h2>
     {per_position_quality_plot(data["per_position_qualities"]["values"],
                                data["per_position_qualities"]["x_labels"], )}
