@@ -1,6 +1,6 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Tuple
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -107,7 +107,7 @@ class SequenceLengthDistribution(ReportModule):
 
 
 @dataclasses.dataclass
-class PerPositionQualities(ReportModule):
+class PerBaseAverageSequenceQuality(ReportModule):
     x_labels: List[str]
     A: List[float]
     C: List[float]
@@ -130,6 +130,57 @@ class PerPositionQualities(ReportModule):
         plot.add("G", label_values(self.G, self.x_labels))
         plot.add("T", label_values(self.T, self.x_labels))
         plot.add("mean", label_values(self.mean, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self):
+        return f"""
+            <h2>Per position average quality score</h2>
+            {self.plot()}
+        """
+
+
+@dataclasses.dataclass
+class PerBaseQualityScoreDistribution(ReportModule):
+    x_labels: List[str]
+    series: List[List[str]]
+
+    def plot(self) -> str:
+        dark_red = "#8B0000"  # 0-3
+        red = "#ff0000"  # 4-7
+        light_red = "#ff9999"  # 8-11
+        white = "#FFFFFF"  # 12-15
+        very_light_blue = "#e6e6ff"  # 16-19
+        light_blue = "#8080ff"  # 20-23
+        blue = "#0000FF"  # 24-27
+        darker_blue = "#0000b3"  # 28-31
+        more_darker_blue = "#000080"  # 32-35
+        yet_more_darker_blue = "#00004d"  # 36-39
+        almost_black_blue = "#000033"  # 40-43
+        black = "#000000"  # >=44
+        style = pygal.style.Style(
+            colors=(
+            dark_red, red, light_red, white, very_light_blue, light_blue,
+            blue, darker_blue, more_darker_blue, yet_more_darker_blue,
+            almost_black_blue, black)
+        )
+        plot = pygal.StackedLine(
+            title="Per base quality distribution",
+            style=style,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        serie_names = (
+            "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
+            "32-35", "36-39", "40-43", ">=44")
+        for name, serie in zip(serie_names, self.series):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, self.x_labels),
+                     show_dots=serie_filled)
         return plot.render(is_unicode=True)
 
     def to_html(self):
