@@ -149,15 +149,7 @@ def per_position_quality_distribution_plot(
 
 def sequence_length_distribution_plot(sequence_lengths: Sequence[int],
                                       x_labels: Sequence[str]) -> str:
-    plot = pygal.Bar(
-        title="Sequence length distribution",
-        x_title="sequence length",
-        y_title="number of reads",
-        **label_settings(x_labels),
-        **COMMON_GRAPH_OPTIONS,
-    )
-    plot.add("Length", label_values(sequence_lengths, x_labels))
-    return plot.render(is_unicode=True)
+
 
 
 def base_content_plot(base_content: Dict[str, Sequence[float]],
