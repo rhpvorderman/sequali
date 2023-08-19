@@ -188,3 +188,34 @@ class PerBaseQualityScoreDistribution(ReportModule):
             <h2>Per position quality score distribution</h2>
             {self.plot()}
         """
+
+
+@dataclasses.dataclass
+class PerSequenceAverageQualityScores(ReportModule):
+    average_quality_counts: Sequence[int]
+    x_labels: Tuple[str] = tuple(range(PHRED_MAX + 1))
+
+    def plot(self) -> str:
+        plot = pygal.Line(
+            title="Per sequence quality scores",
+            x_labels=range(PHRED_MAX + 1),
+            width=1000,
+            explicit_size=True,
+            disable_xml_declaration=True,
+            x_labels_major_every=3,
+            show_minor_x_labels=False,
+            x_title="Phred score",
+            y_title="Percentage of total",
+            truncate_label=-1,
+        )
+        total = sum(self.average_quality_counts)
+        percentage_scores = [100 * score / total
+                             for score in self.average_quality_counts]
+        plot.add("", percentage_scores)
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+            <h2>Per sequence average quality scores</h2>
+            {self.plot()}
+        """
