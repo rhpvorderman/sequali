@@ -1,4 +1,6 @@
 import dataclasses
+import io
+import typing
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Sequence, Tuple, Optional
 
@@ -438,3 +440,56 @@ class PerTileQuality(ReportModule):
             deviate more than 2 phred units from the average are shown. <br>
             {self.plot()}
         """
+
+
+class OverRepresentedSequence(typing.NamedTuple):
+    count: int
+    fraction: float
+    sequence: str
+    most_matches: int
+    max_matches: int
+    best_match: str
+
+
+@dataclasses.dataclass
+class OverRepresentedSequences(ReportModule):
+    overrepresented_sequences: List[OverRepresentedSequence]
+    max_unique_sequences: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"overrepresented_sequences":
+                    [x._asdict() for x in self.overrepresented_sequences]}
+
+    def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
+        overrepresented_sequences = d["overrepresented_sequences"]
+        return cls.__init__([OverRepresentedSequence(**d)
+                            for d in overrepresented_sequences])
+
+    def to_html(self) -> str:
+        header = "<h2>Overrepresented sequences</h2>"
+        if len(self.overrepresented_sequences) == 0:
+            return header + "No overrepresented sequences."
+        content = io.StringIO()
+        content.write(header)
+        content.write(
+            f"The first {self.max_unique_sequences} unique sequences are tracked for "
+            f"duplicates. Sequences with high occurence are presented in the "
+            f"table. <br>")
+        content.write("Identified sequences by matched kmers. The max match is "
+                "either the number of kmers in the overrepresented sequence "
+                "or the number of kmers of the database sequence, whichever "
+                "is fewer.")
+        content.write("<table>")
+        content.write("<tr><th>count</th><th>percentage</th>"
+                      "<th>sequence</th><th>kmers (matched/max)</th>"
+                      "<th>best match</th></tr>")
+        for count, fraction, sequence, most_matches, max_matches, best_match in \
+                self.overrepresented_sequences:
+            content.write(
+                f"""<tr><td align="right">{count}</td>
+                    <td align="right">{fraction * 100:.2f}</td>
+                    <td>{sequence}</td>
+                    <td>({most_matches}/{max_matches})</td>
+                    <td>{best_match}</td></tr>""")
+        content.write("</table>")
+        return content.getvalue()
