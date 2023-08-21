@@ -1,6 +1,6 @@
 import dataclasses
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple, Optional
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -339,5 +339,102 @@ class PerSequenceQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence quality scores</h2>
+            {self.plot()}
+        """
+
+
+@dataclasses.dataclass
+class AdapterContent(ReportModule):
+    x_labels: Sequence[str]
+    adapter_content: Dict[str, Sequence[float]]
+
+    def plot(self):
+        plot = pygal.Line(
+            title="Adapter content (%)",
+            range=(0.0, 100.0),
+            x_title="position",
+            y_title="%",
+            legend_at_bottom=True,
+            legend_at_bottom_columns=1,
+            truncate_legend=-1,
+            height=800,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        for label, content in self.adapter_content:
+            if max(content) < 0.1:
+                continue
+            plot.add(label, label_values(content, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self):
+        return f"""
+            <h2>Adapter content</h2>
+            {self.plot()}
+        """
+
+
+@dataclasses.dataclass
+class PerTileQuality(ReportModule):
+    x_labels: Sequence[str]
+    normalized_per_tile_averages: Dict[int, Sequence[float]]
+    tiles_2x_errors: Sequence[str]
+    tiles_10x_errors: Sequence[str]
+    skipped_reason: Optional[str]
+
+    def plot(self):
+        style_class = pygal.style.Style
+        red = "#FF0000"
+        yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
+        style = style_class(
+            colors=(yellow, red) + style_class.colors
+        )
+        scatter_plot = pygal.Line(
+            title="Deviation from geometric mean in phred units.",
+            x_title="position",
+            stroke=False,
+            style=style,
+            y_title="Normalized phred",
+            truncate_legend=-1,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        def add_horizontal_line(name, position):
+            scatter_plot.add(name, [position for _ in range(len(self.x_labels))],
+                             show_dots=False, stroke=True,)
+
+        add_horizontal_line("2 times more errors", -3)
+        add_horizontal_line("10 times more errors", -10)
+
+        min_phred = -10.0
+        max_phred = 0.0
+        for tile, tile_phreds in self.normalized_per_tile_averages:
+            min_phred = min(min_phred, *tile_phreds)
+            max_phred = max(max_phred, *tile_phreds)
+            scatter_plot.range = (min_phred - 1, max_phred + 1)
+            if min(tile_phreds) > -3 and max(tile_phreds) < 3:
+                continue
+            cleaned_phreds = [{'value': phred, 'label': label}
+                              if (phred > 3 or phred < -3) else None
+                              for phred, label in zip(tile_phreds, self.x_labels)]
+            scatter_plot.add(str(tile),  cleaned_phreds)
+
+        return scatter_plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        header = "<h2>Per tile quality</h2>"
+        if self.skipped_reason:
+            return header + f"Per tile quality skipper. Reason: {self.skipped_reason}."
+        return header + f"""
+            Tiles with more than 2 times the average error: 
+                {", ".join(self.tiles_2x_errors)}<br>
+            Tiles with more than 10 times the average error:
+                {", ".join(self.tiles_10x_errors)}<br>
+            <br>
+            This graph shows the deviation of each tile on each position from
+            the geometric mean of all tiles at that position. The scale is
+            expressed in phred units. -10 is 10 times more errors than the average.
+            -3 is ~2 times more errors than the average. Only points that
+            deviate more than 2 phred units from the average are shown. <br>
             {self.plot()}
         """
