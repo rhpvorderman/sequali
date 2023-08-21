@@ -355,7 +355,7 @@ class PerSequenceAverageQualityScores(ReportModule):
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(metrics.gc_content())
+        return cls(metrics.phred_scores())
 
 
 @dataclasses.dataclass
@@ -497,36 +497,6 @@ class PerSequenceGCContent(ReportModule):
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
         return cls(metrics.gc_content())
-
-
-@dataclasses.dataclass
-class PerSequenceQualityScores(ReportModule):
-    quality_counts: Sequence[int]
-
-    def plot(self):
-        plot = pygal.Line(
-            title="Per sequence quality scores",
-            x_labels=range(PHRED_MAX + 1),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
-            x_labels_major_every=3,
-            show_minor_x_labels=False,
-            x_title="Phred score",
-            y_title="Percentage of total",
-            truncate_label=-1,
-        )
-        total = sum(self.quality_counts)
-        percentage_scores = [100 * count / total
-                             for count in self.quality_counts]
-        plot.add("", percentage_scores)
-        return plot.render(is_unicode=True)
-
-    def to_html(self) -> str:
-        return f"""
-            <h2>Per sequence quality scores</h2>
-            {self.plot()}
-        """
 
 
 @dataclasses.dataclass
