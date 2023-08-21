@@ -326,7 +326,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 @dataclasses.dataclass
 class PerSequenceAverageQualityScores(ReportModule):
     average_quality_counts: Sequence[int]
-    x_labels: Tuple[str] = tuple(range(PHRED_MAX + 1))
+    x_labels: Tuple[str] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
         plot = pygal.Line(
@@ -352,6 +352,10 @@ class PerSequenceAverageQualityScores(ReportModule):
             <h2>Per sequence average quality scores</h2>
             {self.plot()}
         """
+
+    @classmethod
+    def from_qc_metrics(cls, metrics: QCMetrics):
+        return cls(metrics.gc_content())
 
 
 @dataclasses.dataclass
@@ -395,6 +399,32 @@ class PerPositionBaseContent(ReportModule):
              {self.plot()}
         """
 
+    @classmethod
+    def from_count_tables_and_labels(cls,
+                                     count_tables: Sequence[int],
+                                     labels: Sequence[str]):
+        total_tables = len(count_tables) // TABLE_SIZE
+        base_fractions = [
+            [0.0 for _ in range(total_tables)]
+            for _ in range(NUMBER_OF_NUCS)
+        ]
+        for index, table in enumerate(table_iterator(count_tables)):
+            total_bases = sum(table)
+            n_bases = sum(table[N::NUMBER_OF_NUCS])
+            named_total = min(total_bases - n_bases, 1)
+            for i in range(NUMBER_OF_NUCS):
+                if i == N:
+                    continue
+                nuc_count = sum(table[i::NUMBER_OF_NUCS])
+                base_fractions[i][index] = nuc_count / named_total
+        return cls(
+            labels,
+            A=base_fractions[A],
+            C=base_fractions[C],
+            G=base_fractions[G],
+            T=base_fractions[T]
+        )
+
 
 @dataclasses.dataclass
 class PerPositionNContent(ReportModule):
@@ -425,11 +455,12 @@ class PerPositionNContent(ReportModule):
 @dataclasses.dataclass
 class PerSequenceGCContent(ReportModule):
     gc_content_counts: Sequence[int]
+    x_labels: Sequence[str] = tuple(str(x) for x in range(101))
 
     def plot(self):
         plot = pygal.Bar(
             title="Per sequence GC content",
-            x_labels=range(101),
+            x_labels=self.x_labels,
             x_labels_major_every=3,
             show_minor_x_labels=False,
             x_title="GC %",
@@ -444,6 +475,10 @@ class PerSequenceGCContent(ReportModule):
             <h2>Per sequence GC content</h2>
             {self.plot()}    
         """
+
+    @classmethod
+    def from_qc_metrics(cls, metrics: QCMetrics):
+        return cls(metrics.gc_content())
 
 
 @dataclasses.dataclass
