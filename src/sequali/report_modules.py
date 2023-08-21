@@ -1,3 +1,4 @@
+import array
 import dataclasses
 import io
 import math
@@ -12,7 +13,7 @@ import pygal.style  # type: ignore
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
     SequenceDuplication
-from ._qc import NUMBER_OF_PHREDS, PHRED_MAX
+from ._qc import NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 
@@ -58,11 +59,18 @@ def logarithmic_ranges(length: int, parts: int):
         yield start, stop
         start = stop
 
+
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
     return [
             f"{start + 1}-{stop}" if start + 1 != stop else f"{start + 1}"
             for start, stop in data_ranges
     ]
+
+
+def table_iterator(count_tables: array.ArrayType) -> Iterator[memoryview]:
+    table_view = memoryview(count_tables)
+    for i in range(0, len(count_tables), TABLE_SIZE):
+        yield table_view[i: i + TABLE_SIZE]
 
 
 def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
@@ -135,8 +143,8 @@ class Summary(ReportModule):
 
 @dataclasses.dataclass
 class SequenceLengthDistribution(ReportModule):
-    length_ranges: List[str]
-    counts: List[int]
+    length_ranges: Sequence[str]
+    counts: Sequence[int]
 
     def plot(self) -> str:
         plot = pygal.Bar(
@@ -154,6 +162,22 @@ class SequenceLengthDistribution(ReportModule):
             <h2>Sequence length distribution</h2>
             {self.plot()}
         """
+
+    @classmethod
+    def from_table_and_total(cls, aggregated_count_matrix: Sequence[int],
+                             total_sequences: int,
+                             x_labels: Sequence[str]):
+        total_tabels = len(x_labels)
+        base_counts = [total_sequences] + [0 for _ in range(total_tabels)]
+        sequence_lengths = [0 for _ in range(total_tabels + 1)]
+        for i, table in enumerate(aggregated_count_matrix):
+            base_counts[i+1] = sum(table)
+        previous_count = 0
+        for i in range(len(x_labels), 0, -1):
+            number_at_least = base_counts[i]
+            sequence_lengths[i] = number_at_least - previous_count
+            previous_count = number_at_least
+        return cls(x_labels, sequence_lengths)
 
 
 @dataclasses.dataclass
