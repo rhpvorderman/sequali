@@ -219,3 +219,45 @@ class PerSequenceAverageQualityScores(ReportModule):
             <h2>Per sequence average quality scores</h2>
             {self.plot()}
         """
+
+
+@dataclasses.dataclass
+class PerPositionBaseContent(ReportModule):
+    x_labels: Sequence[str]
+    A: Sequence[float]
+    C: Sequence[float]
+    G: Sequence[float]
+    T: Sequence[float]
+
+    def plot(self):
+        style_class = pygal.style.Style
+        red = "#DC143C"  # Crimson
+        dark_red = "#8B0000"  # DarkRed
+        blue = "#00BFFF"  # DeepSkyBlue
+        dark_blue = "#1E90FF"  # DodgerBlue
+        black = "#000000"
+        style = style_class(
+            colors=(red, dark_red, blue, dark_blue, black)
+        )
+        plot = pygal.StackedLine(
+            title="Base content",
+            style=style,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("G", label_values(self.G, self.x_labels))
+        plot.add("C", label_values(self.C, self.x_labels))
+        plot.add("A", label_values(self.A, self.x_labels))
+        plot.add("T", label_values(self.T, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+             <h2>Per position base content</h2>
+             {self.plot()}
+        """
