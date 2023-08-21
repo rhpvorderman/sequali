@@ -1,13 +1,29 @@
 import dataclasses
 import io
+import math
+import sys
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Sequence, Tuple, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple, Optional
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
 
-from ._qc import PHRED_MAX
+from ._qc import A, C, G, N, T
+from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
+    SequenceDuplication
+from ._qc import NUMBER_OF_PHREDS, PHRED_MAX
+from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
+    create_sequence_index, identify_sequence
+
+PHRED_TO_ERROR_RATE = [
+    sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
+    for start in range(NUMBER_OF_PHREDS)
+]
+
+DEFAULT_FRACTION_THRESHOLD = 0.0001
+DEFAULT_MIN_THRESHOLD = 100
+DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
@@ -15,6 +31,38 @@ COMMON_GRAPH_OPTIONS = dict(
     explicit_size=True,
     disable_xml_declaration=True,
 )
+
+
+def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
+    size = length // parts
+    remainder = length % parts
+    small_parts = parts - remainder
+    start = 0
+    for i in range(parts):
+        part_size = size if i < small_parts else size + 1
+        if part_size == 0:
+            continue
+        stop = start + part_size
+        yield start, stop
+        start = stop
+
+
+def logarithmic_ranges(length: int, parts: int):
+    exponent = math.log(length) / math.log(parts)
+    start = 0
+    for i in range(1, parts + 1):
+        stop = round(i ** exponent)
+        length = stop - start
+        if length < 1:
+            continue
+        yield start, stop
+        start = stop
+
+def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
+    return [
+            f"{start + 1}-{stop}" if start + 1 != stop else f"{start + 1}"
+            for start, stop in data_ranges
+    ]
 
 
 def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
@@ -377,12 +425,55 @@ class AdapterContent(ReportModule):
 
 
 @dataclasses.dataclass
-class PerTileQuality(ReportModule):
+class PerTileQualityReport(ReportModule):
     x_labels: Sequence[str]
-    normalized_per_tile_averages: Dict[int, Sequence[float]]
+    normalized_per_tile_averages: Sequence[Tuple[str, Sequence[float]]]
     tiles_2x_errors: Sequence[str]
     tiles_10x_errors: Sequence[str]
     skipped_reason: Optional[str]
+
+    @classmethod
+    def from_per_tile_quality_and_ranges(
+            cls, ptq: PerTileQuality, data_ranges: Sequence[Tuple[int, int]]):
+        average_phreds = []
+        per_category_totals = [0.0 for i in range(len(data_ranges))]
+        tile_counts = ptq.get_tile_counts()
+        for tile, summed_errors, counts in tile_counts:
+            range_averages = [
+                sum(summed_errors[start:stop]) / sum(counts[start:stop])
+                for start, stop in data_ranges]
+            range_phreds = []
+            for i, average in enumerate(range_averages):
+                phred = -10 * math.log10(average)
+                range_phreds.append(phred)
+                # Averaging phreds takes geometric mean.
+                per_category_totals[i] += phred
+            average_phreds.append((tile, range_phreds))
+        number_of_tiles = len(tile_counts)
+        averages_per_category = [total / number_of_tiles
+                                 for total in per_category_totals]
+        normalized_averages = []
+        tiles_2x_errors = []
+        tiles_10x_errors = []
+        for tile, tile_phreds in average_phreds:
+            normalized_tile_phreds = [
+                tile_phred - average
+                for tile_phred, average in
+                zip(tile_phreds, averages_per_category)
+            ]
+            lowest_phred = min(normalized_tile_phreds)
+            if lowest_phred <= -10.0:
+                tiles_10x_errors.append(str(tile))
+            elif lowest_phred <= -3.0:
+                tiles_2x_errors.append(str(tile))
+            normalized_averages.append((str(tile), normalized_tile_phreds))
+        return cls(
+            x_labels=stringify_ranges(data_ranges),
+            normalized_per_tile_averages=normalized_averages,
+            tiles_2x_errors=tiles_2x_errors,
+            tiles_10x_errors=tiles_10x_errors,
+            skipped_reason=ptq.skipped_reason,
+        )
 
     def plot(self):
         style_class = pygal.style.Style
