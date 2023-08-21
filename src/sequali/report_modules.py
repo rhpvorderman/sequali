@@ -16,6 +16,7 @@ from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
+from .util import fasta_parser
 
 PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -709,3 +710,33 @@ class OverRepresentedSequences(ReportModule):
                     <td>{best_match}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
+
+    @classmethod
+    def from_sequence_duplication(
+        cls,
+        seqdup: SequenceDuplication,
+        fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
+        min_threshold: int = DEFAULT_MIN_THRESHOLD,
+        max_threshold: int = DEFAULT_MAX_THRESHOLD,
+    ):
+        overrepresented_sequences = seqdup.overrepresented_sequences(
+            fraction_threshold,
+            min_threshold,
+            max_threshold
+        )
+        if overrepresented_sequences:
+            def contaminant_iterator():
+                for file in DEFAULT_CONTAMINANTS_FILES:
+                    yield from fasta_parser(file)
+
+            sequence_index = create_sequence_index(contaminant_iterator(),
+                                                   DEFAULT_K)
+        else:  # Only spend time creating sequence index when its worth it.
+            sequence_index = {}
+        overrepresented_with_identification = [
+            OverRepresentedSequence(count, fraction, sequence,
+             *identify_sequence(sequence, sequence_index))
+            for count, fraction, sequence in overrepresented_sequences
+        ]
+        return cls(overrepresented_with_identification,
+                   seqdup.max_unique_sequences)
