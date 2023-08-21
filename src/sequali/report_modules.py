@@ -261,3 +261,83 @@ class PerPositionBaseContent(ReportModule):
              <h2>Per position base content</h2>
              {self.plot()}
         """
+
+
+@dataclasses.dataclass
+class PerPositionNContent(ReportModule):
+    x_labels: Sequence[str]
+    n_content: Sequence[float]
+
+    def plot(self):
+        plot = pygal.Line(
+            title="Per position N content",
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("N", label_values(self.n_content, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+            <h2>Per position N content</h2>
+            {self.plot()}
+        """
+
+
+@dataclasses.dataclass
+class PerSequenceGCContent(ReportModule):
+    gc_content_counts: Sequence[int]
+
+    def plot(self):
+        plot = pygal.Bar(
+            title="Per sequence GC content",
+            x_labels=range(101),
+            x_labels_major_every=3,
+            show_minor_x_labels=False,
+            x_title="GC %",
+            y_title="number of reads",
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("", self.gc_content_counts)
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+            <h2>Per sequence GC content</h2>
+            {self.plot()}    
+        """
+
+
+@dataclasses.dataclass
+class PerSequenceQualityScores(ReportModule):
+    quality_counts: Sequence[int]
+
+    def plot(self):
+        plot = pygal.Line(
+            title="Per sequence quality scores",
+            x_labels=range(PHRED_MAX + 1),
+            width=1000,
+            explicit_size=True,
+            disable_xml_declaration=True,
+            x_labels_major_every=3,
+            show_minor_x_labels=False,
+            x_title="Phred score",
+            y_title="Percentage of total",
+            truncate_label=-1,
+        )
+        total = sum(self.quality_counts)
+        percentage_scores = [100 * count / total
+                             for count in self.quality_counts]
+        plot.add("", percentage_scores)
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+            <h2>Per sequence quality scores</h2>
+            {self.plot()}
+        """

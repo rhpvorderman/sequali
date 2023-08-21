@@ -197,20 +197,6 @@ def n_content_plot(n_content: Sequence[float],
     return plot.render(is_unicode=True)
 
 
-def per_sequence_gc_content_plot(gc_content: Sequence[int]) -> str:
-    plot = pygal.Bar(
-        title="Per sequence GC content",
-        x_labels=range(101),
-        x_labels_major_every=3,
-        show_minor_x_labels=False,
-        x_title="GC %",
-        y_title="number of reads",
-        **COMMON_GRAPH_OPTIONS,
-    )
-    plot.add("", gc_content)
-    return plot.render(is_unicode=True)
-
-
 def per_sequence_quality_scores_plot(
         per_sequence_quality_scores: Sequence[int]) -> str:
     plot = pygal.Line(
@@ -339,12 +325,6 @@ def html_report(data: Dict[str, Any]):
     {per_sequence_quality_scores_plot(data["per_sequence_quality_scores"]["values"])}
     <h2>Per Tile Quality</h2>
     {ptq_content}
-    <h2>Per position base content</h2>
-    {base_content_plot(data["base_content"]["values"],
-                       data["base_content"]["x_labels"])}
-    <h2>Per position N content</h2>
-    {n_content_plot(data["per_position_n_content"]["values"],
-                    data["per_position_n_content"]["x_labels"])}
     <h2>Per sequence GC content</h2>
     {per_sequence_gc_content_plot(data["per_sequence_gc_content"]["values"])}
     <h2>Adapter content plot</h2>
