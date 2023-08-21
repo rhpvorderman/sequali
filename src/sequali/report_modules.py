@@ -411,7 +411,9 @@ class PerPositionBaseContent(ReportModule):
         for index, table in enumerate(table_iterator(count_tables)):
             total_bases = sum(table)
             n_bases = sum(table[N::NUMBER_OF_NUCS])
-            named_total = min(total_bases - n_bases, 1)
+            named_total = total_bases - n_bases
+            if named_total == 0:
+                continue
             for i in range(NUMBER_OF_NUCS):
                 if i == N:
                     continue
@@ -430,6 +432,22 @@ class PerPositionBaseContent(ReportModule):
 class PerPositionNContent(ReportModule):
     x_labels: Sequence[str]
     n_content: Sequence[float]
+
+    @classmethod
+    def from_count_tables_and_labels(
+            cls, count_tables: Sequence[int], labels: Sequence[str]):
+        total_tables = len(count_tables) // TABLE_SIZE
+        n_fractions = [0.0 for _ in range(total_tables)]
+        for index, table in enumerate(table_iterator(count_tables)):
+            total_bases = sum(table)
+            if total_bases == 0:
+                continue
+            n_bases = sum(table[N::NUMBER_OF_NUCS])
+            n_fractions[index] = n_bases / total_bases
+        return cls(
+            labels,
+            n_fractions
+        )
 
     def plot(self):
         plot = pygal.Line(
