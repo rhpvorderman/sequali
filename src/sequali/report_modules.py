@@ -13,7 +13,7 @@ import pygal.style  # type: ignore
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
     SequenceDuplication
-from ._qc import NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 
@@ -67,7 +67,7 @@ def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
     ]
 
 
-def table_iterator(count_tables: array.ArrayType) -> Iterator[memoryview]:
+def table_iterator(count_tables: Sequence[int]) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
     for i in range(0, len(count_tables), TABLE_SIZE):
         yield table_view[i: i + TABLE_SIZE]
@@ -212,11 +212,70 @@ class PerBaseAverageSequenceQuality(ReportModule):
             {self.plot()}
         """
 
+    @classmethod
+    def from_table_and_labels(cls, count_tables: Sequence[int], x_labels):
+        total_tables = len(count_tables) // TABLE_SIZE
+        mean_qualities = [0.0 for _ in range(total_tables)]
+        base_qualities = [
+            [0.0 for _ in range(total_tables)]
+            for _ in range(NUMBER_OF_NUCS)
+        ]
+        for cat_index, table in enumerate(table_iterator(count_tables)):
+            nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
+            nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
+            total_count = 0
+            total_prob = 0.0
+            for phred_p_value, offset in zip(
+                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
+            ):
+                nucs = table[offset: offset + NUMBER_OF_NUCS]
+                count = sum(nucs)
+                total_count += count
+                total_prob += count * phred_p_value
+                for i, count in enumerate(nucs):
+                    nuc_counts[i] += count
+                    nuc_probs[i] += phred_p_value * count
+            if total_count == 0:
+                continue
+            mean_qualities[cat_index] = -10 * math.log(total_prob / total_count)
+            for i in range(NUMBER_OF_NUCS):
+                if nuc_counts[i] == 0:
+                    continue
+                base_qualities[i][cat_index] = -10 * math.log10(
+                    nuc_probs[i] / nuc_counts[i]
+                )
+        return cls(
+            x_labels = x_labels,
+            A=base_qualities[A],
+            C=base_qualities[C],
+            G=base_qualities[G],
+            T=base_qualities[T],
+            N=base_qualities[N],
+            mean=mean_qualities
+        )
+
 
 @dataclasses.dataclass
 class PerBaseQualityScoreDistribution(ReportModule):
-    x_labels: List[str]
-    series: List[List[str]]
+    x_labels: Sequence[str]
+    series: Sequence[Sequence[float]]
+
+    @classmethod
+    def from_count_table_and_labels(
+            cls, count_tables: Sequence[int], x_labels: Sequence[str]):
+        total_tables = len(x_labels)
+        quality_distribution = [
+            [0.0 for _ in range(total_tables)]
+            for _ in range(NUMBER_OF_PHREDS)
+        ]
+        for cat_index, table in enumerate(table_iterator(count_tables)):
+            total_nucs = sum(table)
+            for offset in range(0, TABLE_SIZE, NUMBER_OF_NUCS):
+                category_nucs = sum(table[offset: offset + NUMBER_OF_NUCS])
+                nuc_fraction = category_nucs / total_nucs
+                quality_distribution[offset // NUMBER_OF_NUCS][
+                    cat_index] = nuc_fraction
+        return cls(x_labels, quality_distribution)
 
     def plot(self) -> str:
         dark_red = "#8B0000"  # 0-3
