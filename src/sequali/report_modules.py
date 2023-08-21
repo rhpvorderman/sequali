@@ -502,7 +502,7 @@ class PerSequenceGCContent(ReportModule):
 @dataclasses.dataclass
 class AdapterContent(ReportModule):
     x_labels: Sequence[str]
-    adapter_content: Dict[str, Sequence[float]]
+    adapter_content: Sequence[str, Sequence[float]]
 
     def plot(self):
         plot = pygal.Line(
@@ -528,6 +528,25 @@ class AdapterContent(ReportModule):
             <h2>Adapter content</h2>
             {self.plot()}
         """
+
+    @classmethod
+    def from_adapter_counter_names_and_ranges(
+            cls, adapter_counter: AdapterCounter, adapter_names: Sequence[str],
+            data_ranges: Sequence[Tuple[int, int]]):
+        all_adapters = []
+        total_sequences = adapter_counter.number_of_sequences
+        for adapter, countarray in adapter_counter.get_counts():
+            adapter_counts = [sum(countarray[start:stop])
+                              for start, stop in data_ranges]
+            total = 0
+            accumulated_counts = []
+            for count in adapter_counts:
+                total += count
+                accumulated_counts.append(total)
+            all_adapters.append([count * 100 / total_sequences
+                                 for count in accumulated_counts])
+        return cls(stringify_ranges(data_ranges),
+                   list(zip(adapter_names, all_adapters)))
 
 
 @dataclasses.dataclass
