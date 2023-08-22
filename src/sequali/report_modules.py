@@ -187,20 +187,27 @@ class SequenceLengthDistribution(ReportModule):
         """
 
     @classmethod
-    def from_table_and_total(cls, aggregated_count_matrix: array.ArrayType,
-                             total_sequences: int,
-                             x_labels: List[str]):
-        total_tabels = len(x_labels)
-        base_counts = [total_sequences] + [0 for _ in range(total_tabels)]
-        sequence_lengths = [0 for _ in range(total_tabels + 1)]
-        for i, table in enumerate(table_iterator(aggregated_count_matrix)):
+    def from_count_tables(cls,
+                          count_tables: array.ArrayType,
+                          total_sequences: int,
+                          data_ranges: Sequence[Tuple[int, int]]):
+        max_length = len(count_tables) // TABLE_SIZE
+        # use bytes constructor to initialize to 0
+        sequence_lengths = array.array("Q", bytes(8 * (max_length + 1)))
+        base_counts = array.array("Q", bytes(8 * (max_length + 1)))
+        base_counts[0] = total_sequences  # all reads have at least 0 bases
+        for i, table in enumerate(table_iterator(count_tables)):
             base_counts[i + 1] = sum(table)
         previous_count = 0
-        for i in range(len(x_labels), 0, -1):
+        for i in range(max_length, 0, -1):
             number_at_least = base_counts[i]
             sequence_lengths[i] = number_at_least - previous_count
             previous_count = number_at_least
-        return cls(["0"] + x_labels, sequence_lengths)
+        seqlength_view = memoryview(sequence_lengths)[1:]
+        lengths = [sum(seqlength_view[start:stop]) for start, stop in
+                   data_ranges]
+        x_labels = stringify_ranges(data_ranges)
+        return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths)
 
 
 @dataclasses.dataclass
@@ -586,6 +593,8 @@ class PerTileQualityReport(ReportModule):
     @classmethod
     def from_per_tile_quality_and_ranges(
             cls, ptq: PerTileQuality, data_ranges: Sequence[Tuple[int, int]]):
+        if ptq.skipped_reason:
+            return cls([], [], [], [], ptq.skipped_reason)
         average_phreds = []
         per_category_totals = [0.0 for i in range(len(data_ranges))]
         tile_counts = ptq.get_tile_counts()
@@ -976,8 +985,8 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_bases=total_bases,
             q20_bases=sum(summary_table[5 * NUMBER_OF_NUCS:]),
             total_gc_fraction=gc_content),
-        SequenceLengthDistribution.from_table_and_total(aggregrated_matrix,
-                                                        total_reads, x_labels),
+        SequenceLengthDistribution.from_count_tables(count_tables, total_reads,
+                                                     data_ranges),
         PerBaseQualityScoreDistribution.from_count_table_and_labels(
             aggregrated_matrix, x_labels),
         PerBaseAverageSequenceQuality.from_table_and_labels(
