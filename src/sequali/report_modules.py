@@ -3,6 +3,7 @@ import collections
 import dataclasses
 import io
 import math
+import os
 import sys
 import typing
 from abc import ABC, abstractmethod
@@ -74,6 +75,23 @@ def table_iterator(count_tables: Sequence[int]) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
     for i in range(0, len(count_tables), TABLE_SIZE):
         yield table_view[i: i + TABLE_SIZE]
+
+
+def aggregate_count_matrix(
+        count_tables: array.ArrayType,
+        data_ranges: Sequence[Tuple[int, int]]) -> array.ArrayType:
+    count_view = memoryview(count_tables)
+    aggregated_matrix = array.array("Q", bytes(8 * TABLE_SIZE * len(data_ranges)))
+    ag_view = memoryview(aggregated_matrix)
+    for cat_index, (start, stop) in enumerate(data_ranges):
+        cat_offset = cat_index * TABLE_SIZE
+        cat_view = ag_view[cat_offset:cat_offset + TABLE_SIZE]
+        for table_index in range(start, stop):
+            offset = table_index * TABLE_SIZE
+            table = count_view[offset: offset + TABLE_SIZE]
+            for i, count in enumerate(table):
+                cat_view[i] += count
+    return aggregated_matrix
 
 
 def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
@@ -881,7 +899,102 @@ def report_modules_to_dict(report_modules: Iterable[ReportModule]):
     }
 
 
-def write_modules_to_html(report_modules: Iterable[ReportModule],
-                          html_file: io.TextIOWrapper):
+def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
+    return [NAME_TO_CLASS[name].from_dict(class_dict)
+            for name, class_dict in d.items()]
+
+
+def write_html_report(report_modules: Iterable[ReportModule],
+                      html: str,
+                      filename: str):
+    with open(html, "wt", encoding="utf-8") as html_file:
+        html_file.write(f"""
+            <html>
+            <head>
+                <meta http-equiv="content-type" content="text/html:charset=utf-8">
+                <title>{os.path.basename(filename)}: Sequali Report</title>
+            </head>
+            <h1>sequali report</h1>
+            file: {filename}
+            size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB
+        """)
+        for module in report_modules:
+            html_file.write(module.to_html())
+        html_file.write("</html>")
     for module in report_modules:
         html_file.write(module.to_html())
+
+
+def qc_metrics_modules(metrics: QCMetrics, data_ranges: Sequence[Tuple[int, int]]) -> List[ReportModule]:
+    count_tables = metrics.count_table()
+    x_labels = stringify_ranges(data_ranges)
+    aggregrated_matrix = aggregate_count_matrix(count_tables, data_ranges)
+    summary_table = aggregate_count_matrix(
+        aggregrated_matrix, [(0, len(aggregrated_matrix) // TABLE_SIZE)])
+    total_bases = sum(summary_table)
+    minimum_length = 0
+    total_reads = metrics.number_of_reads
+    for table in table_iterator(count_tables):
+        if sum(table) < total_reads:
+            break
+        minimum_length += 1
+    a_bases = sum(summary_table[A::NUMBER_OF_NUCS])
+    c_bases = sum(summary_table[C::NUMBER_OF_NUCS])
+    g_bases = sum(summary_table[G::NUMBER_OF_NUCS])
+    t_bases = sum(summary_table[T::NUMBER_OF_NUCS])
+    gc_content = g_bases + c_bases / (a_bases + c_bases + g_bases + t_bases)
+    return [
+        Summary(
+            mean_length=total_bases // total_reads,
+            minimum_length=minimum_length,
+            maximum_length=metrics.max_length,
+            total_reads=total_reads,
+            total_bases=total_bases,
+            q20_bases=sum(summary_table[5 * NUMBER_OF_NUCS:]),
+            total_gc_fraction=gc_content),
+        SequenceLengthDistribution.from_table_and_total(aggregrated_matrix,
+                                                        total_reads, x_labels),
+        PerBaseQualityScoreDistribution.from_count_table_and_labels(
+            aggregrated_matrix, x_labels),
+        PerBaseAverageSequenceQuality.from_table_and_labels(
+            aggregrated_matrix, x_labels),
+        PerSequenceAverageQualityScores.from_qc_metrics(metrics),
+        PerPositionBaseContent.from_count_tables_and_labels(
+            aggregrated_matrix, x_labels),
+        PerPositionNContent.from_count_tables_and_labels(
+            aggregrated_matrix, x_labels),
+        PerSequenceGCContent.from_qc_metrics(metrics),
+    ]
+
+
+def calculate_stats(
+        metrics: QCMetrics,
+        adapter_counter: AdapterCounter,
+        per_tile_quality: PerTileQuality,
+        sequence_duplication: SequenceDuplication,
+        nanostats: NanoStats,
+        adapter_names: List[str],
+        graph_resolution: int = 200,
+        fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
+        min_threshold: int = DEFAULT_MIN_THRESHOLD,
+        max_threshold: int = DEFAULT_MAX_THRESHOLD,
+) -> List[ReportModule]:
+    max_length = metrics.max_length
+    if max_length > 500:
+        data_ranges = list(logarithmic_ranges(500, graph_resolution))
+    else:
+        data_ranges = list(equidistant_ranges(500, graph_resolution))
+    return [
+        *qc_metrics_modules(metrics, data_ranges),
+        AdapterContent.from_adapter_counter_names_and_ranges(
+            adapter_counter, adapter_names, data_ranges),
+        PerTileQualityReport.from_per_tile_quality_and_ranges(
+            per_tile_quality, data_ranges),
+        DuplicationCounts.from_sequence_duplication(sequence_duplication),
+        OverRepresentedSequences.from_sequence_duplication(
+            sequence_duplication,
+            fraction_threshold=fraction_threshold,
+            min_threshold=min_threshold,
+            max_threshold=max_threshold
+        )
+    ]
