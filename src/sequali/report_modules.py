@@ -87,11 +87,10 @@ def aggregate_count_matrix(
     for cat_index, (start, stop) in enumerate(data_ranges):
         cat_offset = cat_index * TABLE_SIZE
         cat_view = ag_view[cat_offset:cat_offset + TABLE_SIZE]
-        for table_index in range(start, stop):
-            offset = table_index * TABLE_SIZE
-            table = count_view[offset: offset + TABLE_SIZE]
-            for i, count in enumerate(table):
-                cat_view[i] += count
+        table_start = start * TABLE_SIZE
+        table_stop = stop * TABLE_SIZE
+        for i in range(TABLE_SIZE):
+            cat_view[i] = sum(count_view[table_start + i: table_stop: TABLE_SIZE])
     return aggregated_matrix
 
 
