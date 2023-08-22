@@ -2753,6 +2753,9 @@ static PyMemberDef SequenceDuplication_members[] = {
       offsetof(SequenceDuplication, stopped_collecting_at), READONLY,
       "The number of sequences collected when the last unique item was added "
       "to the dictionary."},
+    {"collected_unique_sequences", T_ULONGLONG,
+      offsetof(SequenceDuplication, number_of_uniques), READONLY,
+      "The number of unique sequences collected."},
     {"max_unique_sequences", T_ULONGLONG, 
       offsetof(SequenceDuplication, max_unique_sequences), READONLY,
       "The maximum number of unique sequences stored in the object."

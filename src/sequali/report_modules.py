@@ -1,4 +1,5 @@
 import array
+import collections
 import dataclasses
 import io
 import math
@@ -658,6 +659,116 @@ class PerTileQualityReport(ReportModule):
             {self.plot()}
         """
 
+
+@dataclasses.dataclass
+class DuplicationCounts(ReportModule):
+    total_sequences: int
+    counted_unique_sequences: int
+    counted_sequences_at_unique_limit: int
+    max_unique_sequences: int
+    duplication_counts: Sequence[Tuple[int, int]]
+    remaining_fraction: float
+    estimated_duplication_fractions: Dict[str, float]
+
+    def plot(self):
+        plot = pygal.Bar(
+            title="Duplication levels (%)",
+            x_labels=list(self.estimated_duplication_fractions.keys()),
+            x_title="Duplication counts",
+            y_title="Percentage of total",
+            x_label_rotation=30,
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("",
+                 [100 * fraction for fraction in
+                  self.estimated_duplication_fractions.values()])
+        return plot.render(is_unicode=True)
+
+    def to_html(self):
+        return f"""
+            <h2>Duplication percentages</h2>
+            This estimates the fraction of the duplication based on the first
+            {self.counted_unique_sequences} unique sequences in the first 
+            {self.counted_sequences_at_unique_limit} sequences of 
+            {self.total_sequences} total sequences. <br>
+            Estimated remaining sequences if deduplicated:
+                {self.remaining_fraction:.2%}
+            <br>
+            {self.plot()}
+        """
+
+    @staticmethod
+    def estimate_duplication_counts(
+            duplication_counts: Sequence[Tuple[int, int]],
+            total_sequences: int,
+            gathered_sequences: int) -> Iterator[Tuple[int, int]]:
+        for duplicates, number_of_occurences in duplication_counts:
+            chance_of_random_draw = duplicates / total_sequences
+            chance_of_random_not_draw = 1 - chance_of_random_draw
+            chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences  # noqa: E501
+            chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
+            yield round(number_of_occurences / chance_of_draw_at_gathering)
+
+    @staticmethod
+    def estimated_counts_to_fractions(estimated_counts: Iterable[Tuple[int, int]]):
+        named_slices = {
+            "1": slice(1, 2),
+            "2": slice(2, 3),
+            "3": slice(3, 4),
+            "4": slice(4, 5),
+            "5": slice(5, 6),
+            "6-10": slice(6, 11),
+            "11-20": slice(11, 21),
+            "21-30": slice(21, 31),
+            "31-50": slice(31, 51),
+            "51-100": slice(51, 101),
+            "101-500": slice(101, 501),
+            "501-1000": slice(501, 1001),
+            "1001-5000": slice(1001, 5001),
+            "5001-10000": slice(5001, 10_001),
+            "10001-50000": slice(10_001, 50_001),
+            "> 50000": slice(50_001, None),
+        }
+        count_array = array.array("Q", bytes(8 * 50002))
+        for duplication, count in estimated_counts:
+            if duplication > 50_000:
+                count_array[50_001] += count * duplication
+            else:
+                count_array[duplication] = count * duplication
+        total = sum(count_array)
+        aggregated_fractions = [
+            sum(count_array[slc]) / total for slc in named_slices.values()
+        ]
+        return dict(zip(named_slices.keys(), aggregated_fractions))
+
+    @staticmethod
+    def deduplicated_fraction(duplication_counts: Dict[int, int]):
+        total_sequences = sum(duplicates * count
+                              for duplicates, count in
+                              duplication_counts.items())
+        unique_sequences = sum(duplication_counts.values())
+        return unique_sequences / total_sequences
+
+    @classmethod
+    def from_sequence_duplication(cls, seqdup: SequenceDuplication):
+        duplication_counts: List[Tuple[int, int]] = sorted(
+            collections.Counter(seqdup.duplication_counts()))
+        estimated_duplication_counts = dict(cls.estimate_duplication_counts(
+            duplication_counts,
+            seqdup.number_of_sequences,
+            seqdup.stopped_collecting_at))
+        estimated_duplication_fractions = cls.estimated_counts_to_fractions(
+            estimated_duplication_counts.items())
+        deduplicated_fraction = cls.deduplicated_fraction(estimated_duplication_counts)
+        return cls(
+            total_sequences=seqdup.number_of_sequences,
+            counted_unique_sequences=seqdup.collected_unique_sequences,
+            counted_sequences_at_unique_limit=seqdup.stopped_collecting_at,
+            max_unique_sequences=seqdup.max_unique_sequences,
+            duplication_counts=duplication_counts,
+            estimated_duplication_fractions=estimated_duplication_fractions,
+            remaining_fraction=deduplicated_fraction,
+        )
 
 class OverRepresentedSequence(typing.NamedTuple):
     count: int
