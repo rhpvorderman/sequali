@@ -7,8 +7,8 @@ import os
 import sys
 import typing
 from abc import ABC, abstractmethod
-from typing import (Any, Dict, Iterable, Iterator, List, Sequence, Tuple, Type,
-                    Optional)
+from typing import (Any, Dict, Iterable, Iterator, List, Optional, Sequence,
+                    Tuple, Type)
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -66,12 +66,12 @@ def logarithmic_ranges(length: int, parts: int):
 
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
     return [
-            f"{start + 1}-{stop}" if start + 1 != stop else f"{start + 1}"
-            for start, stop in data_ranges
+        f"{start + 1}-{stop}" if start + 1 != stop else f"{start + 1}"
+        for start, stop in data_ranges
     ]
 
 
-def table_iterator(count_tables: Sequence[int]) -> Iterator[memoryview]:
+def table_iterator(count_tables: array.ArrayType) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
     for i in range(0, len(count_tables), TABLE_SIZE):
         yield table_view[i: i + TABLE_SIZE]
@@ -81,7 +81,8 @@ def aggregate_count_matrix(
         count_tables: array.ArrayType,
         data_ranges: Sequence[Tuple[int, int]]) -> array.ArrayType:
     count_view = memoryview(count_tables)
-    aggregated_matrix = array.array("Q", bytes(8 * TABLE_SIZE * len(data_ranges)))
+    aggregated_matrix = array.array(
+        "Q", bytes(8 * TABLE_SIZE * len(data_ranges)))
     ag_view = memoryview(aggregated_matrix)
     for cat_index, (start, stop) in enumerate(data_ranges):
         cat_offset = cat_index * TABLE_SIZE
@@ -114,12 +115,13 @@ def label_values(values: Sequence[Any], labels: Sequence[Any]):
             in zip(values, labels)]
 
 
+@dataclasses.dataclass
 class ReportModule(ABC):
     def __init__(self, *args, **kwargs):
         pass
 
     def from_dict(cls, d: Dict[str, Any]):
-        return cls.__init__(**d)
+        return cls(**d)  # type: ignore
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -164,8 +166,8 @@ class Summary(ReportModule):
 
 @dataclasses.dataclass
 class SequenceLengthDistribution(ReportModule):
-    length_ranges: Sequence[str]
-    counts: Sequence[int]
+    length_ranges: List[str]
+    counts: List[int]
 
     def plot(self) -> str:
         plot = pygal.Bar(
@@ -179,20 +181,20 @@ class SequenceLengthDistribution(ReportModule):
         return plot.render(is_unicode=True)
 
     def to_html(self):
-        return  f"""
+        return f"""
             <h2>Sequence length distribution</h2>
             {self.plot()}
         """
 
     @classmethod
-    def from_table_and_total(cls, aggregated_count_matrix: Sequence[int],
+    def from_table_and_total(cls, aggregated_count_matrix: array.ArrayType,
                              total_sequences: int,
-                             x_labels: Sequence[str]):
+                             x_labels: List[str]):
         total_tabels = len(x_labels)
         base_counts = [total_sequences] + [0 for _ in range(total_tabels)]
         sequence_lengths = [0 for _ in range(total_tabels + 1)]
         for i, table in enumerate(table_iterator(aggregated_count_matrix)):
-            base_counts[i+1] = sum(table)
+            base_counts[i + 1] = sum(table)
         previous_count = 0
         for i in range(len(x_labels), 0, -1):
             number_at_least = base_counts[i]
@@ -234,7 +236,7 @@ class PerBaseAverageSequenceQuality(ReportModule):
         """
 
     @classmethod
-    def from_table_and_labels(cls, count_tables: Sequence[int], x_labels):
+    def from_table_and_labels(cls, count_tables: array.ArrayType, x_labels):
         total_tables = len(count_tables) // TABLE_SIZE
         mean_qualities = [0.0 for _ in range(total_tables)]
         base_qualities = [
@@ -258,7 +260,8 @@ class PerBaseAverageSequenceQuality(ReportModule):
                     nuc_probs[i] += phred_p_value * count
             if total_count == 0:
                 continue
-            mean_qualities[cat_index] = -10 * math.log10(total_prob / total_count)
+            mean_qualities[cat_index] = -10 * math.log10(
+                total_prob / total_count)
             for i in range(NUMBER_OF_NUCS):
                 if nuc_counts[i] == 0:
                     continue
@@ -266,7 +269,7 @@ class PerBaseAverageSequenceQuality(ReportModule):
                     nuc_probs[i] / nuc_counts[i]
                 )
         return cls(
-            x_labels = x_labels,
+            x_labels=x_labels,
             A=base_qualities[A],
             C=base_qualities[C],
             G=base_qualities[G],
@@ -283,7 +286,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 
     @classmethod
     def from_count_table_and_labels(
-            cls, count_tables: Sequence[int], x_labels: Sequence[str]):
+            cls, count_tables: array.ArrayType, x_labels: Sequence[str]):
         total_tables = len(x_labels)
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
@@ -315,9 +318,9 @@ class PerBaseQualityScoreDistribution(ReportModule):
         black = "#000000"  # >=44
         style = pygal.style.Style(
             colors=(
-            dark_red, red, light_red, white, very_light_blue, light_blue,
-            blue, darker_blue, more_darker_blue, yet_more_darker_blue,
-            almost_black_blue, black)
+                dark_red, red, light_red, white, very_light_blue, light_blue,
+                blue, darker_blue, more_darker_blue, yet_more_darker_blue,
+                almost_black_blue, black)
         )
         plot = pygal.StackedLine(
             title="Per base quality distribution",
@@ -349,7 +352,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 @dataclasses.dataclass
 class PerSequenceAverageQualityScores(ReportModule):
     average_quality_counts: Sequence[int]
-    x_labels: Tuple[str] = tuple(str(x) for x in range(PHRED_MAX + 1))
+    x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
         plot = pygal.Line(
@@ -424,7 +427,7 @@ class PerPositionBaseContent(ReportModule):
 
     @classmethod
     def from_count_tables_and_labels(cls,
-                                     count_tables: Sequence[int],
+                                     count_tables: array.ArrayType,
                                      labels: Sequence[str]):
         total_tables = len(count_tables) // TABLE_SIZE
         base_fractions = [
@@ -458,7 +461,7 @@ class PerPositionNContent(ReportModule):
 
     @classmethod
     def from_count_tables_and_labels(
-            cls, count_tables: Sequence[int], labels: Sequence[str]):
+            cls, count_tables: array.ArrayType, labels: Sequence[str]):
         total_tables = len(count_tables) // TABLE_SIZE
         n_fractions = [0.0 for _ in range(total_tables)]
         for index, table in enumerate(table_iterator(count_tables)):
@@ -514,7 +517,7 @@ class PerSequenceGCContent(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence GC content</h2>
-            {self.plot()}    
+            {self.plot()}
         """
 
     @classmethod
@@ -640,9 +643,11 @@ class PerTileQualityReport(ReportModule):
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
+
         def add_horizontal_line(name, position):
-            scatter_plot.add(name, [position for _ in range(len(self.x_labels))],
-                             show_dots=False, stroke=True,)
+            scatter_plot.add(name,
+                             [position for _ in range(len(self.x_labels))],
+                             show_dots=False, stroke=True, )
 
         add_horizontal_line("2 times more errors", -3)
         add_horizontal_line("10 times more errors", -10)
@@ -657,24 +662,27 @@ class PerTileQualityReport(ReportModule):
                 continue
             cleaned_phreds = [{'value': phred, 'label': label}
                               if (phred > 3 or phred < -3) else None
-                              for phred, label in zip(tile_phreds, self.x_labels)]
-            scatter_plot.add(str(tile),  cleaned_phreds)
+                              for phred, label in
+                              zip(tile_phreds, self.x_labels)]
+            scatter_plot.add(str(tile), cleaned_phreds)
 
         return scatter_plot.render(is_unicode=True)
 
     def to_html(self) -> str:
         header = "<h2>Per tile quality</h2>"
         if self.skipped_reason:
-            return header + f"Per tile quality skipper. Reason: {self.skipped_reason}."
+            return header + (f"Per tile quality skipper. Reason: "
+                             f"{self.skipped_reason}.")
         return header + f"""
-            Tiles with more than 2 times the average error: 
+            Tiles with more than 2 times the average error:
                 {", ".join(self.tiles_2x_errors)}<br>
             Tiles with more than 10 times the average error:
                 {", ".join(self.tiles_10x_errors)}<br>
             <br>
             This graph shows the deviation of each tile on each position from
             the geometric mean of all tiles at that position. The scale is
-            expressed in phred units. -10 is 10 times more errors than the average.
+            expressed in phred units. -10 is 10 times more errors than the
+            average.
             -3 is ~2 times more errors than the average. Only points that
             deviate more than 2 phred units from the average are shown. <br>
             {self.plot()}
@@ -709,8 +717,8 @@ class DuplicationCounts(ReportModule):
         return f"""
             <h2>Duplication percentages</h2>
             This estimates the fraction of the duplication based on the first
-            {self.counted_unique_sequences} unique sequences in the first 
-            {self.counted_sequences_at_unique_limit} sequences of 
+            {self.counted_unique_sequences} unique sequences in the first
+            {self.counted_sequences_at_unique_limit} sequences of
             {self.total_sequences} total sequences. <br>
             Estimated remaining sequences if deduplicated:
                 {self.remaining_fraction:.2%}
@@ -727,13 +735,17 @@ class DuplicationCounts(ReportModule):
         for duplicates, number_of_occurences in duplication_counts:
             chance_of_random_draw = duplicates / total_sequences
             chance_of_random_not_draw = 1 - chance_of_random_draw
-            chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences  # noqa: E501
+            chance_of_not_draw_at_gathering = (chance_of_random_not_draw **
+                                               gathered_sequences)  # noqa:
+            # E501
             chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
-            estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)
+            estimated_counts[duplicates] = round(
+                number_of_occurences / chance_of_draw_at_gathering)
         return estimated_counts
 
     @staticmethod
-    def estimated_counts_to_fractions(estimated_counts: Iterable[Tuple[int, int]]):
+    def estimated_counts_to_fractions(
+            estimated_counts: Iterable[Tuple[int, int]]):
         named_slices = {
             "1": slice(1, 2),
             "2": slice(2, 3),
@@ -782,7 +794,8 @@ class DuplicationCounts(ReportModule):
             seqdup.stopped_collecting_at)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             estimated_duplication_counts.items())
-        deduplicated_fraction = cls.deduplicated_fraction(estimated_duplication_counts)
+        deduplicated_fraction = cls.deduplicated_fraction(
+            estimated_duplication_counts)
         return cls(
             total_sequences=seqdup.number_of_sequences,
             counted_unique_sequences=seqdup.collected_unique_sequences,
@@ -795,7 +808,7 @@ class DuplicationCounts(ReportModule):
 
 
 class OverRepresentedSequence(typing.NamedTuple):
-    count: int
+    count: int  # type: ignore
     fraction: float
     sequence: str
     most_matches: int
@@ -810,12 +823,14 @@ class OverRepresentedSequences(ReportModule):
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
-                    [x._asdict() for x in self.overrepresented_sequences]}
+                [x._asdict() for x in self.overrepresented_sequences],
+                "max_unique_sequences": self.max_unique_sequences}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
-        return cls.__init__([OverRepresentedSequence(**d)
-                            for d in overrepresented_sequences])
+        return cls([OverRepresentedSequence(**d)
+                   for d in overrepresented_sequences],
+                   max_unique_sequences=d["max_unique_sequences"])  # type: ignore
 
     def to_html(self) -> str:
         header = "<h2>Overrepresented sequences</h2>"
@@ -824,18 +839,20 @@ class OverRepresentedSequences(ReportModule):
         content = io.StringIO()
         content.write(header)
         content.write(
-            f"The first {self.max_unique_sequences} unique sequences are tracked for "
-            f"duplicates. Sequences with high occurence are presented in the "
-            f"table. <br>")
-        content.write("Identified sequences by matched kmers. The max match is "
-                "either the number of kmers in the overrepresented sequence "
-                "or the number of kmers of the database sequence, whichever "
-                "is fewer.")
+            f"The first {self.max_unique_sequences} unique sequences are "
+            f"tracked for duplicates. Sequences with high occurence are "
+            f"presented in the table. <br>")
+        content.write(
+            "Identified sequences by matched kmers. The max match is "
+            "either the number of kmers in the overrepresented sequence "
+            "or the number of kmers of the database sequence, whichever "
+            "is fewer.")
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>sequence</th><th>kmers (matched/max)</th>"
                       "<th>best match</th></tr>")
-        for count, fraction, sequence, most_matches, max_matches, best_match in \
+        for count, fraction, sequence, most_matches, max_matches, best_match\
+                in \
                 self.overrepresented_sequences:
             content.write(
                 f"""<tr><td align="right">{count}</td>
@@ -848,11 +865,11 @@ class OverRepresentedSequences(ReportModule):
 
     @classmethod
     def from_sequence_duplication(
-        cls,
-        seqdup: SequenceDuplication,
-        fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
-        min_threshold: int = DEFAULT_MIN_THRESHOLD,
-        max_threshold: int = DEFAULT_MAX_THRESHOLD,
+            cls,
+            seqdup: SequenceDuplication,
+            fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
+            min_threshold: int = DEFAULT_MIN_THRESHOLD,
+            max_threshold: int = DEFAULT_MAX_THRESHOLD,
     ):
         overrepresented_sequences = seqdup.overrepresented_sequences(
             fraction_threshold,
@@ -869,8 +886,9 @@ class OverRepresentedSequences(ReportModule):
         else:  # Only spend time creating sequence index when its worth it.
             sequence_index = {}
         overrepresented_with_identification = [
-            OverRepresentedSequence(count, fraction, sequence,
-             *identify_sequence(sequence, sequence_index))
+            OverRepresentedSequence(
+                count, fraction, sequence,
+                *identify_sequence(sequence, sequence_index))
             for count, fraction, sequence in overrepresented_sequences
         ]
         return cls(overrepresented_with_identification,
@@ -904,7 +922,8 @@ def report_modules_to_dict(report_modules: Iterable[ReportModule]):
 
 
 def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
-    return [NAME_TO_CLASS[name].from_dict(class_dict)
+    return [NAME_TO_CLASS[name].from_dict(
+                NAME_TO_CLASS[name], class_dict)  # type: ignore
             for name, class_dict in d.items()]
 
 
@@ -915,19 +934,22 @@ def write_html_report(report_modules: Iterable[ReportModule],
         html_file.write(f"""
             <html>
             <head>
-                <meta http-equiv="content-type" content="text/html:charset=utf-8">
+                <meta http-equiv="content-type"
+                content="text/html:charset=utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <h1>sequali report</h1>
             file: {filename}<br>
-            size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         """)
+        # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
             html_file.write(module.to_html())
         html_file.write("</html>")
 
 
-def qc_metrics_modules(metrics: QCMetrics, data_ranges: Sequence[Tuple[int, int]]) -> List[ReportModule]:
+def qc_metrics_modules(metrics: QCMetrics,
+                       data_ranges: Sequence[Tuple[int, int]]
+                       ) -> List[ReportModule]:
     count_tables = metrics.count_table()
     x_labels = stringify_ranges(data_ranges)
     aggregrated_matrix = aggregate_count_matrix(count_tables, data_ranges)

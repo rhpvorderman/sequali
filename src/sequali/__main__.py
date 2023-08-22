@@ -139,4 +139,3 @@ def sequali_report():
         json_data = json.load(j)
     write_html_report(dict_to_report_modules(json_data), output,
                       output.rstrip(".html"))
-
