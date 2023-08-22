@@ -22,8 +22,8 @@ import xopen
 
 from ._qc import AdapterCounter, DEFAULT_MAX_UNIQUE_SEQUENCES, FastqParser, \
     NanoStats, PerTileQuality, QCMetrics, SequenceDuplication
-from .html_report import html_report
-from .stats import calculate_stats
+from .report_modules import (calculate_stats, dict_to_report_modules,
+                             report_modules_to_dict, write_html_report)
 from .util import ProgressUpdater, sequence_file_iterator
 
 DEFAULT_ADAPTERS_FILE = os.path.join(os.path.dirname(__file__),
@@ -94,28 +94,30 @@ def main():
                 sequence_duplication.add_record_array(record_array)
                 nanostats.add_record_array(record_array)
                 progress.update(record_array)
-    json_data = calculate_stats(metrics,
-                                adapter_counter,
-                                per_tile_quality,
-                                sequence_duplication,
-                                nanostats,
-                                adapter_names=list(adapters.keys()),
-                                fraction_threshold=fraction_threshold,
-                                min_threshold=min_threshold,
-                                max_threshold=max_threshold)
+    report_modules = calculate_stats(
+        metrics,
+        adapter_counter,
+        per_tile_quality,
+        sequence_duplication,
+        nanostats,
+        adapter_names=list(adapters.keys()),
+        fraction_threshold=fraction_threshold,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold)
     if args.json is None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
         args.html = os.path.basename(filename) + ".html"
+    os.makedirs(args.dir, exist_ok=True)
     if not os.path.isabs(args.json):
         args.json = os.path.join(args.dir, args.json)
     if not os.path.isabs(args.html):
         args.html = os.path.join(args.dir, args.html)
     with open(args.json, "wt") as json_file:
+        json_dict = report_modules_to_dict(report_modules)
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
-        json.dump(json_data, json_file, indent=0)
-    with open(args.html, "wt") as html_file:
-        html_file.write(html_report(json_data))
+        json.dump(json_dict, json_file, indent=0)
+    write_html_report(report_modules, args.html, filename)
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -135,5 +137,5 @@ def sequali_report():
         output = ".".join(in_json.split(".")[:-1]) + ".html"
     with open(in_json) as j:
         json_data = json.load(j)
-    with open(output, "wt") as html:
-        html.write(html_report(json_data))
+    write_html_report(dict_to_report_modules(json_data), output,
+                      output.rstrip(".html"))

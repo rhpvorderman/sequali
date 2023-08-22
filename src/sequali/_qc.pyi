@@ -80,6 +80,7 @@ class PerTileQuality:
 class SequenceDuplication:
     number_of_sequences: int
     stopped_collecting_at: int
+    collected_unique_sequences: int
     max_unique_sequences: int
 
     def __init__(self, max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES): ...
