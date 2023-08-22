@@ -191,14 +191,14 @@ class SequenceLengthDistribution(ReportModule):
         total_tabels = len(x_labels)
         base_counts = [total_sequences] + [0 for _ in range(total_tabels)]
         sequence_lengths = [0 for _ in range(total_tabels + 1)]
-        for i, table in enumerate(aggregated_count_matrix):
+        for i, table in enumerate(table_iterator(aggregated_count_matrix)):
             base_counts[i+1] = sum(table)
         previous_count = 0
         for i in range(len(x_labels), 0, -1):
             number_at_least = base_counts[i]
             sequence_lengths[i] = number_at_least - previous_count
             previous_count = number_at_least
-        return cls(x_labels, sequence_lengths)
+        return cls(["0"] + x_labels, sequence_lengths)
 
 
 @dataclasses.dataclass
@@ -258,7 +258,7 @@ class PerBaseAverageSequenceQuality(ReportModule):
                     nuc_probs[i] += phred_p_value * count
             if total_count == 0:
                 continue
-            mean_qualities[cat_index] = -10 * math.log(total_prob / total_count)
+            mean_qualities[cat_index] = -10 * math.log10(total_prob / total_count)
             for i in range(NUMBER_OF_NUCS):
                 if nuc_counts[i] == 0:
                     continue
@@ -293,6 +293,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
             total_nucs = sum(table)
             for offset in range(0, TABLE_SIZE, NUMBER_OF_NUCS):
                 category_nucs = sum(table[offset: offset + NUMBER_OF_NUCS])
+                if category_nucs == 0:
+                    continue
                 nuc_fraction = category_nucs / total_nucs
                 quality_distribution[offset // NUMBER_OF_NUCS][
                     cat_index] = nuc_fraction
@@ -376,7 +378,7 @@ class PerSequenceAverageQualityScores(ReportModule):
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(metrics.phred_scores())
+        return cls(list(metrics.phred_scores()))
 
 
 @dataclasses.dataclass
@@ -517,13 +519,13 @@ class PerSequenceGCContent(ReportModule):
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(metrics.gc_content())
+        return cls(list(metrics.gc_content()))
 
 
 @dataclasses.dataclass
 class AdapterContent(ReportModule):
     x_labels: Sequence[str]
-    adapter_content: Sequence[str, Sequence[float]]
+    adapter_content: Sequence[Tuple[str, Sequence[float]]]
 
     def plot(self):
         plot = pygal.Line(
@@ -720,13 +722,15 @@ class DuplicationCounts(ReportModule):
     def estimate_duplication_counts(
             duplication_counts: Sequence[Tuple[int, int]],
             total_sequences: int,
-            gathered_sequences: int) -> Iterator[Tuple[int, int]]:
+            gathered_sequences: int) -> Dict[int, int]:
+        estimated_counts = {}
         for duplicates, number_of_occurences in duplication_counts:
             chance_of_random_draw = duplicates / total_sequences
             chance_of_random_not_draw = 1 - chance_of_random_draw
             chance_of_not_draw_at_gathering = chance_of_random_not_draw ** gathered_sequences  # noqa: E501
             chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
-            yield round(number_of_occurences / chance_of_draw_at_gathering)
+            estimated_counts[duplicates] = round(number_of_occurences / chance_of_draw_at_gathering)
+        return estimated_counts
 
     @staticmethod
     def estimated_counts_to_fractions(estimated_counts: Iterable[Tuple[int, int]]):
@@ -771,11 +775,11 @@ class DuplicationCounts(ReportModule):
     @classmethod
     def from_sequence_duplication(cls, seqdup: SequenceDuplication):
         duplication_counts: List[Tuple[int, int]] = sorted(
-            collections.Counter(seqdup.duplication_counts()))
-        estimated_duplication_counts = dict(cls.estimate_duplication_counts(
+            collections.Counter(seqdup.duplication_counts()).items())
+        estimated_duplication_counts = cls.estimate_duplication_counts(
             duplication_counts,
             seqdup.number_of_sequences,
-            seqdup.stopped_collecting_at))
+            seqdup.stopped_collecting_at)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             estimated_duplication_counts.items())
         deduplicated_fraction = cls.deduplicated_fraction(estimated_duplication_counts)
@@ -915,14 +919,12 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <h1>sequali report</h1>
-            file: {filename}
-            size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB
+            file: {filename}<br>
+            size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         """)
         for module in report_modules:
             html_file.write(module.to_html())
         html_file.write("</html>")
-    for module in report_modules:
-        html_file.write(module.to_html())
 
 
 def qc_metrics_modules(metrics: QCMetrics, data_ranges: Sequence[Tuple[int, int]]) -> List[ReportModule]:
@@ -942,7 +944,7 @@ def qc_metrics_modules(metrics: QCMetrics, data_ranges: Sequence[Tuple[int, int]
     c_bases = sum(summary_table[C::NUMBER_OF_NUCS])
     g_bases = sum(summary_table[G::NUMBER_OF_NUCS])
     t_bases = sum(summary_table[T::NUMBER_OF_NUCS])
-    gc_content = g_bases + c_bases / (a_bases + c_bases + g_bases + t_bases)
+    gc_content = (g_bases + c_bases) / (a_bases + c_bases + g_bases + t_bases)
     return [
         Summary(
             mean_length=total_bases // total_reads,
@@ -981,9 +983,9 @@ def calculate_stats(
 ) -> List[ReportModule]:
     max_length = metrics.max_length
     if max_length > 500:
-        data_ranges = list(logarithmic_ranges(500, graph_resolution))
+        data_ranges = list(logarithmic_ranges(max_length, graph_resolution))
     else:
-        data_ranges = list(equidistant_ranges(500, graph_resolution))
+        data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
         *qc_metrics_modules(metrics, data_ranges),
         AdapterContent.from_adapter_counter_names_and_ranges(
