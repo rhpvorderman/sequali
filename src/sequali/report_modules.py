@@ -6,7 +6,8 @@ import math
 import sys
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, Iterator, List, Sequence, Tuple, Optional
+from typing import (Any, Dict, Iterable, Iterator, List, Sequence, Tuple, Type,
+                    Optional)
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -770,6 +771,7 @@ class DuplicationCounts(ReportModule):
             remaining_fraction=deduplicated_fraction,
         )
 
+
 class OverRepresentedSequence(typing.NamedTuple):
     count: int
     fraction: float
@@ -851,3 +853,35 @@ class OverRepresentedSequences(ReportModule):
         ]
         return cls(overrepresented_with_identification,
                    seqdup.max_unique_sequences)
+
+
+NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
+    "summary": Summary,
+    "per_position_average_quality": PerBaseAverageSequenceQuality,
+    "per_position_quality_distribution": PerBaseQualityScoreDistribution,
+    "sequence_length_distribution": SequenceLengthDistribution,
+    "per_position_base_content": PerPositionBaseContent,
+    "per_position_n_content": PerPositionNContent,
+    "per_sequence_gc_content": PerSequenceGCContent,
+    "per_sequence_quality_scores": PerSequenceAverageQualityScores,
+    "adapter_content": AdapterContent,
+    "per_tile_quality": PerTileQualityReport,
+    "duplication_fractions": DuplicationCounts,
+    "overrepresented_sequences": OverRepresentedSequences,
+}
+
+CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
+    value: key for key, value in NAME_TO_CLASS.items()}
+
+
+def report_modules_to_dict(report_modules: Iterable[ReportModule]):
+    return {
+        CLASS_TO_NAME[type(module)]: module.to_dict()
+        for module in report_modules
+    }
+
+
+def write_modules_to_html(report_modules: Iterable[ReportModule],
+                          html_file: io.TextIOWrapper):
+    for module in report_modules:
+        html_file.write(module.to_html())
