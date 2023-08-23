@@ -16,6 +16,7 @@
 
 import gzip
 import os
+import string
 from typing import BinaryIO, Callable, Iterator, List, Optional, Tuple
 
 import tqdm
@@ -89,3 +90,38 @@ def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
             else:
                 current_seq.append(line.strip())
         yield name, "".join(current_seq)
+
+
+def guess_sequencing_technology(data: bytes) -> Optional[str]:
+    """
+    Guess sequencing technology from a block of binary data at the start of
+    the file.
+    :param data: a block of data
+    :return:
+    """
+    if data[0] == b"@":
+        # This is A FASTQ file.
+        header_end = data.find(b"\n")
+        if header_end == -1:
+            header_end = None
+        header = data[1:header_end].decode("ascii")
+        name, metadata = header.split(maxsplit=1)  # type: str, str
+        # https://help.basespace.illumina.com/files-used-by-basespace/fastq-files
+        if name.count(':') == 6 and metadata.count(':') == 3:
+            _, is_filtered, _, _ = metadata.split(':')
+            if is_filtered in ("Y", "N"):
+                return "illumina"
+        # Nanopore works with UUIDs such as
+        # 35eb0273-89e2-4093-98ed-d81cbdafcac7
+        if name.count("-") == 4:
+            hexdigits = set(string.hexdigits)
+            parts = name.split('-')
+            hexadecimal = all(set(part).issubset(hexdigits) for part in parts)
+            correct_lengths = all(len(part) == expected for part, expected in
+                                  zip(parts, (8, 4, 4, 4, 12)))
+            has_ch = any(meta.startswith("ch=") for meta in metadata.split())
+            has_start_time = any(meta.startswith("start_time=")
+                                 for meta in metadata.split())
+            if (hexadecimal and correct_lengths and has_ch and has_start_time):
+                return "nanopore"
+        return None
