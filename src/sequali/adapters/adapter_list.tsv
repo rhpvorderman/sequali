@@ -4,24 +4,24 @@
 # 64. For this reason length 12 is chosen, so we can fit 5 adapters in a
 # single word.
 
-Illumina Universal Adapter	AGATCGGAAGAG
-Illumina Small RNA 3' adapter	TGGAATTCTCGG
-Illumina Small RNA 5' adapter	GATCGTCGGACT
+Illumina Universal Adapter	illumina	AGATCGGAAGAG
+Illumina Small RNA 3' adapter	illumina	TGGAATTCTCGG
+Illumina Small RNA 5' adapter	illumina	GATCGTCGGACT
+Nextera Transposase Sequence	illumina	CTGTCTCTTATA
+PolyG	illumina	GGGGGGGGGGGG
 
-Nextera Transposase Sequence	CTGTCTCTTATA
+PolyA	all	AAAAAAAAAAAA
 
-PolyA	AAAAAAAAAAAA
-PolyG	GGGGGGGGGGGG
-
-Oxford nanopore strand switching primer (SSP or SSPII) or CDNA primer, reverse sequence	TTTCTGTTGGTG
-Oxford nanopore RT primer, VN primer, or CDNA primer, forward sequence	CTTGCCTGTCGC
-Oxford nanopore ligation kit, rapid adapter or Adapter Mix (AMX); all top strand	TGTACTTCGTTC
-Oxford nanopore ligation kit or Adapter Mix; both bottom strand	GCAATACGTAAC
-Oxford nanopore RT adapter (RTA) or RNA adapter mix (RMX); both bottom strand	GAGGCGAGCGGT
+Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC
+Oxford nanopore strand switching primer (SSP or SSPII) or CDNA primer, reverse sequence	nanopore	TTTCTGTTGGTG
+Oxford nanopore RT primer, VN primer, or CDNA primer, forward sequence	nanopore	CTTGCCTGTCGC
+Oxford nanopore ligation kit, rapid adapter or Adapter Mix (AMX); all top strand	nanopore	TGTACTTCGTTC
+Oxford nanopore ligation kit or Adapter Mix; both bottom strand	nanopore	GCAATACGTAAC
+Oxford nanopore RT adapter (RTA) or RNA adapter mix (RMX); both bottom strand	nanopore	GAGGCGAGCGGT
 # Use TTTTTTTTTTTAT rather than TTTTTTTTTTTT to avoid double hit for VN primer.
-Oxford nanopore RNA Adapter Mix (RMX); top strand	TTTTTTTTTTTAT
-OXford nanopore RT Adapter (RTA); top strand	GGCTTCTTCTTG
-Oxford nanopore cDNA RT Adapter (CRT)	CTTGCGGGCGGC
+Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	TTTTTTTTTTTAT
+OXford nanopore RT Adapter (RTA); top strand	nanopore	GGCTTCTTCTTG
+
 
 
 # Most common subsequences for nanopore found with the following code:

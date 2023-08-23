@@ -76,18 +76,6 @@ class ProgressUpdater():
             self.previous_file_pos = current_position
 
 
-def sequence_file_iterator(sequence_file: str) -> Iterator[Tuple[str, str]]:
-    with open(sequence_file, "rt") as seqfile:
-        for line in seqfile:
-            line = line.strip()
-            if not line:
-                continue  # ignore empty lines
-            if line.startswith("#"):
-                continue  # Use # as a comment character
-            name, sequence = line.split("\t")
-            yield name, sequence
-
-
 def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
     current_seq: List[str] = []
     name = ""
