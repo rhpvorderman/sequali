@@ -17,7 +17,8 @@
 import gzip
 import os
 import string
-from typing import BinaryIO, Callable, Iterator, List, Optional, Tuple
+from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
+                    Tuple)
 
 import tqdm
 
@@ -101,27 +102,48 @@ def guess_sequencing_technology(data: bytes) -> Optional[str]:
     """
     if data[0] == b"@":
         # This is A FASTQ file.
-        header_end = data.find(b"\n")
+        header_end: Optional[SupportsIndex] = data.find(b"\n")
         if header_end == -1:
             header_end = None
         header = data[1:header_end].decode("ascii")
-        name, metadata = header.split(maxsplit=1)  # type: str, str
-        # https://help.basespace.illumina.com/files-used-by-basespace/fastq-files
-        if name.count(':') == 6 and metadata.count(':') == 3:
-            _, is_filtered, _, _ = metadata.split(':')
-            if is_filtered in ("Y", "N"):
-                return "illumina"
-        # Nanopore works with UUIDs such as
-        # 35eb0273-89e2-4093-98ed-d81cbdafcac7
-        if name.count("-") == 4:
-            hexdigits = set(string.hexdigits)
-            parts = name.split('-')
-            hexadecimal = all(set(part).issubset(hexdigits) for part in parts)
-            correct_lengths = all(len(part) == expected for part, expected in
-                                  zip(parts, (8, 4, 4, 4, 12)))
-            has_ch = any(meta.startswith("ch=") for meta in metadata.split())
-            has_start_time = any(meta.startswith("start_time=")
-                                 for meta in metadata.split())
-            if (hexadecimal and correct_lengths and has_ch and has_start_time):
-                return "nanopore"
-        return None
+        if fastq_header_is_illumina(header):
+            return "illumina"
+        if fastq_header_is_nanopore(header):
+            return "nanopore"
+    return None
+
+
+def fastq_header_is_illumina(header: str):
+    # Illumina header format. two parts separated by a space
+    # @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>
+    # <read>:<is filtered>:<control number>:<sample number>
+    # See also:
+    # https://help.basespace.illumina.com/files-used-by-basespace/fastq-files
+    name, metadata = header.split(maxsplit=1)  # type: str, str
+    if name.count(':') == 6 and metadata.count(':') == 3:
+        _, is_filtered, _, _ = metadata.split(':')
+        if is_filtered in ("Y", "N"):
+            return True
+    return False
+
+
+def fastq_header_is_nanopore(header: str):
+    # Nanopore works with UUIDs such as
+    # 35eb0273-89e2-4093-98ed-d81cbdafcac7
+    # After that the metadata is several parts in the form of name=data each
+    # of the parts separated by a space. 'ch' for channel and 'start_time' are
+    # present in guppy called FASTQ files.
+    name, *metadata = header.split()  # type: str, List[str]
+    if name.count("-") == 4:
+        hexdigits = set(string.hexdigits)
+        parts = name.split('-')
+        hexadecimal = all(set(part).issubset(hexdigits) for part in parts)
+        correct_lengths = all(
+            len(part) == correct_length for part, correct_length in
+            zip(parts, (8, 4, 4, 4, 12)))
+        has_ch = any(meta.startswith("ch=") for meta in metadata)
+        has_start_time = any(meta.startswith("start_time=")
+                             for meta in metadata)
+        if hexadecimal and correct_lengths and has_ch and has_start_time:
+            return True
+    return False

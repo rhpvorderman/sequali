@@ -19,7 +19,7 @@ import typing
 from typing import Iterator, Optional
 
 DEFAULT_ADAPTER_FILE = os.path.join(os.path.dirname(__file__),
-                                     "adapters", "adapter_list.tsv")
+                                    "adapters", "adapter_list.tsv")
 
 
 class Adapter(typing.NamedTuple):
