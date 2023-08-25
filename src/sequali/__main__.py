@@ -22,12 +22,10 @@ import xopen
 
 from ._qc import AdapterCounter, DEFAULT_MAX_UNIQUE_SEQUENCES, FastqParser, \
     NanoStats, PerTileQuality, QCMetrics, SequenceDuplication
+from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
-from .util import ProgressUpdater, sequence_file_iterator
-
-DEFAULT_ADAPTERS_FILE = os.path.join(os.path.dirname(__file__),
-                                     "adapters", "adapter_list.txt")
+from .util import ProgressUpdater, guess_sequencing_technology_from_file
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -77,14 +75,15 @@ def main():
     min_threshold = min(args.overrepresentation_min_threshold, max_threshold)
 
     metrics = QCMetrics()
-    adapters = dict(sequence_file_iterator(DEFAULT_ADAPTERS_FILE))
-    adapter_counter = AdapterCounter(adapters.values())
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
     nanostats = NanoStats()
     filename = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
+        seqtech = guess_sequencing_technology_from_file(file)
+        adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
+        adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:
             reader = FastqParser(file)
             for record_array in reader:
@@ -100,7 +99,7 @@ def main():
         per_tile_quality,
         sequence_duplication,
         nanostats,
-        adapter_names=list(adapters.keys()),
+        adapter_names=list(adapter.name for adapter in adapters),
         fraction_threshold=fraction_threshold,
         min_threshold=min_threshold,
         max_threshold=max_threshold)

@@ -15,8 +15,11 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import gzip
+import io
 import os
-from typing import BinaryIO, Callable, Iterator, List, Optional, Tuple
+import string
+from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
+                    Tuple)
 
 import tqdm
 
@@ -76,18 +79,6 @@ class ProgressUpdater():
             self.previous_file_pos = current_position
 
 
-def sequence_file_iterator(sequence_file: str) -> Iterator[Tuple[str, str]]:
-    with open(sequence_file, "rt") as seqfile:
-        for line in seqfile:
-            line = line.strip()
-            if not line:
-                continue  # ignore empty lines
-            if line.startswith("#"):
-                continue  # Use # as a comment character
-            name, sequence = line.split("\t")
-            yield name, sequence
-
-
 def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
     current_seq: List[str] = []
     name = ""
@@ -101,3 +92,65 @@ def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
             else:
                 current_seq.append(line.strip())
         yield name, "".join(current_seq)
+
+
+def guess_sequencing_technology_from_file(fp: io.BufferedReader) -> Optional[str]:
+    """
+    Guess sequencing technology from a block of binary data at the start of
+    the file.
+    :param data: a block of data
+    :return:
+    """
+    try:
+        data = fp.peek(io.DEFAULT_BUFFER_SIZE)
+    except IOError:
+        return None
+    if data[0] == ord("@"):
+        # This is A FASTQ file.
+        header_end: Optional[SupportsIndex] = data.find(b"\n")
+        if header_end == -1:
+            header_end = None
+        header = data[1:header_end].decode("ascii")
+        if fastq_header_is_illumina(header):
+            return "illumina"
+        if fastq_header_is_nanopore(header):
+            return "nanopore"
+    return None
+
+
+def fastq_header_is_illumina(header: str):
+    # Illumina header format. two parts separated by a space
+    # @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>
+    # <read>:<is filtered>:<control number>:<sample number>
+    # See also:
+    # https://help.basespace.illumina.com/files-used-by-basespace/fastq-files
+    name, metadata = header.split(maxsplit=1)  # type: str, str
+    if name.count(':') == 6 and metadata.count(':') == 3:
+        _, is_filtered, _, _ = metadata.split(':')
+        if is_filtered in ("Y", "N"):
+            return True
+    return False
+
+
+def fastq_header_is_nanopore(header: str):
+    # Nanopore works with UUIDs such as
+    # 35eb0273-89e2-4093-98ed-d81cbdafcac7
+    # After that the metadata is several parts in the form of name=data each
+    # of the parts separated by a space. 'ch' for channel and 'start_time' are
+    # present in guppy called FASTQ files.
+    name, *metadata = header.split()  # type: str, List[str]
+    if name.count("-") == 4:
+        hexdigits = set(string.hexdigits)
+        parts = name.split('-')
+        hexadecimal = all(set(part).issubset(hexdigits) for part in parts)
+        correct_lengths = all(
+            len(part) == correct_length for part, correct_length in
+            zip(parts, (8, 4, 4, 4, 12)))
+        # Test only for ch (no =) and for st (no art_time) so also ubam to
+        # converted FASTQ files are included.
+        has_ch = any(meta.startswith("ch") for meta in metadata)
+        has_start_time = any(meta.startswith("st")
+                             for meta in metadata)
+        if hexadecimal and correct_lengths and has_ch and has_start_time:
+            return True
+    return False
