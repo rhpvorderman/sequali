@@ -7,8 +7,8 @@ import os
 import sys
 import typing
 from abc import ABC, abstractmethod
-from typing import (Any, Dict, Iterable, Iterator, List, Optional, Sequence,
-                    Tuple, Type)
+from typing import (Any, Dict, Iterable, Iterator, List, Optional, Set,
+                    Sequence, Tuple, Type)
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -913,6 +913,55 @@ class OverRepresentedSequences(ReportModule):
                    seqdup.max_unique_sequences)
 
 
+@dataclasses.dataclass
+class NanoStatsReport(ReportModule):
+    x_values: List[str]
+    time_bases: List[int]
+    time_reads: List[int]
+    time_active_channels: List[int]
+    qual_percentages_over_time: List[List[float]]
+
+    @classmethod
+    def from_nanostats(cls, nanostats: NanoStats):
+        time_divisor = 600  # 10 minutes
+        run_start_time = nanostats.minimum_time
+        run_end_time = nanostats.maximum_time
+        duration = run_end_time - run_start_time
+        time_slots = (duration + time_divisor - 1) // time_divisor
+        time_ranges = [(start, start + time_divisor)
+                       for start in range(0, duration, time_divisor)]
+        time_active_slots_sets: List[Set[int]] = [set() for _ in
+                                                  range(time_slots)]
+        time_bases = [0 for _ in range(time_slots)]
+        time_reads = [0 for _ in range(time_slots)]
+        time_qualities = [[0 for _ in range(12)] for _ in
+                          range(time_slots)]
+        for readinfo in nanostats.nano_info_iterator():
+            relative_start_time = readinfo.start_time - run_start_time
+            timeslot = relative_start_time // time_divisor
+            length = readinfo.length
+            phred = round(
+                -10 * math.log10(readinfo.cumulative_error_rate / length))
+            phred_index = min(phred, 47) >> 2
+            time_active_slots_sets[timeslot].add(readinfo.channel_id)
+            time_bases[timeslot] += length
+            time_reads[timeslot] += 1
+            time_qualities[timeslot][phred_index] += 1
+        qual_percentages_over_time: List[List[float]] = [[] for _ in
+                                                         range(12)]
+        for quals in time_qualities:
+            total = sum(quals)
+            for i, q in enumerate(quals):
+                qual_percentages_over_time[i].append(q / max(total, 1))
+        time_active_slots = [len(s) for s in time_active_slots_sets]
+        return cls(
+            x_values=stringify_ranges(time_ranges),
+            qual_percentages_over_time=qual_percentages_over_time,
+            time_active_channels=time_active_slots,
+            time_bases=time_bases,
+            time_reads=time_reads)
+
+
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "summary": Summary,
     "per_position_average_quality": PerBaseAverageSequenceQuality,
@@ -926,6 +975,7 @@ NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "per_tile_quality": PerTileQualityReport,
     "duplication_fractions": DuplicationCounts,
     "overrepresented_sequences": OverRepresentedSequences,
+    "nanopore_metrics": NanoStatsReport,
 }
 
 CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
@@ -1038,5 +1088,6 @@ def calculate_stats(
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
             max_threshold=max_threshold
-        )
+        ),
+        NanoStatsReport.from_nanostats(nanostats)
     ]
