@@ -915,7 +915,7 @@ class OverRepresentedSequences(ReportModule):
 
 @dataclasses.dataclass
 class NanoStatsReport(ReportModule):
-    x_values: List[str]
+    x_labels: List[str]
     time_bases: List[int]
     time_reads: List[int]
     time_active_channels: List[int]
@@ -955,11 +955,55 @@ class NanoStatsReport(ReportModule):
                 qual_percentages_over_time[i].append(q / max(total, 1))
         time_active_slots = [len(s) for s in time_active_slots_sets]
         return cls(
-            x_values=stringify_ranges(time_ranges),
+            x_labels=stringify_ranges(time_ranges),
             qual_percentages_over_time=qual_percentages_over_time,
             time_active_channels=time_active_slots,
             time_bases=time_bases,
             time_reads=time_reads)
+
+    def time_bases_plot(self):
+        plot = pygal.Bar(
+            title="Base count over time",
+            x_title="time (s)",
+            y_title="base count",
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_bases, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def time_reads_plot(self):
+        plot = pygal.Bar(
+            title="Base count over time",
+            x_title="time (s)",
+            y_title="base count",
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_reads, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def time_active_channels_plot(self):
+        plot = pygal.Bar(
+            title="Base count over time",
+            x_title="time (s)",
+            y_title="base count",
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_active_channels, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        return f"""
+        <h2>Nanopore time series</h2>
+        <h3>Base counts over time</h3>
+        {self.time_bases_plot()}
+        <h3>Read counts over time</h3>
+        {self.time_reads_plot()}
+        <h3>Active channels over time</h3>
+        {self.time_active_channels_plot()}
+        """
 
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
