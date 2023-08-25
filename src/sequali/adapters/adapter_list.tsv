@@ -20,7 +20,7 @@ PolyA	illumina	AAAAAAAAAAAA
 # for uniqueness in the nanopore set as well as for not occurring much in the human 
 # genome. Sequences are expected to occur one in ~1.6 million (4^12) times. A few times
 # higher than that is acceptable (because it is still rare), but not much. Sequences 
-with TTTTTTT or AAAAAA for instance  occur much more frequently. (Hundres to thousands of times).
+# with TTTTTTT or AAAAAA for instance  occur much more frequently. (Hundres to thousands of times).
 
 Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC
 Oxford nanopore RT Adapter (RTA), top strand	nanopore	GGCTTCTTCTTG
