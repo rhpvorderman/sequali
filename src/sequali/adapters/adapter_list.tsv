@@ -19,7 +19,7 @@ Oxford nanopore ligation kit, rapid adapter or Adapter Mix (AMX); all top strand
 Oxford nanopore ligation kit or Adapter Mix; both bottom strand	nanopore	GCAATACGTAAC
 Oxford nanopore RT adapter (RTA) or RNA adapter mix (RMX); both bottom strand	nanopore	GAGGCGAGCGGT
 # Use TTTTTTTTTTTAT rather than TTTTTTTTTTTT to avoid double hit for VN primer.
-Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	TTTTTTTTTTTAT
+Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	ATGATGCAAGAT
 OXford nanopore RT Adapter (RTA); top strand	nanopore	GGCTTCTTCTTG
 
 
