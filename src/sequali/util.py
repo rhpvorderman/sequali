@@ -146,8 +146,10 @@ def fastq_header_is_nanopore(header: str):
         correct_lengths = all(
             len(part) == correct_length for part, correct_length in
             zip(parts, (8, 4, 4, 4, 12)))
-        has_ch = any(meta.startswith("ch=") for meta in metadata)
-        has_start_time = any(meta.startswith("start_time=")
+        # Test only for ch (no =) and for st (no art_time) so also ubam to
+        # converted FASTQ files are included.
+        has_ch = any(meta.startswith("ch") for meta in metadata)
+        has_start_time = any(meta.startswith("st")
                              for meta in metadata)
         if hexadecimal and correct_lengths and has_ch and has_start_time:
             return True
