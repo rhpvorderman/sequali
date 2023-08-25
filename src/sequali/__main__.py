@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import argparse
-import io
 import json
 import os
 import sys
@@ -26,7 +25,7 @@ from ._qc import AdapterCounter, DEFAULT_MAX_UNIQUE_SEQUENCES, FastqParser, \
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
-from .util import ProgressUpdater, guess_sequencing_technology
+from .util import ProgressUpdater, guess_sequencing_technology_from_file
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -82,12 +81,7 @@ def main():
     filename = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
-        try:
-            # Guess sequencing technology to limit the amount of adapter probes
-            # needed to search.
-            seqtech = guess_sequencing_technology(file.peek(io.DEFAULT_BUFFER_SIZE))
-        except IOError:
-            seqtech = None
+        seqtech = guess_sequencing_technology_from_file(file)
         adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
         adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:

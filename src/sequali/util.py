@@ -15,6 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
 import gzip
+import io
 import os
 import string
 from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
@@ -93,13 +94,17 @@ def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
         yield name, "".join(current_seq)
 
 
-def guess_sequencing_technology(data: bytes) -> Optional[str]:
+def guess_sequencing_technology_from_file(fp: io.BufferedReader) -> Optional[str]:
     """
     Guess sequencing technology from a block of binary data at the start of
     the file.
     :param data: a block of data
     :return:
     """
+    try:
+        data = fp.peek(io.DEFAULT_BUFFER_SIZE)
+    except IOError:
+        return None
     if data[0] == ord("@"):
         # This is A FASTQ file.
         header_end: Optional[SupportsIndex] = data.find(b"\n")
