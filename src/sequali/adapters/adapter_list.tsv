@@ -50,4 +50,4 @@ Oxford nanopore Strand Switching Primer II (SSPII)	nanopore	TGATATTGCTTT
 # AMX and ligation kit have an overlapping adapter, but can be distuingished because 
 # the ligation bottom strand adapter is longer.
 Oxford nanopore ligation kit, bottom strand (part II)	nanopore	ACGAAGTACAGG
-Oxford nanopore Adapter Mix (AMX) and ligation kit (part I), both bottom strand 	nanopore	GCAATACGTAACT
+Oxford nanopore Adapter Mix (AMX) and ligation kit (part I), both bottom strand 	nanopore	GCAATACGTAAC
