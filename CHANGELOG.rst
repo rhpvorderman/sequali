@@ -9,6 +9,11 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Guess sequencing technology from the file header, so only appropriate
+  adapters can be loaded in the adapter searcher. This improves speed.
++ Make an assortment of nanopore adapter probes that make it possible to
+  distuinghish between nannopore adapters despite the nanopore adapters having
+  a lot of shared subsequences.
 + Add a module to retrieve nanopore specific information from the header.
 + Classify overrepresented sequences by using NCBI's UniVec database and an
   assortment of nanopore adapters, ligation kits and primers.
