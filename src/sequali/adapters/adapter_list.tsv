@@ -10,7 +10,7 @@ Illumina Small RNA 5' adapter	illumina	GATCGTCGGACT
 Nextera Transposase Sequence	illumina	CTGTCTCTTATA
 PolyG	illumina	GGGGGGGGGGGG
 
-PolyA	all	AAAAAAAAAAAA
+PolyA	illumina	AAAAAAAAAAAA
 
 Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC
 Oxford nanopore strand switching primer (SSP or SSPII) or CDNA primer, reverse sequence	nanopore	TTTCTGTTGGTG
