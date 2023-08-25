@@ -100,7 +100,7 @@ def guess_sequencing_technology(data: bytes) -> Optional[str]:
     :param data: a block of data
     :return:
     """
-    if data[0] == b"@":
+    if data[0] == ord("@"):
         # This is A FASTQ file.
         header_end: Optional[SupportsIndex] = data.find(b"\n")
         if header_end == -1:
