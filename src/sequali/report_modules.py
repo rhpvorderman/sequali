@@ -558,6 +558,9 @@ class AdapterContent(ReportModule):
     def to_html(self):
         return f"""
             <h2>Adapter content</h2>
+            Only adapters that are present more than 0.1% are shown. Given the 12bp
+            length of the sequences used to estimate the content, values below this
+            threshold are problably false positives. <br><br>
             For nanopore the the adapter mix (AMX) and ligation kit have
             overlapping adapter sequences for the bottom strand adapter.
             The ligation kit bottom strand adapter is longer however. Therefore
