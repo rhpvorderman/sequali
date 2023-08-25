@@ -9,39 +9,45 @@ Illumina Small RNA 3' adapter	illumina	TGGAATTCTCGG
 Illumina Small RNA 5' adapter	illumina	GATCGTCGGACT
 Nextera Transposase Sequence	illumina	CTGTCTCTTATA
 PolyG	illumina	GGGGGGGGGGGG
-
+# PolyA is a very common subsequence in the human genome and 
+# as such should only be used in short read sequencing.
 PolyA	illumina	AAAAAAAAAAAA
 
+
+# Nanopore sequences can be found by reading through the documentation here:
+# https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits
+# Many of the nanopore sequences share subsequences. Below sequences where chosen
+# for uniqueness in the nanopore set as well as for not occurring much in the human 
+# genome. Sequences are expected to occur one in ~1.6 million (4^12) times. A few times
+# higher than that is acceptable (because it is still rare), but not much. Sequences 
+with TTTTTTT or AAAAAA for instance  occur much more frequently. (Hundres to thousands of times).
+
 Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC
-Oxford nanopore strand switching primer (SSP or SSPII) or CDNA primer, reverse sequence	nanopore	TTTCTGTTGGTG
-Oxford nanopore RT primer, VN primer, or CDNA primer, forward sequence	nanopore	CTTGCCTGTCGC
-Oxford nanopore ligation kit, rapid adapter or Adapter Mix (AMX); all top strand	nanopore	TGTACTTCGTTC
-Oxford nanopore ligation kit or Adapter Mix; both bottom strand	nanopore	GCAATACGTAAC
-Oxford nanopore RT adapter (RTA) or RNA adapter mix (RMX); both bottom strand	nanopore	GAGGCGAGCGGT
-# Use TTTTTTTTTTTAT rather than TTTTTTTTTTTT to avoid double hit for VN primer.
+Oxford nanopore RT Adapter (RTA), top strand	nanopore	GGCTTCTTCTTG
+
+# Sequences from the middle of the adapter are needed to distinguish these
+# nanopore adapters from others:
+Oxford nanopore RT Adapter (RTA), bottom strand	nanopore	TTTCCTAAGAGC
 Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	ATGATGCAAGAT
-OXford nanopore RT Adapter (RTA); top strand	nanopore	GGCTTCTTCTTG
+Oxford nanopore RNA Adapter Mix (RMX), bottom strand	nanopore	TTGCAATATCAG
+Oxford nanpore cDNA primer, forward sequence	nanopore	GTGACTTGCCTG
+Oxford nanopore CDNA primer, reverse sequence	nanopore	GTGTTTCTGTTG
+Oxford nanopore VN primer	nanopore	TCTATCTTCTTT
+
+# TTTTTTTTTTTT sequences (12 times T) and 12 times A are quite common in
+# the human genome. These adapter sequences are started from the middle for that 
+# reason
+Oxford nanopore Adapter Mix (AMX), top strand	nanopore	AATGTACTTCGT
+Oxford nanopore ligation kit or rapid adapter, top strand	nanopore	CCTGTACTTCGT
+
+# Sequences from the end of the adapter are needed to distuingish these
+# nanopore adapters from others.
+Oxford nanopore RT Primer (RTP)	nanopore	TCTTCAGAGGAG
+Oford nanopore Strand Switching Primer (SSP)	nanopore	GATATTGCTGGG
+Oxford nanopore Strand Switching Primer II (SSPII)	nanopore	TGATATTGCTTT
 
 
-
-# Most common subsequences for nanopore found with the following code:
-
-# from collections import defaultdict
-#
-# from sequali.util import fasta_parser
-#
-#
-# if __name__ == "__main__":
-#     k = 12
-#     kmers_and_names = defaultdict(set)
-#     for name, sequence in fasta_parser("src/sequali/contaminants/oxford_nanopore.fasta"):
-#         number_of_kmers = len(sequence) + 1 - k
-#         for i in range(number_of_kmers):
-#             kmer = sequence[i:i+k]
-#             kmers_and_names[kmer].add(name)
-#     items = list(kmers_and_names.items())
-#     items.sort(key=lambda x: len(x[1]), reverse=True)
-#     for kmer, names in items:
-#         if len(names) == 1:
-#             continue
-#         print(f"{kmer}: {', '.join(names)}")
+# AMX and ligation kit have an overlapping adapter, but can be distuingished because 
+# the ligation bottom strand adapter is longer.
+Oxford nanopore ligation kit, bottom strand (part II)	nanopore	ACGAAGTACAGG
+Oxford nanopore Adapter Mix (AMX) and ligation kit (part I), both bottom strand 	nanopore	GCAATACGTAACT

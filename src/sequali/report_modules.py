@@ -558,6 +558,13 @@ class AdapterContent(ReportModule):
     def to_html(self):
         return f"""
             <h2>Adapter content</h2>
+            For nanopore the the adapter mix (AMX) and ligation kit have
+            overlapping adapter sequences for the bottom strand adapter.
+            The ligation kit bottom strand adapter is longer however. Therefore
+            the ligation kit bottom strand has two detection probes, part I and
+            part II. If both are present, the bottom strand adapter is most
+            likely from the ligation kit. If only part I is present, it is most
+            likely from the adapter mix (AMX). <br>
             {self.plot()}
         """
 
