@@ -932,13 +932,15 @@ class NanoStatsReport(ReportModule):
 
     @classmethod
     def from_nanostats(cls, nanostats: NanoStats):
-        time_divisor = 600  # 10 minutes
         run_start_time = nanostats.minimum_time
         run_end_time = nanostats.maximum_time
         duration = run_end_time - run_start_time
-        time_slots = (duration + time_divisor - 1) // time_divisor
-        time_ranges = [(start, start + time_divisor)
-                       for start in range(0, duration, time_divisor)]
+        time_slots = 200
+        time_per_slot = duration / time_slots
+        time_interval_minutes = math.ceil(time_per_slot) + 59 // 60
+        time_interval = time_interval_minutes * 60
+        time_ranges = [(start, start + time_interval)
+                       for start in range(0, duration, time_interval)]
         time_active_slots_sets: List[Set[int]] = [set() for _ in
                                                   range(time_slots)]
         time_bases = [0 for _ in range(time_slots)]
@@ -949,7 +951,7 @@ class NanoStatsReport(ReportModule):
         per_channel_cumulative_error = defaultdict(lambda: 0.0)
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
-            timeslot = relative_start_time // time_divisor
+            timeslot = relative_start_time // time_interval
             length = readinfo.length
             cumulative_error_rate = readinfo.cumulative_error_rate
             channel_id = readinfo.channel_id
