@@ -1013,7 +1013,7 @@ class NanoStatsReport(ReportModule):
     def time_bases_plot(self):
         plot = pygal.Bar(
             title="Base count over time",
-            x_title="time (s)",
+            x_title="time(HH:MM)",
             y_title="base count",
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
@@ -1024,7 +1024,7 @@ class NanoStatsReport(ReportModule):
     def time_reads_plot(self):
         plot = pygal.Bar(
             title="Number of reads over time",
-            x_title="time (s)",
+            x_title="time(HH:MM)",
             y_title="number of reads",
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
@@ -1035,7 +1035,7 @@ class NanoStatsReport(ReportModule):
     def time_active_channels_plot(self):
         plot = pygal.Bar(
             title="Active channels over time",
-            x_title="time (s)",
+            x_title="time(HH:MM)",
             y_title="active channels",
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
@@ -1049,7 +1049,7 @@ class NanoStatsReport(ReportModule):
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
-            x_title="time(s)",
+            x_title="time(HH:MM)",
             y_title="fraction",
             fill=True,
             **label_settings(self.x_labels),
@@ -1059,6 +1059,22 @@ class NanoStatsReport(ReportModule):
             serie_filled = sum(serie) > 0.0
             plot.add(name, label_values(serie, self.x_labels),
                      show_dots=serie_filled)
+        return plot.render(is_unicode=True)
+
+    def channel_plot(self):
+        plot = pygal.XY(
+            title="Channel base yield and quality",
+            dots_size=1,
+            x_title = "base yield (megabases)",
+            y_title = "quality (phred score)",
+            stroke=False,
+            **COMMON_GRAPH_OPTIONS
+        )
+        serie = []
+        for channel, base_yield in self.per_channel_bases.items():
+            quality = self.per_channel_quality[channel]
+            serie.append(dict(value=(base_yield/1_000_000, quality), label=str(channel)))
+        plot.add(None, serie)
         return plot.render(is_unicode=True)
 
     def to_html(self) -> str:
@@ -1077,6 +1093,8 @@ class NanoStatsReport(ReportModule):
         {self.time_active_channels_plot()}
         <h3>Quality distribution over time</h3>
         {self.time_quality_distribution_plot()}
+        <h2>Per channel base yield versus quality<h2>
+        {self.channel_plot()}
         """
 
 
