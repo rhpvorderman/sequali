@@ -931,6 +931,13 @@ class NanoStatsReport(ReportModule):
     per_channel_quality: Dict[int, float]
     skipped_reason: Optional[str] = None
 
+    @staticmethod
+    def seconds_to_hour_minute_notation(seconds: int):
+        minutes = seconds // 60
+        hours = minutes // 60
+        minutes %= 60
+        return f"{hours:02}:{minutes:02}"
+
     @classmethod
     def from_nanostats(cls, nanostats: NanoStats):
         if nanostats.skipped_reason:
@@ -949,10 +956,11 @@ class NanoStatsReport(ReportModule):
         duration = run_end_time - run_start_time
         time_slots = 200
         time_per_slot = duration / time_slots
-        time_interval_minutes = math.ceil(time_per_slot) + 59 // 60
+        time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
         time_interval = time_interval_minutes * 60
         time_ranges = [(start, start + time_interval)
                        for start in range(0, duration, time_interval)]
+        time_slots = len(time_ranges)
         time_active_slots_sets: List[Set[int]] = [set() for _ in
                                                   range(time_slots)]
         time_bases = [0 for _ in range(time_slots)]
@@ -990,7 +998,9 @@ class NanoStatsReport(ReportModule):
                 qual_percentages_over_time[i].append(q / max(total, 1))
         time_active_slots = [len(s) for s in time_active_slots_sets]
         return cls(
-            x_labels=[f"{start}-{stop}" for start, stop in time_ranges],
+            x_labels=[f"{cls.seconds_to_hour_minute_notation(start)}-"
+                      f"{cls.seconds_to_hour_minute_notation(stop)}"
+                      for start, stop in time_ranges],
             qual_percentages_over_time=qual_percentages_over_time,
             time_active_channels=time_active_slots,
             time_bases=time_bases,
