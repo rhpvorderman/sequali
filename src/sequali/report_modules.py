@@ -7,6 +7,7 @@ import os
 import sys
 import typing
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from typing import (Any, Dict, Iterable, Iterator, List, Optional, Set,
                     Sequence, Tuple, Type)
 
@@ -926,6 +927,8 @@ class NanoStatsReport(ReportModule):
     time_reads: List[int]
     time_active_channels: List[int]
     qual_percentages_over_time: List[List[float]]
+    per_channel_bases: Dict[int, int]
+    per_channel_quality: Dict[int, float]
 
     @classmethod
     def from_nanostats(cls, nanostats: NanoStats):
@@ -942,17 +945,29 @@ class NanoStatsReport(ReportModule):
         time_reads = [0 for _ in range(time_slots)]
         time_qualities = [[0 for _ in range(12)] for _ in
                           range(time_slots)]
+        per_channel_bases = defaultdict(lambda: 0)
+        per_channel_cumulative_error = defaultdict(lambda: 0.0)
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_divisor
             length = readinfo.length
+            cumulative_error_rate = readinfo.cumulative_error_rate
+            channel_id = readinfo.channel_id
             phred = round(
-                -10 * math.log10(readinfo.cumulative_error_rate / length))
+                -10 * math.log10(cumulative_error_rate / length))
             phred_index = min(phred, 47) >> 2
-            time_active_slots_sets[timeslot].add(readinfo.channel_id)
+            time_active_slots_sets[timeslot].add(channel_id)
             time_bases[timeslot] += length
             time_reads[timeslot] += 1
             time_qualities[timeslot][phred_index] += 1
+            per_channel_bases[channel_id] += length
+            per_channel_cumulative_error[channel_id] += cumulative_error_rate
+
+        per_channel_quality: Dict[int, float] = {}
+        for channel, error_rate in per_channel_cumulative_error.items():
+            total_bases = per_channel_bases[channel]
+            phred_score = -10 * math.log10(error_rate / total_bases)
+            per_channel_quality[channel] = phred_score
         qual_percentages_over_time: List[List[float]] = [[] for _ in
                                                          range(12)]
         for quals in time_qualities:
@@ -965,7 +980,10 @@ class NanoStatsReport(ReportModule):
             qual_percentages_over_time=qual_percentages_over_time,
             time_active_channels=time_active_slots,
             time_bases=time_bases,
-            time_reads=time_reads)
+            time_reads=time_reads,
+            per_channel_bases=dict(sorted(per_channel_bases.items())),
+            per_channel_quality=dict(sorted(per_channel_quality.items())),
+        )
 
     def time_bases_plot(self):
         plot = pygal.Bar(
