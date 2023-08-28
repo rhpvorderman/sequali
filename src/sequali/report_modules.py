@@ -73,16 +73,22 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def logarithmic_ranges(length: int, parts: int):
-    exponent = math.log(length) / math.log(parts)
+def logarithmic_ranges(length: int):
+    # Use a scaling factor: this needs 300 units to reach the length of the
+    # largest human chromosome. This will still fit on a graph once we reach
+    # those sequencing sizes. By utilizing the same scaling factor, this
+    # program will have more comparable plots between FASTQ files.
+    scaling_factor = 250_000_000 ** (1 / 300)
+    i = 0
     start = 0
-    for i in range(1, parts + 1):
-        stop = round(i ** exponent)
-        length = stop - start
-        if length < 1:
-            continue
-        yield start, stop
-        start = stop
+    while True:
+        stop = round(scaling_factor ** i)
+        i += 1
+        if stop > start:
+            yield start, stop
+            start = stop
+            if stop >= length:
+                return
 
 
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
@@ -1137,7 +1143,7 @@ def calculate_stats(
 ) -> List[ReportModule]:
     max_length = metrics.max_length
     if max_length > 500:
-        data_ranges = list(logarithmic_ranges(max_length, graph_resolution))
+        data_ranges = list(logarithmic_ranges(max_length))
     else:
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
