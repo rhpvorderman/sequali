@@ -929,9 +929,21 @@ class NanoStatsReport(ReportModule):
     qual_percentages_over_time: List[List[float]]
     per_channel_bases: Dict[int, int]
     per_channel_quality: Dict[int, float]
+    skipped_reason: Optional[str] = None
 
     @classmethod
     def from_nanostats(cls, nanostats: NanoStats):
+        if nanostats.skipped_reason:
+            return cls(
+                [],
+                [],
+                [],
+                [],
+                [],
+                {},
+                {},
+                nanostats.skipped_reason
+            )
         run_start_time = nanostats.minimum_time
         run_end_time = nanostats.maximum_time
         duration = run_end_time - run_start_time
@@ -985,6 +997,7 @@ class NanoStatsReport(ReportModule):
             time_reads=time_reads,
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
+            skipped_reason=nanostats.skipped_reason
         )
 
     def time_bases_plot(self):
@@ -1039,6 +1052,11 @@ class NanoStatsReport(ReportModule):
         return plot.render(is_unicode=True)
 
     def to_html(self) -> str:
+        if self.skipped_reason:
+            return f"""
+            <h2>Nanopore time series</h2>
+            Skipped: {self.skipped_reason}
+            """
         return f"""
         <h2>Nanopore time series</h2>
         <h3>Base counts over time</h3>
