@@ -976,7 +976,7 @@ class NanoStatsReport(ReportModule):
                 qual_percentages_over_time[i].append(q / max(total, 1))
         time_active_slots = [len(s) for s in time_active_slots_sets]
         return cls(
-            x_labels=stringify_ranges(time_ranges),
+            x_labels=[f"{start}-{stop}" for start, stop in time_ranges],
             qual_percentages_over_time=qual_percentages_over_time,
             time_active_channels=time_active_slots,
             time_bases=time_bases,
