@@ -7,8 +7,9 @@ import os
 import sys
 import typing
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from typing import (Any, Dict, Iterable, Iterator, List, Optional, Sequence,
-                    Tuple, Type)
+                    Set, Tuple, Type)
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -25,6 +26,29 @@ PHRED_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
+
+QUALITY_SERIES_NAMES = (
+    "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
+    "32-35", "36-39", "40-43", ">=44")
+
+QUALITY_COLORS = dict(
+    dark_red="#8B0000",  # 0-3
+    red="#ff0000",  # 4-7
+    light_red="#ff9999",  # 8-11
+    almost_white_blue="#f5f5ff",  # 12-15
+    very_light_blue="#e6e6ff",  # 16-19
+    light_blue="#8080ff",  # 20-23
+    blue="#0000FF",  # 24-27
+    darker_blue="#0000b3",  # 28-31
+    more_darker_blue="#000080",  # 32-35
+    yet_more_darker_blue="#00004d",  # 36-39
+    almost_black_blue="#000033",  # 40-43
+    black="#000000",  # >=44
+)
+
+QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=list(QUALITY_COLORS.values()))
+ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",))  # Green
+MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle()
 
 DEFAULT_FRACTION_THRESHOLD = 0.0001
 DEFAULT_MIN_THRESHOLD = 100
@@ -52,16 +76,22 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def logarithmic_ranges(length: int, parts: int):
-    exponent = math.log(length) / math.log(parts)
+def logarithmic_ranges(length: int):
+    # Use a scaling factor: this needs 300 units to reach the length of the
+    # largest human chromosome. This will still fit on a graph once we reach
+    # those sequencing sizes. By utilizing the same scaling factor, this
+    # program will have more comparable plots between FASTQ files.
+    scaling_factor = 250_000_000 ** (1 / 300)
+    i = 0
     start = 0
-    for i in range(1, parts + 1):
-        stop = round(i ** exponent)
-        length = stop - start
-        if length < 1:
-            continue
-        yield start, stop
-        start = stop
+    while True:
+        stop = round(scaling_factor ** i)
+        i += 1
+        if stop > start:
+            yield start, stop
+            start = stop
+            if stop >= length:
+                return
 
 
 def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
@@ -173,6 +203,7 @@ class SequenceLengthDistribution(ReportModule):
             title="Sequence length distribution",
             x_title="sequence length",
             y_title="number of reads",
+            style=ONE_SERIE_STYLE,
             **label_settings(self.length_ranges),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -225,6 +256,7 @@ class PerBaseAverageSequenceQuality(ReportModule):
             dots_size=1,
             x_title="position",
             y_title="phred score",
+            style=MULTIPLE_SERIES_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -310,27 +342,9 @@ class PerBaseQualityScoreDistribution(ReportModule):
         return cls(x_labels, quality_distribution)
 
     def plot(self) -> str:
-        dark_red = "#8B0000"  # 0-3
-        red = "#ff0000"  # 4-7
-        light_red = "#ff9999"  # 8-11
-        white = "#FFFFFF"  # 12-15
-        very_light_blue = "#e6e6ff"  # 16-19
-        light_blue = "#8080ff"  # 20-23
-        blue = "#0000FF"  # 24-27
-        darker_blue = "#0000b3"  # 28-31
-        more_darker_blue = "#000080"  # 32-35
-        yet_more_darker_blue = "#00004d"  # 36-39
-        almost_black_blue = "#000033"  # 40-43
-        black = "#000000"  # >=44
-        style = pygal.style.Style(
-            colors=(
-                dark_red, red, light_red, white, very_light_blue, light_blue,
-                blue, darker_blue, more_darker_blue, yet_more_darker_blue,
-                almost_black_blue, black)
-        )
         plot = pygal.StackedLine(
             title="Per base quality distribution",
-            style=style,
+            style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
             x_title="position",
@@ -339,10 +353,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
-        serie_names = (
-            "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
-            "32-35", "36-39", "40-43", ">=44")
-        for name, serie in zip(serie_names, self.series):
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.series):
             serie_filled = sum(serie) > 0.0
             plot.add(name, label_values(serie, self.x_labels),
                      show_dots=serie_filled)
@@ -369,6 +380,7 @@ class PerSequenceAverageQualityScores(ReportModule):
             disable_xml_declaration=True,
             x_labels_major_every=3,
             show_minor_x_labels=False,
+            style=ONE_SERIE_STYLE,
             x_title="Phred score",
             y_title="Percentage of total",
             truncate_label=-1,
@@ -489,6 +501,7 @@ class PerPositionNContent(ReportModule):
             x_title="position",
             y_title="fraction",
             fill=True,
+            style=ONE_SERIE_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -515,6 +528,7 @@ class PerSequenceGCContent(ReportModule):
             show_minor_x_labels=False,
             x_title="GC %",
             y_title="number of reads",
+            style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("", self.gc_content_counts)
@@ -546,6 +560,7 @@ class AdapterContent(ReportModule):
             legend_at_bottom_columns=1,
             truncate_legend=-1,
             height=800,
+            style=MULTIPLE_SERIES_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -645,7 +660,7 @@ class PerTileQualityReport(ReportModule):
         )
 
     def plot(self):
-        style_class = pygal.style.Style
+        style_class = MULTIPLE_SERIES_STYLE.__class__
         red = "#FF0000"
         yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
         style = style_class(
@@ -724,6 +739,7 @@ class DuplicationCounts(ReportModule):
             x_title="Duplication counts",
             y_title="Percentage of total",
             x_label_rotation=30,
+            style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS
         )
         plot.add("",
@@ -913,6 +929,189 @@ class OverRepresentedSequences(ReportModule):
                    seqdup.max_unique_sequences)
 
 
+@dataclasses.dataclass
+class NanoStatsReport(ReportModule):
+    x_labels: List[str]
+    time_bases: List[int]
+    time_reads: List[int]
+    time_active_channels: List[int]
+    qual_percentages_over_time: List[List[float]]
+    per_channel_bases: Dict[int, int]
+    per_channel_quality: Dict[int, float]
+    skipped_reason: Optional[str] = None
+
+    @staticmethod
+    def seconds_to_hour_minute_notation(seconds: int):
+        minutes = seconds // 60
+        hours = minutes // 60
+        minutes %= 60
+        return f"{hours:02}:{minutes:02}"
+
+    @classmethod
+    def from_nanostats(cls, nanostats: NanoStats):
+        if nanostats.skipped_reason:
+            return cls(
+                [],
+                [],
+                [],
+                [],
+                [],
+                {},
+                {},
+                nanostats.skipped_reason
+            )
+        run_start_time = nanostats.minimum_time
+        run_end_time = nanostats.maximum_time
+        duration = run_end_time - run_start_time
+        time_slots = 200
+        time_per_slot = duration / time_slots
+        time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
+        time_interval = time_interval_minutes * 60
+        time_ranges = [(start, start + time_interval)
+                       for start in range(0, duration, time_interval)]
+        time_slots = len(time_ranges)
+        time_active_slots_sets: List[Set[int]] = [set() for _ in
+                                                  range(time_slots)]
+        time_bases = [0 for _ in range(time_slots)]
+        time_reads = [0 for _ in range(time_slots)]
+        time_qualities = [[0 for _ in range(12)] for _ in
+                          range(time_slots)]
+        per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
+        per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
+        for readinfo in nanostats.nano_info_iterator():
+            relative_start_time = readinfo.start_time - run_start_time
+            timeslot = relative_start_time // time_interval
+            length = readinfo.length
+            cumulative_error_rate = readinfo.cumulative_error_rate
+            channel_id = readinfo.channel_id
+            phred = round(
+                -10 * math.log10(cumulative_error_rate / length))
+            phred_index = min(phred, 47) >> 2
+            time_active_slots_sets[timeslot].add(channel_id)
+            time_bases[timeslot] += length
+            time_reads[timeslot] += 1
+            time_qualities[timeslot][phred_index] += 1
+            per_channel_bases[channel_id] += length
+            per_channel_cumulative_error[channel_id] += cumulative_error_rate
+
+        per_channel_quality: Dict[int, float] = {}
+        for channel, error_rate in per_channel_cumulative_error.items():
+            total_bases = per_channel_bases[channel]
+            phred_score = -10 * math.log10(error_rate / total_bases)
+            per_channel_quality[channel] = phred_score
+        qual_percentages_over_time: List[List[float]] = [[] for _ in
+                                                         range(12)]
+        for quals in time_qualities:
+            total = sum(quals)
+            for i, q in enumerate(quals):
+                qual_percentages_over_time[i].append(q / max(total, 1))
+        time_active_slots = [len(s) for s in time_active_slots_sets]
+        return cls(
+            x_labels=[f"{cls.seconds_to_hour_minute_notation(start)}-"
+                      f"{cls.seconds_to_hour_minute_notation(stop)}"
+                      for start, stop in time_ranges],
+            qual_percentages_over_time=qual_percentages_over_time,
+            time_active_channels=time_active_slots,
+            time_bases=time_bases,
+            time_reads=time_reads,
+            per_channel_bases=dict(sorted(per_channel_bases.items())),
+            per_channel_quality=dict(sorted(per_channel_quality.items())),
+            skipped_reason=nanostats.skipped_reason
+        )
+
+    def time_bases_plot(self):
+        plot = pygal.Bar(
+            title="Base count over time",
+            x_title="time(HH:MM)",
+            y_title="base count",
+            style=ONE_SERIE_STYLE,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_bases, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def time_reads_plot(self):
+        plot = pygal.Bar(
+            title="Number of reads over time",
+            x_title="time(HH:MM)",
+            y_title="number of reads",
+            style=ONE_SERIE_STYLE,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_reads, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def time_active_channels_plot(self):
+        plot = pygal.Bar(
+            title="Active channels over time",
+            x_title="time(HH:MM)",
+            y_title="active channels",
+            style=ONE_SERIE_STYLE,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", label_values(self.time_active_channels, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def time_quality_distribution_plot(self):
+        plot = pygal.StackedLine(
+            title="Quality distribution over time",
+            style=QUALITY_DISTRIBUTION_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="time(HH:MM)",
+            y_title="fraction",
+            fill=True,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.qual_percentages_over_time):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, self.x_labels),
+                     show_dots=serie_filled)
+        return plot.render(is_unicode=True)
+
+    def channel_plot(self):
+        plot = pygal.XY(
+            title="Channel base yield and quality",
+            dots_size=1,
+            x_title="base yield (megabases)",
+            y_title="quality (phred score)",
+            stroke=False,
+            style=ONE_SERIE_STYLE,
+            **COMMON_GRAPH_OPTIONS
+        )
+        serie = []
+        for channel, base_yield in self.per_channel_bases.items():
+            quality = self.per_channel_quality[channel]
+            serie.append(dict(value=(base_yield/1_000_000, quality),
+                              label=str(channel)))
+        plot.add(None, serie)
+        return plot.render(is_unicode=True)
+
+    def to_html(self) -> str:
+        if self.skipped_reason:
+            return f"""
+            <h2>Nanopore time series</h2>
+            Skipped: {self.skipped_reason}
+            """
+        return f"""
+        <h2>Nanopore time series</h2>
+        <h3>Base counts over time</h3>
+        {self.time_bases_plot()}
+        <h3>Read counts over time</h3>
+        {self.time_reads_plot()}
+        <h3>Active channels over time</h3>
+        {self.time_active_channels_plot()}
+        <h3>Quality distribution over time</h3>
+        {self.time_quality_distribution_plot()}
+        <h2>Per channel base yield versus quality<h2>
+        {self.channel_plot()}
+        """
+
+
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "summary": Summary,
     "per_position_average_quality": PerBaseAverageSequenceQuality,
@@ -926,6 +1125,7 @@ NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "per_tile_quality": PerTileQualityReport,
     "duplication_fractions": DuplicationCounts,
     "overrepresented_sequences": OverRepresentedSequences,
+    "nanopore_metrics": NanoStatsReport,
 }
 
 CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
@@ -1023,7 +1223,7 @@ def calculate_stats(
 ) -> List[ReportModule]:
     max_length = metrics.max_length
     if max_length > 500:
-        data_ranges = list(logarithmic_ranges(max_length, graph_resolution))
+        data_ranges = list(logarithmic_ranges(max_length))
     else:
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
@@ -1038,5 +1238,6 @@ def calculate_stats(
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
             max_threshold=max_threshold
-        )
+        ),
+        NanoStatsReport.from_nanostats(nanostats)
     ]
