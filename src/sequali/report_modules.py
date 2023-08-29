@@ -47,6 +47,8 @@ QUALITY_COLORS = dict(
 )
 
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=list(QUALITY_COLORS.values()))
+ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",))  # Green
+MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle()
 
 DEFAULT_FRACTION_THRESHOLD = 0.0001
 DEFAULT_MIN_THRESHOLD = 100
@@ -201,6 +203,7 @@ class SequenceLengthDistribution(ReportModule):
             title="Sequence length distribution",
             x_title="sequence length",
             y_title="number of reads",
+            style=ONE_SERIE_STYLE,
             **label_settings(self.length_ranges),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -253,6 +256,7 @@ class PerBaseAverageSequenceQuality(ReportModule):
             dots_size=1,
             x_title="position",
             y_title="phred score",
+            style=MULTIPLE_SERIES_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -376,6 +380,7 @@ class PerSequenceAverageQualityScores(ReportModule):
             disable_xml_declaration=True,
             x_labels_major_every=3,
             show_minor_x_labels=False,
+            style=ONE_SERIE_STYLE,
             x_title="Phred score",
             y_title="Percentage of total",
             truncate_label=-1,
@@ -496,6 +501,7 @@ class PerPositionNContent(ReportModule):
             x_title="position",
             y_title="fraction",
             fill=True,
+            style=ONE_SERIE_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -522,6 +528,7 @@ class PerSequenceGCContent(ReportModule):
             show_minor_x_labels=False,
             x_title="GC %",
             y_title="number of reads",
+            style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("", self.gc_content_counts)
@@ -553,6 +560,7 @@ class AdapterContent(ReportModule):
             legend_at_bottom_columns=1,
             truncate_legend=-1,
             height=800,
+            style=MULTIPLE_SERIES_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -652,7 +660,7 @@ class PerTileQualityReport(ReportModule):
         )
 
     def plot(self):
-        style_class = pygal.style.Style
+        style_class = MULTIPLE_SERIES_STYLE.__class__
         red = "#FF0000"
         yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
         style = style_class(
@@ -731,6 +739,7 @@ class DuplicationCounts(ReportModule):
             x_title="Duplication counts",
             y_title="Percentage of total",
             x_label_rotation=30,
+            style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS
         )
         plot.add("",
@@ -1015,6 +1024,7 @@ class NanoStatsReport(ReportModule):
             title="Base count over time",
             x_title="time(HH:MM)",
             y_title="base count",
+            style=ONE_SERIE_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
         )
@@ -1026,6 +1036,7 @@ class NanoStatsReport(ReportModule):
             title="Number of reads over time",
             x_title="time(HH:MM)",
             y_title="number of reads",
+            style=ONE_SERIE_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
         )
@@ -1037,6 +1048,7 @@ class NanoStatsReport(ReportModule):
             title="Active channels over time",
             x_title="time(HH:MM)",
             y_title="active channels",
+            style=ONE_SERIE_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS
         )
@@ -1068,6 +1080,7 @@ class NanoStatsReport(ReportModule):
             x_title = "base yield (megabases)",
             y_title = "quality (phred score)",
             stroke=False,
+            style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS
         )
         serie = []
