@@ -8,8 +8,8 @@ import sys
 import typing
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import (Any, Dict, Iterable, Iterator, List, Optional, Set,
-                    Sequence, Tuple, Type)
+from typing import (Any, Dict, Iterable, Iterator, List, Optional, Sequence,
+                    Set, Tuple, Type)
 
 import pygal  # type: ignore
 import pygal.style  # type: ignore
@@ -27,23 +27,23 @@ PHRED_TO_ERROR_RATE = [
     for start in range(NUMBER_OF_PHREDS)
 ]
 
-QUALITY_SERIES_NAMES =  (
+QUALITY_SERIES_NAMES = (
     "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
     "32-35", "36-39", "40-43", ">=44")
 
 QUALITY_COLORS = dict(
-    dark_red = "#8B0000",  # 0-3
-    red = "#ff0000",  # 4-7
-    light_red = "#ff9999",  # 8-11
-    almost_white_blue = "#f5f5ff",  # 12-15
-    very_light_blue = "#e6e6ff",  # 16-19
-    light_blue = "#8080ff",  # 20-23
-    blue = "#0000FF",  # 24-27
-    darker_blue = "#0000b3",  # 28-31
-    more_darker_blue = "#000080",  # 32-35
-    yet_more_darker_blue = "#00004d",  # 36-39
-    almost_black_blue = "#000033",  # 40-43
-    black = "#000000",  # >=44
+    dark_red="#8B0000",  # 0-3
+    red="#ff0000",  # 4-7
+    light_red="#ff9999",  # 8-11
+    almost_white_blue="#f5f5ff",  # 12-15
+    very_light_blue="#e6e6ff",  # 16-19
+    light_blue="#8080ff",  # 20-23
+    blue="#0000FF",  # 24-27
+    darker_blue="#0000b3",  # 28-31
+    more_darker_blue="#000080",  # 32-35
+    yet_more_darker_blue="#00004d",  # 36-39
+    almost_black_blue="#000033",  # 40-43
+    black="#000000",  # >=44
 )
 
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=list(QUALITY_COLORS.values()))
@@ -976,8 +976,8 @@ class NanoStatsReport(ReportModule):
         time_reads = [0 for _ in range(time_slots)]
         time_qualities = [[0 for _ in range(12)] for _ in
                           range(time_slots)]
-        per_channel_bases = defaultdict(lambda: 0)
-        per_channel_cumulative_error = defaultdict(lambda: 0.0)
+        per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
+        per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
@@ -1077,8 +1077,8 @@ class NanoStatsReport(ReportModule):
         plot = pygal.XY(
             title="Channel base yield and quality",
             dots_size=1,
-            x_title = "base yield (megabases)",
-            y_title = "quality (phred score)",
+            x_title="base yield (megabases)",
+            y_title="quality (phred score)",
             stroke=False,
             style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS
@@ -1086,7 +1086,8 @@ class NanoStatsReport(ReportModule):
         serie = []
         for channel, base_yield in self.per_channel_bases.items():
             quality = self.per_channel_quality[channel]
-            serie.append(dict(value=(base_yield/1_000_000, quality), label=str(channel)))
+            serie.append(dict(value=(base_yield/1_000_000, quality),
+                              label=str(channel)))
         plot.add(None, serie)
         return plot.render(is_unicode=True)
 
