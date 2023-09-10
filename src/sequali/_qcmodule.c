@@ -1013,21 +1013,28 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     }   
     self->staging_count += 1;
     staging_counttable_t *staging_count_tables = self->staging_count_tables;
-    for (size_t i=0; i < (size_t)sequence_length; i+=1) {
-        uint8_t c = sequence[i];
-        uint8_t q = qualities[i] - phred_offset;
+    const uint8_t *sequence_ptr = sequence; 
+    const uint8_t *qualities_ptr = qualities;
+    const uint8_t *sequence_end_ptr = sequence + sequence_length;
+    staging_counttable_t *staging_count_ptr = staging_count_tables;
+    while(sequence_ptr < sequence_end_ptr) {
+        uint8_t c = *sequence_ptr;
+        uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
             PyErr_Format(
                 PyExc_ValueError, 
-                "Not a valid phred character: %c", qualities[i]
+                "Not a valid phred character: %c", *qualities_ptr
             );
             return -1;
         }
         uint8_t q_index = phred_to_index(q);
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-        staging_count_tables[i][q_index][c_index] += 1;
+        staging_count_ptr[0][q_index][c_index] += 1;
         base_counts[c_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+        sequence_ptr += 1; 
+        qualities_ptr += 1;
+        staging_count_ptr +=1;
     }
     uint64_t at_counts = base_counts[A] + base_counts[T];
     uint64_t gc_counts = base_counts[C] + base_counts[G];
