@@ -911,7 +911,6 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     uint16_t staging_count;
-    bool use_staging;
     size_t max_length;
     staging_counttable_t *staging_count_tables;
     counttable_t *count_tables;
@@ -941,7 +940,6 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     self->count_tables = NULL;
     self->staging_count_tables = NULL;
     self->number_of_reads = 0;
-    self->use_staging = false;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
     return (PyObject *)self;
@@ -1004,55 +1002,39 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
-        if (sequence_length > 1000) {
-            self->use_staging = true;
-        }
         if (QCMetrics_resize(self, sequence_length) != 0) {
             return -1;
         }
     }
 
     self->number_of_reads += 1; 
-    if (self->use_staging) {
-        if (self->staging_count >= UINT16_MAX) {
-            QCMetrics_flush_staging(self);
-        }   
-        self->staging_count += 1;
-        staging_counttable_t *staging_count_tables = self->staging_count_tables;
-        for (size_t i=0; i < (size_t)sequence_length; i+=1) {
-            uint8_t c = sequence[i];
-            uint8_t q = qualities[i] - phred_offset;
-            if (q > PHRED_MAX) {
-                PyErr_Format(
-                    PyExc_ValueError, 
-                    "Not a valid phred character: %c", qualities[i]
-                );
-                return -1;
-            }
-            uint8_t q_index = phred_to_index(q);
-            uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-            staging_count_tables[i][q_index][c_index] += 1;
-            base_counts[c_index] += 1;
-            accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+    if (self->staging_count >= UINT16_MAX) {
+        QCMetrics_flush_staging(self);
+    }   
+    self->staging_count += 1;
+    staging_counttable_t *staging_count_tables = self->staging_count_tables;
+    const uint8_t *sequence_ptr = sequence; 
+    const uint8_t *qualities_ptr = qualities;
+    const uint8_t *sequence_end_ptr = sequence + sequence_length;
+    staging_counttable_t *staging_count_ptr = staging_count_tables;
+    while(sequence_ptr < sequence_end_ptr) {
+        uint8_t c = *sequence_ptr;
+        uint8_t q = *qualities_ptr - phred_offset;
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Not a valid phred character: %c", *qualities_ptr
+            );
+            return -1;
         }
-    } else {
-        counttable_t *count_tables = self->count_tables;
-        for (size_t i=0; i < (size_t)sequence_length; i+=1) {
-            uint8_t c = sequence[i];
-            uint8_t q = qualities[i] - phred_offset;
-            if (q > PHRED_MAX) {
-                PyErr_Format(
-                    PyExc_ValueError, 
-                    "Not a valid phred character: %c", qualities[i]
-                );
-                return -1;
-            }
-            uint8_t q_index = phred_to_index(q);
-            uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-            count_tables[i][q_index][c_index] += 1;
-            base_counts[c_index] += 1;
-            accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
-        }
+        uint8_t q_index = phred_to_index(q);
+        uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
+        staging_count_ptr[0][q_index][c_index] += 1;
+        base_counts[c_index] += 1;
+        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+        sequence_ptr += 1; 
+        qualities_ptr += 1;
+        staging_count_ptr +=1;
     }
     uint64_t at_counts = base_counts[A] + base_counts[T];
     uint64_t gc_counts = base_counts[C] + base_counts[G];
