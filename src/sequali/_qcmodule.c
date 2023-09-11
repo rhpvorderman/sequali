@@ -1963,7 +1963,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     }
 
     self->number_of_reads += 1;
-    tile_quality->length_counts[sequence_length] += 1;
+    tile_quality->length_counts[sequence_length - 1] += 1;
     double *total_errors = tile_quality->total_errors;
     double *error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
