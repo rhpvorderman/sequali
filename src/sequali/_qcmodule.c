@@ -1968,6 +1968,76 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     double *error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
     const uint8_t *qualities_ptr = qualities;
+    #ifdef __SSE2__
+    const uint8_t *qualities_vec_end = qualities_end - sizeof(__m128i);
+    while (qualities_ptr < qualities_vec_end) {
+        __m128i phreds = _mm_loadu_si128((__m128i *)qualities_ptr);
+        __m128i too_low_phreds = _mm_cmplt_epi8(phreds, _mm_set1_epi8(phred_offset));
+        __m128i too_high_phreds = _mm_cmpgt_epi8(phreds, _mm_set1_epi8(126));
+        if (_mm_movemask_epi8(_mm_or_si128(too_low_phreds, too_high_phreds))) {
+            /* Find the culprit in the non-vectorized loop*/
+            break;
+        }
+        __m128d current_errors0 = _mm_loadu_pd(error_cursor + 0);
+        __m128d sequence_errors0 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[0] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[1] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 0, _mm_add_pd(current_errors0, sequence_errors0));
+
+        __m128d current_errors2 = _mm_loadu_pd(error_cursor + 2);
+        __m128d sequence_errors2 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[2] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[3] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 2, _mm_add_pd(current_errors2, sequence_errors2));
+        
+        __m128d current_errors4 = _mm_loadu_pd(error_cursor + 4);
+        __m128d sequence_errors4 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[4] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[5] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 4, _mm_add_pd(current_errors4, sequence_errors4));
+        
+        __m128d current_errors6 = _mm_loadu_pd(error_cursor + 6);
+        __m128d sequence_errors6 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[6] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[7] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 6, _mm_add_pd(current_errors6, sequence_errors6));
+        
+        __m128d current_errors8 = _mm_loadu_pd(error_cursor + 8);
+        __m128d sequence_errors8 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[8] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[9] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 8, _mm_add_pd(current_errors8, sequence_errors8));
+        
+        __m128d current_errors10 = _mm_loadu_pd(error_cursor + 10);
+        __m128d sequence_errors10 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[10] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[11] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 10, _mm_add_pd(current_errors10, sequence_errors10));
+        
+        __m128d current_errors12 = _mm_loadu_pd(error_cursor + 12);
+        __m128d sequence_errors12 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[12] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[13] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 12, _mm_add_pd(current_errors12, sequence_errors12));
+        
+        __m128d current_errors14 = _mm_loadu_pd(error_cursor + 14);
+        __m128d sequence_errors14 = _mm_set_pd(
+            SCORE_TO_ERROR_RATE[qualities_ptr[14] - phred_offset],
+            SCORE_TO_ERROR_RATE[qualities_ptr[15] - phred_offset]
+        );
+        _mm_storeu_pd(error_cursor + 14, _mm_add_pd(current_errors14, sequence_errors14));
+
+        error_cursor += sizeof(__m128i);
+        qualities_ptr += sizeof(__m128i);
+    }
+    #endif
     while (qualities_ptr < qualities_end) {
         uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
