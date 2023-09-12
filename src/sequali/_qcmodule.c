@@ -1979,56 +1979,56 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
             break;
         }
         __m128d current_errors0 = _mm_loadu_pd(error_cursor + 0);
-        __m128d sequence_errors0 = _mm_set_pd(
+        __m128d sequence_errors0 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[0] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[1] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 0, _mm_add_pd(current_errors0, sequence_errors0));
 
         __m128d current_errors2 = _mm_loadu_pd(error_cursor + 2);
-        __m128d sequence_errors2 = _mm_set_pd(
+        __m128d sequence_errors2 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[2] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[3] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 2, _mm_add_pd(current_errors2, sequence_errors2));
         
         __m128d current_errors4 = _mm_loadu_pd(error_cursor + 4);
-        __m128d sequence_errors4 = _mm_set_pd(
+        __m128d sequence_errors4 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[4] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[5] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 4, _mm_add_pd(current_errors4, sequence_errors4));
         
         __m128d current_errors6 = _mm_loadu_pd(error_cursor + 6);
-        __m128d sequence_errors6 = _mm_set_pd(
+        __m128d sequence_errors6 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[6] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[7] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 6, _mm_add_pd(current_errors6, sequence_errors6));
         
         __m128d current_errors8 = _mm_loadu_pd(error_cursor + 8);
-        __m128d sequence_errors8 = _mm_set_pd(
+        __m128d sequence_errors8 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[8] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[9] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 8, _mm_add_pd(current_errors8, sequence_errors8));
         
         __m128d current_errors10 = _mm_loadu_pd(error_cursor + 10);
-        __m128d sequence_errors10 = _mm_set_pd(
+        __m128d sequence_errors10 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[10] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[11] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 10, _mm_add_pd(current_errors10, sequence_errors10));
         
         __m128d current_errors12 = _mm_loadu_pd(error_cursor + 12);
-        __m128d sequence_errors12 = _mm_set_pd(
+        __m128d sequence_errors12 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[12] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[13] - phred_offset]
         );
         _mm_storeu_pd(error_cursor + 12, _mm_add_pd(current_errors12, sequence_errors12));
         
         __m128d current_errors14 = _mm_loadu_pd(error_cursor + 14);
-        __m128d sequence_errors14 = _mm_set_pd(
+        __m128d sequence_errors14 = _mm_setr_pd(
             SCORE_TO_ERROR_RATE[qualities_ptr[14] - phred_offset],
             SCORE_TO_ERROR_RATE[qualities_ptr[15] - phred_offset]
         );
