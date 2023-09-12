@@ -2087,7 +2087,7 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
            100 are length 150 and a 100 are length 120. This means we have 
            a 100 bases at each position 120-150 and 200 bases at 0-120. */
         uint64_t total_bases = 0;
-        for (size_t j=tile_length - 1; tile_length<0; j-=1) {
+        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
             total_bases += length_counts[j];
             double error_count = total_errors[j];
             double average = error_count / (double)total_bases;
@@ -2150,7 +2150,7 @@ PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore)
            100 are length 150 and a 100 are length 120. This means we have 
            a 100 bases at each position 120-150 and 200 bases at 0-120. */
         uint64_t total_bases = 0;
-        for (size_t j=tile_length - 1; tile_length<0; j-=1) {
+        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
             total_bases += length_counts[j];
             PyObject *summed_error_obj = PyFloat_FromDouble(total_errors[j]);
             PyObject *count_obj = PyLong_FromUnsignedLongLong(total_bases);
