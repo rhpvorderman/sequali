@@ -1774,16 +1774,16 @@ static PyTypeObject Adapteruint64_type = {
  * Per Tile Quality *
  ********************/
 
-typedef struct _BaseQualityStruct {
-    uint64_t total_bases;
-    double total_error;  /* double for now, fixed point might be better */ 
-} BaseQuality;
+typedef struct _TileQualityStruct {
+    uint64_t *length_counts; 
+    double *total_errors;
+} TileQuality;
 
 typedef struct _PerTileQualityStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     char skipped;
-    BaseQuality **base_qualities;
+    TileQuality *tile_qualities;
     size_t number_of_tiles;
     size_t max_length;
     size_t number_of_reads;
@@ -1794,10 +1794,11 @@ static void
 PerTileQuality_dealloc(PerTileQuality *self) {
     Py_XDECREF(self->skipped_reason);
     for (size_t i=0; i < self->number_of_tiles; i++) {
-        BaseQuality *tile_quals = self->base_qualities[i];
-        PyMem_Free(tile_quals);
+        TileQuality tile_qual = self->tile_qualities[i];
+        PyMem_Free(tile_qual.length_counts);
+        PyMem_Free(tile_qual.total_errors);
     }
-    PyMem_Free(self->base_qualities);
+    PyMem_Free(self->tile_qualities);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -1812,7 +1813,7 @@ PerTileQuality__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     PerTileQuality *self = PyObject_New(PerTileQuality, type);
     self->max_length = 0;
     self->phred_offset = phred_offset;
-    self->base_qualities = NULL;
+    self->tile_qualities = NULL;
     self->number_of_reads = 0;
     self->number_of_tiles = 0;
     self->skipped = 0;
@@ -1826,16 +1827,16 @@ PerTileQuality_resize_tile_array(PerTileQuality *self, size_t highest_tile)
     if (highest_tile < self->number_of_tiles) {
         return 0;
     }
-    BaseQuality **new_qualites = PyMem_Realloc(
-        self->base_qualities, highest_tile * sizeof(BaseQuality *));
-    if (new_qualites == NULL) {
+    TileQuality *new_qualities = PyMem_Realloc(
+        self->tile_qualities, highest_tile * sizeof(TileQuality));
+    if (new_qualities == NULL) {
         PyErr_NoMemory();
         return -1;
     }
     size_t previous_number_of_tiles = self->number_of_tiles;
-    memset(new_qualites + previous_number_of_tiles, 0, 
-           (highest_tile - previous_number_of_tiles) * sizeof(BaseQuality *));
-    self->base_qualities = new_qualites;
+    memset(new_qualities + previous_number_of_tiles, 0, 
+           (highest_tile - previous_number_of_tiles) * sizeof(TileQuality));
+    self->tile_qualities = new_qualities;
     self->number_of_tiles = highest_tile;
     return 0;
 };
@@ -1846,21 +1847,25 @@ PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length)
     if (new_length < self->max_length) {
         return 0;
     }
-    BaseQuality **base_qualities = self->base_qualities;
+    TileQuality *tile_qualities = self->tile_qualities;
     size_t number_of_tiles = self->number_of_tiles; 
     size_t old_length = self->max_length;
     for (size_t i=0; i<number_of_tiles; i++) {
-        BaseQuality *tile_quals = base_qualities[i];
-        if (tile_quals == NULL) {
+        TileQuality *tile_quality = tile_qualities + i;
+        if (tile_quality->length_counts == NULL && tile_quality->total_errors == NULL) {
             continue;
         }
-        BaseQuality *tmp_quals = PyMem_Realloc(tile_quals, new_length * sizeof(BaseQuality));
-        if (tmp_quals == NULL) {
+        uint64_t *length_counts = PyMem_Realloc(tile_quality->length_counts, new_length *sizeof(uint64_t));
+        double *total_errors = PyMem_Realloc(tile_quality->total_errors, new_length *sizeof(double));
+        
+        if (length_counts == NULL || total_errors == NULL) {
             PyErr_NoMemory();
             return -1;
         }
-        memset(tmp_quals + old_length, 0, (new_length - old_length) * sizeof(BaseQuality));
-        base_qualities[i] = tmp_quals;
+        memset(length_counts + old_length, 0, (new_length - old_length) * sizeof(uint64_t));
+        memset(total_errors + old_length, 0, (new_length - old_length) * sizeof(double));
+        tile_quality->length_counts = length_counts;
+        tile_quality->total_errors = total_errors;
     }
     self->max_length = new_length;
     return 0;
@@ -1943,29 +1948,38 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         }
     }
     
-    BaseQuality *tile_qualities = self->base_qualities[tile_id];
-    if (tile_qualities == NULL) {
-        tile_qualities = PyMem_Malloc(self->max_length * sizeof(BaseQuality));
-        if (tile_qualities == NULL) {
+    TileQuality *tile_quality = self->tile_qualities + tile_id;
+    if (tile_quality->length_counts == NULL && tile_quality->total_errors == NULL) {
+        uint64_t *length_counts = PyMem_Malloc(self->max_length *sizeof(uint64_t));
+        double *total_errors = PyMem_Malloc(self->max_length * sizeof(double));
+        if (length_counts == NULL || total_errors == NULL) {
             PyErr_NoMemory();
             return -1;
         }
-        memset(tile_qualities, 0, self->max_length * sizeof(BaseQuality));
-        self->base_qualities[tile_id] = tile_qualities;
+        memset(length_counts, 0, self->max_length * sizeof(uint64_t));
+        memset(total_errors, 0, self->max_length * sizeof(double));
+        tile_quality->length_counts = length_counts;
+        tile_quality->total_errors = total_errors;
     }
 
     self->number_of_reads += 1;
-    for (size_t i=0; i < sequence_length; i+=1) {
-        uint8_t q = qualities[i] - phred_offset;
+    tile_quality->length_counts[sequence_length - 1] += 1;
+    double *total_errors = tile_quality->total_errors;
+    double *error_cursor = total_errors;
+    const uint8_t *qualities_end = qualities + sequence_length;
+    const uint8_t *qualities_ptr = qualities;
+    while (qualities_ptr < qualities_end) {
+        uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
             PyErr_Format(
                 PyExc_ValueError,
-                "Not a valid phred character: %c", qualities[i]
+                "Not a valid phred character: %c", *qualities_ptr
             );
             return -1;
         }
-        tile_qualities[i].total_bases += 1;
-        tile_qualities[i].total_error += SCORE_TO_ERROR_RATE[q];
+        *error_cursor += SCORE_TO_ERROR_RATE[q];
+        qualities_ptr += 1;
+        error_cursor += 1;
     }
     return 0;
 }
@@ -2047,7 +2061,7 @@ PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
 static PyObject *
 PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
 {
-    BaseQuality **base_qualities = self->base_qualities;
+    TileQuality *tile_qualities = self->tile_qualities;
     size_t maximum_tile = self->number_of_tiles;
     size_t tile_length = self->max_length;
     PyObject *result = PyList_New(0);
@@ -2056,8 +2070,10 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
     }
 
     for (size_t i=0; i<maximum_tile; i++) {
-        BaseQuality *quals = base_qualities[i];
-        if (quals == NULL) {
+        TileQuality *tile_quality = tile_qualities + i;
+        double *total_errors = tile_quality->total_errors;
+        uint64_t *length_counts = tile_quality->length_counts;
+        if (length_counts == NULL && total_errors == NULL) {
             continue;
         }
         PyObject *entry = PyTuple_New(2);
@@ -2067,10 +2083,15 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
             Py_DECREF(result);
             return PyErr_NoMemory();
         }
-        for (size_t j=0; j<tile_length; j++) {
-            BaseQuality qual_entry = quals[j];
-            double average = qual_entry.total_error / 
-                ((double)qual_entry.total_bases);
+        
+        /* Work back from the lenght counts. If we have 200 reads total and a
+           100 are length 150 and a 100 are length 120. This means we have 
+           a 100 bases at each position 120-150 and 200 bases at 0-120. */
+        uint64_t total_bases = 0;
+        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
+            total_bases += length_counts[j];
+            double error_count = total_errors[j];
+            double average = error_count / (double)total_bases;
             PyObject *average_obj = PyFloat_FromDouble(average);
             if (average_obj == NULL) {
                 Py_DECREF(result);
@@ -2103,7 +2124,7 @@ PyDoc_STRVAR(PerTileQuality_get_tile_counts__doc__,
 static PyObject *
 PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
 {
-    BaseQuality **base_qualities = self->base_qualities;
+    TileQuality *tile_qualities = self->tile_qualities;
     size_t maximum_tile = self->number_of_tiles;
     size_t tile_length = self->max_length;
     PyObject *result = PyList_New(0);
@@ -2112,8 +2133,10 @@ PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore)
     }
 
     for (size_t i=0; i<maximum_tile; i++) {
-        BaseQuality *quals = base_qualities[i];
-        if (quals == NULL) {
+        TileQuality *tile_quality = tile_qualities + i;
+        double *total_errors = tile_quality->total_errors;
+        uint64_t *length_counts = tile_quality->length_counts;
+        if (length_counts == NULL && total_errors == NULL) {
             continue;
         }
         PyObject *entry = PyTuple_New(3);
@@ -2124,10 +2147,14 @@ PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore)
             Py_DECREF(result);
             return PyErr_NoMemory();
         }
-        for (size_t j=0; j<tile_length; j++) {
-            BaseQuality qual_entry = quals[j];
-            PyObject *summed_error_obj = PyFloat_FromDouble(qual_entry.total_error);
-            PyObject *count_obj = PyLong_FromUnsignedLongLong(qual_entry.total_bases);
+        /* Work back from the lenght counts. If we have 200 reads total and a
+           100 are length 150 and a 100 are length 120. This means we have 
+           a 100 bases at each position 120-150 and 200 bases at 0-120. */
+        uint64_t total_bases = 0;
+        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
+            total_bases += length_counts[j];
+            PyObject *summed_error_obj = PyFloat_FromDouble(total_errors[j]);
+            PyObject *count_obj = PyLong_FromUnsignedLongLong(total_bases);
             if (summed_error_obj == NULL || count_obj == NULL) {
                 Py_DECREF(result);
                 return PyErr_NoMemory();
