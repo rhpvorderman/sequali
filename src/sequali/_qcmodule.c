@@ -1977,8 +1977,9 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
             );
             return -1;
         }
-        error_cursor[0] += SCORE_TO_ERROR_RATE[q];
+        *error_cursor += SCORE_TO_ERROR_RATE[q];
         qualities_ptr += 1;
+        error_cursor += 1;
     }
     return 0;
 }
