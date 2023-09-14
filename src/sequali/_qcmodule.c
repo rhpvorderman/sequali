@@ -1554,6 +1554,31 @@ static inline int bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2) {
     __m128i res = _mm_adds_epu8(and, _mm_set1_epi8(127));
     return _mm_movemask_epi8(res);
 }
+
+static inline __m128i
+update_adapter_count_array_sse2(
+    size_t position, 
+    __m128i R, 
+    __m128i already_found,
+    MachineWordPatternMatcherSSE2 *matcher,
+    uint64_t **adapter_counter) 
+{
+    size_t number_of_adapters = matcher->number_of_sequences;
+    for (size_t i=0; i < number_of_adapters; i++) {
+        AdapterSequenceSSE2 *adapter = matcher->sequences + i;
+        __m128i adapter_found_mask = adapter->found_mask;
+        if (bitwise_and_nonzero_si128(adapter_found_mask, already_found)) {
+            continue;
+        }
+        if (bitwise_and_nonzero_si128(R, adapter_found_mask)) {
+            size_t found_position = position - adapter->adapter_length + 1;
+            adapter_counter[adapter->adapter_index][found_position] += 1;
+            // Make sure we only find the adapter once at the earliest position;
+            already_found = _mm_or_si128(already_found, adapter_found_mask);
+        }
+    }
+    return already_found;
+}
 #endif
 
 static int 
@@ -1617,21 +1642,8 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
             __m128i mask = bitmask[index];
             R = _mm_and_si128(R, mask);
             if (bitwise_and_nonzero_si128(R, found_mask)) {
-                /* Check which adapter was found */
-                size_t number_of_adapters = matcher->number_of_sequences;
-                for (size_t k=0; k < number_of_adapters; k++) {
-                    AdapterSequenceSSE2 *adapter = matcher->sequences + k;
-                    __m128i adapter_found_mask = adapter->found_mask;
-                    if (bitwise_and_nonzero_si128(adapter_found_mask, already_found)) {
-                        continue;
-                    }
-                    if (bitwise_and_nonzero_si128(R, adapter_found_mask)) {
-                        size_t found_position = j - adapter->adapter_length + 1;
-                        self->adapter_counter[adapter->adapter_index][found_position] += 1;
-                        // Make sure we only find the adapter once at the earliest position;
-                        already_found = _mm_or_si128(already_found, adapter_found_mask);
-                    }
-                }
+                already_found = update_adapter_count_array_sse2(
+                    j, R, already_found, matcher, self->adapter_counter);
             }
         }
     }
