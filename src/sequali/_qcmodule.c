@@ -1627,23 +1627,64 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
         }
     }
     #ifdef __SSE2__
-    for (size_t i=0; i<self->number_of_sse2_matchers; i++){
-        MachineWordPatternMatcherSSE2 *matcher = self->sse2_matchers + i;
-        __m128i found_mask = matcher->found_mask;
-        __m128i init_mask = matcher->init_mask;
-        __m128i R = _mm_setzero_si128();
-        __m128i *bitmask = matcher->bitmasks;
-        __m128i already_found = _mm_setzero_si128();
-
-        for (size_t j=0; j<sequence_length; j++) {
-            R = _mm_slli_epi64(R, 1);
-            R = _mm_or_si128(R, init_mask);
-            uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[j]];
-            __m128i mask = bitmask[index];
-            R = _mm_and_si128(R, mask);
-            if (bitwise_and_nonzero_si128(R, found_mask)) {
-                already_found = update_adapter_count_array_sse2(
-                    j, R, already_found, matcher, self->adapter_counter);
+    size_t current_matcher_index = 0;
+    size_t number_of_sse2_matchers = self->number_of_sse2_matchers;
+    while (current_matcher_index < number_of_sse2_matchers) {
+        size_t remaining_matchers = number_of_sse2_matchers - current_matcher_index;
+        if (remaining_matchers == 1) {
+            MachineWordPatternMatcherSSE2 *matcher = self->sse2_matchers + current_matcher_index;
+            __m128i found_mask = matcher->found_mask;
+            __m128i init_mask = matcher->init_mask;
+            __m128i R = _mm_setzero_si128();
+            __m128i *bitmask = matcher->bitmasks;
+            __m128i already_found = _mm_setzero_si128();
+            current_matcher_index += 1;
+            for (size_t pos=0; pos<sequence_length; pos++) {
+                R = _mm_slli_epi64(R, 1);
+                R = _mm_or_si128(R, init_mask);
+                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+                __m128i mask = bitmask[index];
+                R = _mm_and_si128(R, mask);
+                if (bitwise_and_nonzero_si128(R, found_mask)) {
+                    already_found = update_adapter_count_array_sse2(
+                        pos, R, already_found, matcher, self->adapter_counter);
+                }
+            }
+        } else {
+            /* Since processors can have out of order execution, two 
+               independent matchers at the same time can have a speed 
+               advantage. */
+            MachineWordPatternMatcherSSE2 *matcher1 = self->sse2_matchers + current_matcher_index;
+            MachineWordPatternMatcherSSE2 *matcher2 = self->sse2_matchers + current_matcher_index + 1;
+            __m128i found_mask1 = matcher1->found_mask;
+            __m128i found_mask2 = matcher2->found_mask;
+            __m128i init_mask1 = matcher1->init_mask;
+            __m128i init_mask2 = matcher2->init_mask;
+            __m128i R1 = _mm_setzero_si128();
+            __m128i R2 = _mm_setzero_si128();
+            __m128i *bitmasks1 = matcher1->bitmasks;
+            __m128i *bitmasks2 = matcher2->bitmasks;
+            __m128i already_found1 = _mm_setzero_si128();
+            __m128i already_found2 = _mm_setzero_si128();
+            current_matcher_index += 2;            
+            for (size_t pos=0; pos<sequence_length; pos++) {
+                R1 = _mm_slli_epi64(R1, 1);
+                R2 = _mm_slli_epi64(R2, 1);
+                R1 = _mm_or_si128(R1, init_mask2);
+                R2 = _mm_or_si128(R2, init_mask2);
+                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+                __m128i mask1 = bitmasks1[index];
+                __m128i mask2 = bitmasks2[index];
+                R1 = _mm_and_si128(R1, mask1);
+                R2 = _mm_and_si128(R2, mask2);
+                if (bitwise_and_nonzero_si128(R1, found_mask1)) {
+                    already_found1 = update_adapter_count_array_sse2(
+                        pos, R1, already_found1, matcher1, self->adapter_counter);
+                }
+                if (bitwise_and_nonzero_si128(R2, found_mask2)) {
+                    already_found2 = update_adapter_count_array_sse2(
+                        pos, R2, already_found2, matcher2, self->adapter_counter);
+                }
             }
         }
     }
