@@ -1670,7 +1670,7 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
             for (size_t pos=0; pos<sequence_length; pos++) {
                 R1 = _mm_slli_epi64(R1, 1);
                 R2 = _mm_slli_epi64(R2, 1);
-                R1 = _mm_or_si128(R1, init_mask2);
+                R1 = _mm_or_si128(R1, init_mask1);
                 R2 = _mm_or_si128(R2, init_mask2);
                 uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
                 __m128i mask1 = bitmasks1[index];
