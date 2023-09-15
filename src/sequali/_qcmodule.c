@@ -1644,7 +1644,7 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
             }
         }
         #ifdef __SSE2__
-        else if (remaining_vector_matchers == 1) {
+        else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 0) {
             MachineWordPatternMatcherSSE2 *matcher = self->sse2_matchers + vector_matcher_index;
             __m128i found_mask = matcher->found_mask;
             __m128i init_mask = matcher->init_mask;
@@ -1661,6 +1661,42 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
                 if (bitwise_and_nonzero_si128(R, found_mask)) {
                     already_found = update_adapter_count_array_sse2(
                         pos, R, already_found, matcher, self->adapter_counter);
+                }
+            }
+        } else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 1) {
+            MachineWordPatternMatcherSSE2 *vector_matcher = self->sse2_matchers + vector_matcher_index;
+            MachineWordPatternMatcher *scalar_matcher = self->matchers + scalar_matcher_index;
+            __m128i vector_found_mask = vector_matcher->found_mask;
+            bitmask_t scalar_found_mask = scalar_matcher->found_mask;
+            __m128i vector_init_mask = vector_matcher->init_mask;
+            bitmask_t scalar_init_mask = scalar_matcher->init_mask;
+            __m128i vector_R = _mm_setzero_si128();
+            bitmask_t scalar_R = 0;
+            __m128i *vector_bitmasks = vector_matcher->bitmasks;
+            bitmask_t *scalar_bitmasks = scalar_matcher->bitmasks;
+            __m128i vector_already_found = _mm_setzero_si128();
+            bitmask_t scalar_already_found = 0;
+            vector_matcher_index += 1;
+            scalar_matcher_index += 1;
+            for (size_t pos=0; pos<sequence_length; pos++) {
+                vector_R = _mm_slli_epi64(vector_R, 1);
+                scalar_R <<= 1;
+                vector_R = _mm_or_si128(vector_R, vector_init_mask);
+                scalar_R |= scalar_init_mask;
+                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+                scalar_R &= scalar_bitmasks[index];
+                __m128i vector_mask = vector_bitmasks[index];
+                vector_R = _mm_and_si128(vector_R, vector_mask);
+                if (bitwise_and_nonzero_si128(vector_R, vector_found_mask)) {
+                    vector_already_found = update_adapter_count_array_sse2(
+                        pos, vector_R, vector_already_found, vector_matcher, 
+                        self->adapter_counter);
+                }
+                if (scalar_R & scalar_found_mask) {
+                    scalar_already_found = update_adapter_count_array(
+                        pos, scalar_R, scalar_already_found, scalar_matcher,
+                        self->adapter_counter
+                    );
                 }
             }
         } else if (remaining_vector_matchers > 1) {
