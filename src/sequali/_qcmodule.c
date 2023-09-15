@@ -1663,6 +1663,13 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
                         pos, R, already_found, matcher, self->adapter_counter);
                 }
             }
+        /* In the cases below we take advantage of out of order execution on the CPU 
+           by checking two matchers at the same time. Either two sse2 matchers, or 
+           a bitmask_t matcher and a vector matcher. Shift-AND is a highly dependent 
+           chain of actions, meaning there is no opportunity for the CPU to do two
+           thing simultaneously. By doing two shift-AND routines at the same time, 
+           there are two independent paths that the CPU can evaluate using out of
+           order execution. This leads to significant speedups. */
         } else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 1) {
             MachineWordPatternMatcherSSE2 *vector_matcher = self->sse2_matchers + vector_matcher_index;
             MachineWordPatternMatcher *scalar_matcher = self->matchers + scalar_matcher_index;
