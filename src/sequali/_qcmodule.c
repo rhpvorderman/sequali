@@ -1269,7 +1269,9 @@ typedef struct AdapterCounterStruct {
     size_t number_of_matchers;
     MachineWordPatternMatcher *matchers;
     size_t number_of_sse2_matchers;
+    #ifdef __SSE2__
     MachineWordPatternMatcherSSE2 *sse2_matchers;
+    #endif
 } AdapterCounter;
 
 static void AdapterCounter_dealloc(AdapterCounter *self) {
@@ -1439,7 +1441,9 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->number_of_matchers = 0;
     self->number_of_sequences = 0;
     self->number_of_sse2_matchers = 0;
+    #ifdef __SSE2__
     self->sse2_matchers = NULL;
+    #endif
     size_t adapter_index = 0;
     size_t matcher_index = 0;
     PyObject *adapter;
