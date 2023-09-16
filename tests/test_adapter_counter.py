@@ -80,13 +80,31 @@ def test_adapter_counter_add_read_no_view():
     error.match("bytes")
 
 
-def test_adapter_counter_matcher_multiple_machine_words():
-    adapters = [
+@pytest.mark.parametrize("adapters", [
+    [  # Creates 2 SSE vectors
         "A" * MAX_SEQUENCE_SIZE,
         "C" * MAX_SEQUENCE_SIZE,
         "G" * MAX_SEQUENCE_SIZE,
         "T" * MAX_SEQUENCE_SIZE,
-    ]
+    ],
+    [  # Creates 1 SSE Vector and one 64-bit integer.
+        "A" * MAX_SEQUENCE_SIZE,
+        "C" * MAX_SEQUENCE_SIZE,
+        "G" * MAX_SEQUENCE_SIZE,
+    ],
+    [  # Creates 1 SSE Vector.
+        "A" * MAX_SEQUENCE_SIZE,
+        "C" * MAX_SEQUENCE_SIZE,
+    ],
+    [  # Creates 2 SSE Vectors and one 64-bit integer.
+        "A" * MAX_SEQUENCE_SIZE,
+        "C" * MAX_SEQUENCE_SIZE,
+        "G" * MAX_SEQUENCE_SIZE,
+        "T" * MAX_SEQUENCE_SIZE,
+        "N" * MAX_SEQUENCE_SIZE,
+    ],
+])
+def test_adapter_counter_matcher_multiple_machine_words(adapters):
     sequence = ("GATTACA" * 20).join(adapters)
     read = FastqRecordView("name", sequence, "H" * len(sequence))
     counter = AdapterCounter(adapters)
