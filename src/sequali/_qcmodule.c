@@ -804,6 +804,45 @@ PyTypeObject FastqParser_Type = {
 };
 
 /**************
+ * BAM PARSER *
+ * ************/
+
+typedef struct _BamParserStruct {
+
+} BamParser;
+
+static void 
+BamParser_dealloc(BamParser *self) 
+{
+
+}
+
+static PyObject *
+BamParser__new__(PyObject *module, PyObject *args, PyObject *kwargs) 
+{
+
+}
+
+static PyObject *
+BamParser__iter__(BamParser *self) {
+
+}
+
+static PyObject *
+BamParser__next__(BamParser *self) {
+
+}
+
+PyTypeObject BamParser_Type = {
+    .tp_name = "_qc.BamParser",
+    .tp_basicsize = sizeof(BamParser),
+    .tp_dealloc = (destructor)BamParser_dealloc,
+    .tp_new = BamParser__new__,
+    .tp_iter = (iternextfunc)BamParser__iter__,
+    .tp_iternext = (iternextfunc)BamParser__next__
+};
+
+/**************
  * QC METRICS *
  **************/
 
@@ -3366,6 +3405,9 @@ PyInit__qc(void)
         return NULL;
     }
     if (python_module_add_type(m, &FastqParser_Type) != 0) {
+        return NULL;
+    }  
+    if (python_module_add_type(m, &BamParser_Type) != 0) {
         return NULL;
     }  
     if (python_module_add_type(m, &FastqRecordView_Type) != 0) {
