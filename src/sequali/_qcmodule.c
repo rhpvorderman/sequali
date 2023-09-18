@@ -846,6 +846,54 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      read_in_size);
         return NULL;
     }
+
+    /*Read BAM file header and skip ahead to the records */
+    PyObject *magic_and_header_size = PyObject_CallMethod(file_obj, "read", "n", 8);
+    if (magic_and_header_size == NULL) {
+        return NULL;
+    }
+    uint8_t *file_start = (uint8_t)PyBytes_AsString(magic_and_header_size);
+    if (file_start == NULL) {
+        return NULL;
+    }
+    if (memcmp(file_start, "BAM\1", 4) != 0) {
+        PyErr_Format(
+            "fileobj: %R, is not a BAM file. No BAM magic, instead found: %R", 
+            file_obj, magic_and_header_size);
+        return NULL;
+    }
+    uint32_t l_text = *(uint32_t *)(file_start + 4);
+    PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
+    if (PyBytes_GET_SIZE(header) != l_text) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        return NULL;
+    }
+    Py_DECREF(header);
+    PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
+    if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        return NULL;
+    }
+    uint32_t n_ref = *(uint32_t *)PyBytes_AS_STRING(n_ref_obj);
+    Py_DECREF(n_ref_obj);
+
+    for (size_t i=0; i < n_ref; i++) {
+        PyObject *l_name_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
+        if (PyBytes_GET_SIZE(l_name_obj) != 4) {
+           PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            return NULL;
+        }
+        size_t l_name = *(uint32_t *)PyBytes_AS_STRING(l_name_obj);
+        Py_DECREF(l_name_obj);
+        size_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
+        PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
+        if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
+              PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            return NULL;
+        }
+    }
+    /* The reader is now skipped ahead to the BAM Records */
+
     BamParser *self = PyObject_New(BamParser, type);
     self->read_in_buffer = PyMem_Malloc(read_in_size);
     if (self->read_in_buffer = NULL) {
