@@ -808,19 +808,59 @@ PyTypeObject FastqParser_Type = {
  * ************/
 
 typedef struct _BamParserStruct {
-
+    PyObject_HEAD 
+    uint8_t *record_start;
+    uint8_t *read_in_buffer_end; 
+    size_t read_in_size;
+    uint8_t *read_in_buffer;
+    size_t read_in_buffer_size;
+    size_t bytes_in_read_in;
+    struct FastqMeta *meta_buffer;
+    size_t meta_buffer_size;
+    PyObject *file_obj;
 } BamParser;
 
 static void 
 BamParser_dealloc(BamParser *self) 
 {
-
+    PyMem_Free(self->read_in_buffer);
+    PyMem_Free(self->meta_buffer);
+    Py_XDECREF(self->file_obj);
+    Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
-BamParser__new__(PyObject *module, PyObject *args, PyObject *kwargs) 
+BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
 {
-
+    PyObject *file_obj = NULL;
+    size_t read_in_size = 128 * 1024;
+    static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
+    static char *format = "O|n:FastqParser";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+        &file_obj, &read_in_size)) {
+        return NULL;
+    }
+    if (read_in_size < 1) {
+        PyErr_Format(PyExc_ValueError, 
+                     "initial_buffersize must be at least 1, got %zd",
+                     read_in_size);
+        return NULL;
+    }
+    BamParser *self = PyObject_New(BamParser, type);
+    self->read_in_buffer = PyMem_Malloc(read_in_size);
+    if (self->read_in_buffer = NULL) {
+        return PyErr_NoMemory();
+    }
+    self->read_in_buffer_size = read_in_size;
+    self->bytes_in_read_in = 0;
+    self->read_in_buffer_end = self->read_in_buffer;
+    self->record_start = self->read_in_buffer;
+    self->read_in_size = read_in_size;
+    self->meta_buffer = NULL;
+    self->meta_buffer_size = 0;
+    Py_INCREF(file_obj);
+    self->file_obj = file_obj;
+    return (PyObject *)self;
 }
 
 static PyObject *
