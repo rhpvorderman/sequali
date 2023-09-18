@@ -913,8 +913,25 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 
 static PyObject *
 BamParser__iter__(BamParser *self) {
-
+    Py_INCREF(self);
+    return self;
 }
+
+static struct BamRecordHeader {
+    uint32_t block_size;
+    int32_t reference_id; 
+    int32_t pos;
+    uint8_t l_read_name;
+    uint8_t mapq;
+    uint16_t bin;
+    uint16_t n_cigar_op;
+    uint16_t flag;
+    uint32_t l_seq;
+    int32_t next_ref_id;
+    int32_t next_pos;
+    int32_t tlen;
+};
+
 
 static PyObject *
 BamParser__next__(BamParser *self) {
