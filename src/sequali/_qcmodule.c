@@ -852,12 +852,13 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (magic_and_header_size == NULL) {
         return NULL;
     }
-    uint8_t *file_start = (uint8_t)PyBytes_AsString(magic_and_header_size);
+    uint8_t *file_start = (uint8_t *)PyBytes_AsString(magic_and_header_size);
     if (file_start == NULL) {
         return NULL;
     }
     if (memcmp(file_start, "BAM\1", 4) != 0) {
         PyErr_Format(
+            PyExc_ValueError,
             "fileobj: %R, is not a BAM file. No BAM magic, instead found: %R", 
             file_obj, magic_and_header_size);
         return NULL;
@@ -885,7 +886,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
         size_t l_name = *(uint32_t *)PyBytes_AS_STRING(l_name_obj);
         Py_DECREF(l_name_obj);
-        size_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
+        Py_ssize_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
         PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
         if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
               PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
@@ -896,7 +897,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 
     BamParser *self = PyObject_New(BamParser, type);
     self->read_in_buffer = PyMem_Malloc(read_in_size);
-    if (self->read_in_buffer = NULL) {
+    if (self->read_in_buffer == NULL) {
         return PyErr_NoMemory();
     }
     self->read_in_buffer_size = read_in_size;
@@ -914,10 +915,10 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 static PyObject *
 BamParser__iter__(BamParser *self) {
     Py_INCREF(self);
-    return self;
+    return (PyObject *)self;
 }
 
-static struct BamRecordHeader {
+struct BamRecordHeader {
     uint32_t block_size;
     int32_t reference_id; 
     int32_t pos;
