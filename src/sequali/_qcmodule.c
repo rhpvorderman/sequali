@@ -942,7 +942,7 @@ decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t lengt
     const uint8_t *dest_end_ptr_twoatatime = (uint8_t *)((size_t)dest_end_ptr & (~1ULL));
     while (dest_cursor < dest_end_ptr_twoatatime) {
         uint8_t encoded_nucs = *encoded_cursor;
-        uint8_t upper_nuc_index = encoded_nucs > 4; 
+        uint8_t upper_nuc_index = encoded_nucs >> 4; 
         uint8_t lower_nuc_index = encoded_nucs & 0b1111;
         dest_cursor[0] = nuc_lookup[upper_nuc_index];
         dest_cursor[1] = nuc_lookup[lower_nuc_index];
@@ -975,9 +975,9 @@ decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t len
     }
     #endif
     while (cursor < end_ptr) {
-        *dest = *cursor + 33; 
+        *dest_cursor = *cursor + 33; 
         cursor += 1;
-        dest += 1;    
+        dest_cursor += 1;    
     }
 }
 
