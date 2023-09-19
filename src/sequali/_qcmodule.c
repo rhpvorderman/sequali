@@ -1022,6 +1022,7 @@ BamParser__next__(BamParser *self) {
             Py_DECREF(new_bytes);
             return NULL;
         }
+        size_t record_offset = record_start - self->read_in_buffer;
         if (new_buffer_size > self->read_in_buffer_size) {
             uint8_t *tmp_read_in_buffer = PyMem_Realloc(self->read_in_buffer, new_buffer_size);
             if (tmp_read_in_buffer == NULL) {
@@ -1031,7 +1032,7 @@ BamParser__next__(BamParser *self) {
             self->read_in_buffer = tmp_read_in_buffer;
             self->read_in_buffer_size = new_buffer_size;
         }
-        memmove(self->read_in_buffer, record_start, leftover_size);
+        memmove(self->read_in_buffer, self->read_in_buffer + record_offset, leftover_size);
         memcpy(self->read_in_buffer + leftover_size, new_bytes_buf, new_bytes_size);
         Py_DECREF(new_bytes);
 
