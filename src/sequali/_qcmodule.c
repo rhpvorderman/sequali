@@ -931,6 +931,15 @@ struct BamRecordHeader {
     int32_t tlen;
 };
 
+static void 
+decode_bam_sequence(uint8_t *dest, uint8_t *encoded_sequence, size_t length) {
+
+}
+
+static void 
+decode_bam_qualities(uint8_t *dest, uint8_t *encoded_qualities, size_t length) {
+    
+}
 
 static PyObject *
 BamParser__next__(BamParser *self) {
