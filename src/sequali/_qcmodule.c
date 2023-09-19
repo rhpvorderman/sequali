@@ -932,13 +932,32 @@ struct BamRecordHeader {
 };
 
 static void 
-decode_bam_sequence(uint8_t *dest, uint8_t *encoded_sequence, size_t length) {
+decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
+{
 
 }
 
 static void 
-decode_bam_qualities(uint8_t *dest, uint8_t *encoded_qualities, size_t length) {
-    
+decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t length) 
+{
+    const uint8_t *end_ptr = encoded_qualities + length;
+    const uint8_t *cursor = encoded_qualities;
+    uint8_t *dest_cursor = dest; 
+    #ifdef __SSE2__
+    const uint8_t *vec_end_ptr = end_ptr - sizeof(__m128i);
+    while (cursor < vec_end_ptr) {
+        __m128i quals = _mm_loadu_si128((__m128i *)cursor);
+        __m128i phreds = _mm_add_epi8(quals, _mm_set1_epi8(33));
+        _mm_storeu_si128((__m128i *)dest_cursor, phreds);
+        cursor += sizeof(__m128i);
+        dest_cursor += sizeof(__m128i);
+    }
+    #endif
+    while (cursor < end_ptr) {
+        *dest = *cursor + 33; 
+        cursor += 1;
+        dest += 1;    
+    }
 }
 
 static PyObject *
