@@ -953,7 +953,7 @@ decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t lengt
     if (dest_cursor != dest_end_ptr) {
         /* There is a single encoded nuc left */
         uint8_t encoded_nucs = *encoded_cursor;
-        uint8_t upper_nuc_index = encoded_nucs > 4;
+        uint8_t upper_nuc_index = encoded_nucs >> 4;
         dest_cursor[0] = nuc_lookup[upper_nuc_index];
     }
 }
