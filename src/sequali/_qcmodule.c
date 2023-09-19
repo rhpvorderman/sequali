@@ -532,7 +532,7 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
     if (i < 0) {
         i = size + i;
     }
-    if (i < 0 || i > size) {
+    if (i < 0 || i >= size) {
         PyErr_SetString(PyExc_IndexError, "array index out of range");
         return NULL;
     }
