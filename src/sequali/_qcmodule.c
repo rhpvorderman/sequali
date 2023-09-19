@@ -934,6 +934,25 @@ struct BamRecordHeader {
 static void 
 decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
 {
+    /* Reuse a trick from sam_internal.h in htslib. Have a table to lookup 
+       two characters simultaneously.*/
+    static const char code2base[512] =
+        "===A=C=M=G=R=S=V=T=W=Y=H=K=D=B=N"
+        "A=AAACAMAGARASAVATAWAYAHAKADABAN"
+        "C=CACCCMCGCRCSCVCTCWCYCHCKCDCBCN"
+        "M=MAMCMMMGMRMSMVMTMWMYMHMKMDMBMN"
+        "G=GAGCGMGGGRGSGVGTGWGYGHGKGDGBGN"
+        "R=RARCRMRGRRRSRVRTRWRYRHRKRDRBRN"
+        "S=SASCSMSGSRSSSVSTSWSYSHSKSDSBSN"
+        "V=VAVCVMVGVRVSVVVTVWVYVHVKVDVBVN"
+        "T=TATCTMTGTRTSTVTTTWTYTHTKTDTBTN"
+        "W=WAWCWMWGWRWSWVWTWWWYWHWKWDWBWN"
+        "Y=YAYCYMYGYRYSYVYTYWYYYHYKYDYBYN"
+        "H=HAHCHMHGHRHSHVHTHWHYHHHKHDHBHN"
+        "K=KAKCKMKGKRKSKVKTKWKYKHKKKDKBKN"
+        "D=DADCDMDGDRDSDVDTDWDYDHDKDDDBDN"
+        "B=BABCBMBGBRBSBVBTBWBYBHBKBDBBBN"
+        "N=NANCNMNGNRNSNVNTNWNYNHNKNDNBNN";
     static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
     const uint8_t *dest_end_ptr = dest + length;
     uint8_t *dest_cursor = dest;
@@ -941,11 +960,9 @@ decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t lengt
     /* Do two at the time until it gets to the last even address. */
     const uint8_t *dest_end_ptr_twoatatime = (uint8_t *)((size_t)dest_end_ptr & (~1ULL));
     while (dest_cursor < dest_end_ptr_twoatatime) {
-        uint8_t encoded_nucs = *encoded_cursor;
-        uint8_t upper_nuc_index = encoded_nucs >> 4; 
-        uint8_t lower_nuc_index = encoded_nucs & 0b1111;
-        dest_cursor[0] = nuc_lookup[upper_nuc_index];
-        dest_cursor[1] = nuc_lookup[lower_nuc_index];
+        /* According to htslib, size_t cast helps the optimizer. 
+           Code confirmed to indeed run faster. */
+        memcpy(dest_cursor, code2base + ((size_t)*encoded_cursor * 2), 2);
         dest_cursor += 2;
         encoded_cursor += 1;
     }
