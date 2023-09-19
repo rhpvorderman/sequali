@@ -1105,7 +1105,7 @@ BamParser__next__(BamParser *self) {
                 self->meta_buffer_size = parsed_records;
             }
             struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
-            uint32_t sequence_offset = name_length + 1; // For '\n'
+            uint32_t sequence_offset = 1 + name_length + 1; // For '@' and '\n'
             uint32_t qualities_offset = sequence_offset + seq_length + 3; // for '\n+\n'
             meta->record_start = fastq_buffer_record_start;
             meta->name_length = name_length;
