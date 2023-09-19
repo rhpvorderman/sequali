@@ -934,7 +934,28 @@ struct BamRecordHeader {
 static void 
 decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
 {
-
+    static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
+    const uint8_t *dest_end_ptr = dest + length;
+    uint8_t *dest_cursor = dest;
+    const uint8_t *encoded_cursor = encoded_sequence;
+    /* Do two at the time until it gets to the last even address. */
+    const uint8_t *dest_end_ptr_twoatatime = (uint8_t *)((size_t)dest_end_ptr & (~1ULL));
+    while (dest_cursor < dest_end_ptr_twoatatime) {
+        uint8_t encoded_nucs = *encoded_cursor;
+        uint8_t upper_nuc_index = encoded_nucs > 4; 
+        uint8_t lower_nuc_index = encoded_nucs & 0b1111;
+        dest_cursor[0] = nuc_lookup[upper_nuc_index];
+        dest_cursor[1] = nuc_lookup[lower_nuc_index];
+        dest_cursor += 2;
+        encoded_cursor += 1;
+    }
+    assert((dest_end_ptr - dest_cursor) < 2);
+    if (dest_cursor != dest_end_ptr) {
+        /* There is a single encoded nuc left */
+        uint8_t encoded_nucs = *encoded_cursor;
+        uint8_t upper_nuc_index = encoded_nucs > 4;
+        dest_cursor[0] = nuc_lookup[upper_nuc_index];
+    }
 }
 
 static void 
