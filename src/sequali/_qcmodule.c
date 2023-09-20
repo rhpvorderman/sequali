@@ -1137,9 +1137,10 @@ BamParser__next__(BamParser *self) {
     }
     self->record_start = record_start;
     self->buffer_end = buffer_end;
-    return FastqRecordArrayView_FromPointerSizeAndObject(
+    PyObject *record_array = FastqRecordArrayView_FromPointerSizeAndObject(
         self->meta_buffer, parsed_records, fastq_buffer_obj);
-
+    Py_DECREF(fastq_buffer_obj);
+    return record_array;
 }
 
 PyTypeObject BamParser_Type = {
