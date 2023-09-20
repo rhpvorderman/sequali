@@ -29,6 +29,10 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #include "emmintrin.h"
 #endif
 
+#ifdef __SSSE3__
+#include "tmmintrin.h"
+#endif
+
 #if (PY_VERSION_HEX < 0x03090000)
     #define Py_SET_REFCNT(op, count) (Py_REFCNT(op) = count)
     #define Py_SET_SIZE(op, size) (Py_SIZE(op) = size)
@@ -975,6 +979,54 @@ decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t lengt
     const uint8_t *dest_end_ptr = dest + length;
     uint8_t *dest_cursor = dest;
     const uint8_t *encoded_cursor = encoded_sequence;
+    #ifdef __SSSE3__
+    const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i));
+    __m128i first_upper_shuffle = _mm_setr_epi8(
+        0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7, 0xff);
+    __m128i first_lower_shuffle = _mm_setr_epi8(
+        0xff, 0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7);
+    __m128i second_upper_shuffle = _mm_setr_epi8(
+        8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15, 0xff);
+    __m128i second_lower_shuffle = _mm_setr_epi8(
+        0xff, 8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15);
+    __m128i nuc_lookup_vec = _mm_lddqu_si128((__m128i *)nuc_lookup);
+    /* Work on 16 encoded characters at the time resulting in 32 decoded characters 
+       Examples are given for 8 encoded characters A until H to keep it readable.
+        Encoded stored as |AB|CD|EF|GH|
+        Shuffle into |AB|00|CD|00|EF|00|GH|00| and 
+                     |00|AB|00|CD|00|EF|00|GH| 
+        Shift upper to the right resulting into
+                     |0A|B0|0C|D0|0E|F0|0G|H0| and 
+                     |00|AB|00|CD|00|EF|00|GH|
+        Merge with or resulting into (X stands for garbage)
+                     |0A|XB|0C|XD|0E|XF|0G|XH|
+        Bitwise and with 0b1111 leads to:
+                     |0A|0B|0C|0D|0E|0F|0G|0H|
+        We can use the resulting 4-bit integers as indexes for the shuffle of 
+        the nucleotide lookup. */
+    while (dest_cursor < dest_vec_end_ptr) {
+        __m128i encoded = _mm_lddqu_si128((__m128i *)encoded_cursor);
+
+        __m128i first_upper = _mm_shuffle_epi8(encoded, first_upper_shuffle);
+        __m128i first_lower = _mm_shuffle_epi8(encoded, first_lower_shuffle);
+        __m128i shifted_first_upper = _mm_srli_epi64(first_upper, 4);
+        __m128i first_merged = _mm_or_si128(shifted_first_upper, first_lower);
+        __m128i first_indexes = _mm_and_si128(first_merged, _mm_set1_epi8(0b1111));
+        __m128i first_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, first_indexes);
+        _mm_storeu_si128((__m128i *)dest_cursor, first_nucleotides);
+
+        __m128i second_upper = _mm_shuffle_epi8(encoded, second_upper_shuffle);
+        __m128i second_lower = _mm_shuffle_epi8(encoded, second_lower_shuffle);
+        __m128i shifted_second_upper = _mm_srli_epi64(second_upper, 4);
+        __m128i second_merged = _mm_or_si128(shifted_second_upper, second_lower);
+        __m128i second_indexes = _mm_and_si128(second_merged, _mm_set1_epi8(0b1111));
+        __m128i second_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, second_indexes);
+        _mm_storeu_si128((__m128i *)(dest_cursor + 16), second_nucleotides);
+
+        encoded_cursor += sizeof(__m128i);
+        dest_cursor += 2 * sizeof(__m128i);
+    }
+    #endif
     /* Do two at the time until it gets to the last even address. */
     const uint8_t *dest_end_ptr_twoatatime = dest + (length & (~1ULL));
     while (dest_cursor < dest_end_ptr_twoatatime) {
