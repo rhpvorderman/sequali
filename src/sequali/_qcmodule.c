@@ -958,7 +958,7 @@ decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t lengt
     uint8_t *dest_cursor = dest;
     const uint8_t *encoded_cursor = encoded_sequence;
     /* Do two at the time until it gets to the last even address. */
-    const uint8_t *dest_end_ptr_twoatatime = (uint8_t *)((size_t)dest_end_ptr & (~1ULL));
+    const uint8_t *dest_end_ptr_twoatatime = dest + (length & (~1ULL));
     while (dest_cursor < dest_end_ptr_twoatatime) {
         /* According to htslib, size_t cast helps the optimizer. 
            Code confirmed to indeed run faster. */
