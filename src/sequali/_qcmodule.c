@@ -1002,15 +1002,21 @@ static PyObject *
 BamParser__next__(BamParser *self) {
     uint8_t *record_start = self->record_start;
     uint8_t *buffer_end = self->buffer_end;
+    size_t leftover_size = buffer_end - record_start;
+    memmove(self->read_in_buffer, record_start, leftover_size);
+    record_start = self->read_in_buffer;
+    buffer_end = record_start + leftover_size;
     size_t parsed_records = 0;
     PyObject *fastq_buffer_obj = NULL;
+
     while (parsed_records == 0) {
         /* Keep expanding input buffer until at least one record is parsed */
-        size_t leftover_size = buffer_end - record_start;
         size_t read_in_size;
-        if (leftover_size >= self->read_in_size) {
-        	// A FASTQ record does not fit, enlarge the buffer
-            read_in_size = self->read_in_size;
+        leftover_size = buffer_end - record_start;
+        if (leftover_size >= 4) {
+            // Immediately check how much the block is to load enough data;
+            uint32_t block_size = *(uint32_t *)record_start;
+            read_in_size = Py_MAX(block_size, self->read_in_size);
         } else {
         	// Fill up the buffer up to read_in_size
         	read_in_size = self->read_in_size - leftover_size;
@@ -1039,7 +1045,6 @@ BamParser__next__(BamParser *self) {
             Py_DECREF(new_bytes);
             return NULL;
         }
-        size_t record_offset = record_start - self->read_in_buffer;
         if (new_buffer_size > self->read_in_buffer_size) {
             uint8_t *tmp_read_in_buffer = PyMem_Realloc(self->read_in_buffer, new_buffer_size);
             if (tmp_read_in_buffer == NULL) {
@@ -1049,7 +1054,6 @@ BamParser__next__(BamParser *self) {
             self->read_in_buffer = tmp_read_in_buffer;
             self->read_in_buffer_size = new_buffer_size;
         }
-        memmove(self->read_in_buffer, self->read_in_buffer + record_offset, leftover_size);
         memcpy(self->read_in_buffer + leftover_size, new_bytes_buf, new_bytes_size);
         Py_DECREF(new_bytes);
 
