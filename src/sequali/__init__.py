@@ -14,13 +14,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, FastqParser, FastqRecordView, \
+from ._qc import AdapterCounter, BamParser, FastqParser, FastqRecordView, \
     PerTileQuality, QCMetrics, SequenceDuplication
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 
 __all__ = [
     "A", "C", "G", "N", "T",
     "AdapterCounter",
+    "BamParser",
     "FastqParser",
     "FastqRecordView",
     "PerTileQuality",
