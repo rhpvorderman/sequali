@@ -26,7 +26,8 @@ from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
-from .util import ProgressUpdater, guess_sequencing_technology_from_file
+from .util import (ProgressUpdater, guess_sequencing_technology_from_bam_header,
+                   guess_sequencing_technology_from_file)
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -83,13 +84,16 @@ def main():
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
         seqtech = guess_sequencing_technology_from_file(file)
+        if filename.endswith(".bam") or (
+                hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
+            reader = BamParser(file)
+            seqtech = guess_sequencing_technology_from_bam_header(reader.header)
+        else:
+            reader = FastqParser(file)
+            seqtech = guess_sequencing_technology_from_file(file)
         adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
         adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:
-            if filename.endswith(".bam"):
-                reader = BamParser(file)
-            else:
-                reader = FastqParser(file)
             for record_array in reader:
                 metrics.add_record_array(record_array)
                 per_tile_quality.add_record_array(record_array)

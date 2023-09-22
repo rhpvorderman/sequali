@@ -154,3 +154,20 @@ def fastq_header_is_nanopore(header: str):
         if hexadecimal and correct_lengths and has_ch and has_start_time:
             return True
     return False
+
+
+def guess_sequencing_technology_from_bam_header(bam_header: bytes):
+    header = bam_header.decode("utf-8")
+    lines = header.splitlines()
+    for line in lines:
+        if line.startswith("@RG"):
+            # Use 1: because the first split will be @RG
+            fields = line.split("\t")[1:]
+            for field in fields:
+                tag, value = field.split(":")
+                if tag == "PL":
+                    if value == "ONT":
+                        return "nanopore"
+                    elif value == "Illumina":
+                        return "illumina"
+    return None
