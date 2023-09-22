@@ -1,5 +1,4 @@
 import io
-import re
 from pathlib import Path
 
 import pytest
@@ -47,8 +46,26 @@ def test_truncated_record(end: int):
 
 
 def test_parse_header():
-    # TODO
+    with open(RAW_BAM, "rb") as fileobj:
+        bam_parser = BamParser(fileobj)
+        # No BAM magic, no size of header and no size of references
+        assert bam_parser.header == COMPLETE_HEADER[8:-4]
     pass
+
+
+@pytest.mark.parametrize("end", range(len(COMPLETE_HEADER)))
+def test_parse_truncated_header(end):
+    truncated_header = COMPLETE_HEADER[:end]
+    fileobj = io.BytesIO(truncated_header)
+    with pytest.raises(EOFError) as error:
+        BamParser(fileobj)
+    error.match("runcated BAM")
+
+
+def test_not_a_bam():
+    with pytest.raises(ValueError) as error:
+        BamParser(io.BytesIO(b"@my header"))
+    error.match("not a BAM")
 
 
 def test_fastq_parser_not_binary_error():

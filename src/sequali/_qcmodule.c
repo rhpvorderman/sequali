@@ -817,6 +817,7 @@ typedef struct _BamParserStruct {
     struct FastqMeta *meta_buffer;
     size_t meta_buffer_size;
     PyObject *file_obj;
+    PyObject *header;  // The BAM header
 } BamParser;
 
 static void 
@@ -825,6 +826,7 @@ BamParser_dealloc(BamParser *self)
     PyMem_Free(self->read_in_buffer);
     PyMem_Free(self->meta_buffer);
     Py_XDECREF(self->file_obj);
+    Py_XDECREF(self->header);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -855,6 +857,11 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (file_start == NULL) {
         return NULL;
     }
+    if (PyBytes_GET_SIZE(magic_and_header_size) < 8) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(magic_and_header_size);
+        return NULL;
+    }
     if (memcmp(file_start, "BAM\1", 4) != 0) {
         PyErr_Format(
             PyExc_ValueError,
@@ -863,15 +870,16 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     uint32_t l_text = *(uint32_t *)(file_start + 4);
+    Py_DECREF(magic_and_header_size);
     PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
     if (PyBytes_GET_SIZE(header) != l_text) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
         return NULL;
     }
-    Py_DECREF(header);
     PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
     if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(header);
         return NULL;
     }
     uint32_t n_ref = *(uint32_t *)PyBytes_AS_STRING(n_ref_obj);
@@ -880,7 +888,8 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     for (size_t i=0; i < n_ref; i++) {
         PyObject *l_name_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
         if (PyBytes_GET_SIZE(l_name_obj) != 4) {
-           PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            Py_DECREF(header);
             return NULL;
         }
         size_t l_name = *(uint32_t *)PyBytes_AS_STRING(l_name_obj);
@@ -888,7 +897,8 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_ssize_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
         PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
         if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
-              PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            Py_DECREF(header);
             return NULL;
         }
     }
@@ -907,6 +917,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->meta_buffer_size = 0;
     Py_INCREF(file_obj);
     self->file_obj = file_obj;
+    self->header = header;
     return (PyObject *)self;
 }
 
@@ -1147,13 +1158,20 @@ BamParser__next__(BamParser *self) {
     return record_array;
 }
 
+static PyMemberDef BamParser_members[] = {
+    {"header", T_OBJECT_EX, offsetof(BamParser, header), READONLY, 
+     "The BAM header"},
+    {NULL}
+};
+
 PyTypeObject BamParser_Type = {
     .tp_name = "_qc.BamParser",
     .tp_basicsize = sizeof(BamParser),
     .tp_dealloc = (destructor)BamParser_dealloc,
     .tp_new = BamParser__new__,
     .tp_iter = (iternextfunc)BamParser__iter__,
-    .tp_iternext = (iternextfunc)BamParser__next__
+    .tp_iternext = (iternextfunc)BamParser__next__,
+    .tp_members = BamParser_members,
 };
 
 /**************
