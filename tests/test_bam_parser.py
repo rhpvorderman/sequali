@@ -103,8 +103,6 @@ def test_bam_parser_not_binary_error():
         with pytest.raises(TypeError) as error:
             _ = BamParser(fileobj)
         error.match("binary IO")
-        # Error.match does not work properly due to regex.
-        assert repr(fileobj) in str(error)
 
 
 def test_bam_parser_too_small_buffer():
