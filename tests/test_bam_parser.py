@@ -10,6 +10,10 @@ import xopen
 DATA = Path(__file__).parent / "data"
 SIMPLE_BAM = DATA / "simple.unaligned.bam"
 RAW_BAM = DATA / "simple.raw.bam"  # No BGZF format blocks.
+ALIGNED_BAM = DATA / ("project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa."
+                      "markDuplicates.bam")
+COMPLETE_RECORD_WITH_HEADER = RAW_BAM.read_bytes()[:115]
+COMPLETE_HEADER = COMPLETE_RECORD_WITH_HEADER[:54]
 
 
 def test_bam_parser():
@@ -30,8 +34,34 @@ def test_bam_parser():
     assert len(records) == 3
 
 
-COMPLETE_RECORD_WITH_HEADER = RAW_BAM.read_bytes()[:115]
-COMPLETE_HEADER = COMPLETE_RECORD_WITH_HEADER[:54]
+def test_bam_parser_sequences_with_extended_header():
+    with xopen.xopen(ALIGNED_BAM, "rb") as fileobj:
+        parser = BamParser(fileobj)
+        record_arrays = list(parser)
+    assert len(record_arrays) == 1
+    records = record_arrays[0]
+    assert len(records) == 3
+    assert records[0].name() == "HWI-D00119:50:H7AP8ADXX:1:1104:8519:18990"
+    assert (records[0].sequence() ==
+            "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCTCTCCATGCATTTGGTATTTTCGTCT"
+            "GGGGGGTATGCACGCGATAGCATTGCGAGACGCTGG")
+    assert (records[0].qualities() ==
+            "CCCFFFFFHFFHHJIJJIJGGJJJJJJJJJJJJJIGHIIEHIJJJJJJIJJJJIBGGIIIHIIII"
+            "HHHHDD;9CCDEDDDDDDDDDDEDDDDDDDDDDDDD")
+    assert records[1].name() == "HWI-D00119:50:H7AP8ADXX:1:2104:18479:82511"
+    assert (records[1].sequence() ==
+            "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCTCTCCATGCATTTGGTATTTTCGTCT"
+            "GGGGGGTATGCACGCGATAGCATTGCGAGACGCTGG")
+    assert (records[1].qualities() ==
+            "CCCFFFFFHFFHHJJJJIJJJJIIJJJJJGIJJJJGIJJJJJJJJGJIJJIJJJGHIJJJJJJJI"
+            "HHHHDD@>CDDEDDDDDDDDDDEDDCDDDDD?BBD9")
+    assert records[2].name() == "HWI-D00119:50:H7AP8ADXX:1:2105:7076:23015"
+    assert (records[2].sequence() ==
+            "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCTCTCCATGCATTTGGTATTTTCGTCT"
+            "GGGGGGTATGCACGCGATAGCATTGCGAGACGCTGG")
+    assert (records[2].qualities() ==
+            "@@CFFFDFGFHHHJIIJIJIJJJJJJJIIJJJJIIJIJFIIJJJJIIIGIJJJJDHIJIIJIJJJ"
+            "HHGGCB>BDDDDDDDDDDDBDDEDDDDDDDDDDDDD")
 
 
 @pytest.mark.parametrize("end", range(len(COMPLETE_HEADER) + 1,
@@ -71,7 +101,7 @@ def test_not_a_bam():
 def test_bam_parser_not_binary_error():
     with xopen.xopen(SIMPLE_BAM, "rt", encoding="latin-1") as fileobj:
         with pytest.raises(TypeError) as error:
-            parser = BamParser(fileobj)
+            _ = BamParser(fileobj)
         error.match("binary IO")
         # Error.match does not work properly due to regex.
         assert repr(fileobj) in str(error)
