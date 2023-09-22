@@ -853,8 +853,13 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (magic_and_header_size == NULL) {
         return NULL;
     }
-    uint8_t *file_start = (uint8_t *)PyBytes_AsString(magic_and_header_size);
-    if (file_start == NULL) {
+    if (!PyBytes_CheckExact(magic_and_header_size)) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "file_obj %R is not a binary IO type, got %s",
+            file_obj, Py_TYPE(file_obj)->tp_name
+        );
+        Py_DECREF(magic_and_header_size);
         return NULL;
     }
     if (PyBytes_GET_SIZE(magic_and_header_size) < 8) {
@@ -862,6 +867,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(magic_and_header_size);
         return NULL;
     }
+    uint8_t *file_start = (uint8_t *)PyBytes_AS_STRING(magic_and_header_size);
     if (memcmp(file_start, "BAM\1", 4) != 0) {
         PyErr_Format(
             PyExc_ValueError,

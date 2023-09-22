@@ -13,18 +13,18 @@ RAW_BAM = DATA / "simple.raw.bam"  # No BGZF format blocks.
 
 
 def test_bam_parser():
-    with open(SIMPLE_BAM, "rb") as fileobj:
+    with xopen.xopen(SIMPLE_BAM, "rb") as fileobj:
         parser = BamParser(fileobj)
         record_arrays = list(parser)
     assert len(record_arrays) == 1
     records = record_arrays[0]
-    assert records[0].name() == "Myheader/1"
+    assert records[0].name() == "Myheader"
     assert records[0].sequence() == "GATTACA"
     assert records[0].qualities() == "HHHHHHH"
-    assert records[1].name() == "AnotherHeader/1"
+    assert records[1].name() == "AnotherHeader"
     assert records[1].sequence() == "ACATTAG"
     assert records[1].qualities() == "KKKKKKK"
-    assert records[2].name() == "YetAnotherHeader/1"
+    assert records[2].name() == "YetAnotherHeader"
     assert records[2].sequence() == "AAAATTTT"
     assert records[2].qualities() == "XKLLCCCC"
     assert len(records) == 3
@@ -68,16 +68,16 @@ def test_not_a_bam():
     error.match("not a BAM")
 
 
-def test_fastq_parser_not_binary_error():
+def test_bam_parser_not_binary_error():
     with xopen.xopen(SIMPLE_BAM, "rt", encoding="latin-1") as fileobj:
-        parser = BamParser(fileobj)
         with pytest.raises(TypeError) as error:
-            list(parser)
+            parser = BamParser(fileobj)
         error.match("binary IO")
-        error.match(repr(fileobj))
+        # Error.match does not work properly due to regex.
+        assert repr(fileobj) in str(error)
 
 
-def test_fastq_parser_too_small_buffer():
+def test_bam_parser_too_small_buffer():
     with pytest.raises(ValueError) as error:
         BamParser(io.BytesIO(), initial_buffersize=0)
     error.match("at least 1")
