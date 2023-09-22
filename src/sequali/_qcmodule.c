@@ -532,7 +532,7 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
     if (i < 0) {
         i = size + i;
     }
-    if (i < 0 || i > size) {
+    if (i < 0 || i >= size) {
         PyErr_SetString(PyExc_IndexError, "array index out of range");
         return NULL;
     }
@@ -801,6 +801,384 @@ PyTypeObject FastqParser_Type = {
     .tp_new = FastqParser__new__,
     .tp_iter = (iternextfunc)FastqParser__iter__,
     .tp_iternext = (iternextfunc)FastqParser__next__,
+};
+
+/**************
+ * BAM PARSER *
+ * ************/
+
+typedef struct _BamParserStruct {
+    PyObject_HEAD 
+    uint8_t *record_start;
+    uint8_t *buffer_end; 
+    size_t read_in_size;
+    uint8_t *read_in_buffer;
+    size_t read_in_buffer_size;
+    struct FastqMeta *meta_buffer;
+    size_t meta_buffer_size;
+    PyObject *file_obj;
+    PyObject *header;  // The BAM header
+} BamParser;
+
+static void 
+BamParser_dealloc(BamParser *self) 
+{
+    PyMem_Free(self->read_in_buffer);
+    PyMem_Free(self->meta_buffer);
+    Py_XDECREF(self->file_obj);
+    Py_XDECREF(self->header);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *
+BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
+{
+    PyObject *file_obj = NULL;
+    size_t read_in_size = 48 * 1024; // Slightly smaller than BGZF block size
+    static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
+    static char *format = "O|n:FastqParser";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+        &file_obj, &read_in_size)) {
+        return NULL;
+    }
+    if (read_in_size < 4) {
+        // At least 4 so the block_size of a new record can be immediately read.
+        PyErr_Format(PyExc_ValueError, 
+                     "initial_buffersize must be at least 4, got %zd",
+                     read_in_size);
+        return NULL;
+    }
+
+    /*Read BAM file header and skip ahead to the records */
+    PyObject *magic_and_header_size = PyObject_CallMethod(file_obj, "read", "n", 8);
+    if (magic_and_header_size == NULL) {
+        return NULL;
+    }
+    if (!PyBytes_CheckExact(magic_and_header_size)) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "file_obj %R is not a binary IO type, got %s",
+            file_obj, Py_TYPE(file_obj)->tp_name
+        );
+        Py_DECREF(magic_and_header_size);
+        return NULL;
+    }
+    if (PyBytes_GET_SIZE(magic_and_header_size) < 8) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(magic_and_header_size);
+        return NULL;
+    }
+    uint8_t *file_start = (uint8_t *)PyBytes_AS_STRING(magic_and_header_size);
+    if (memcmp(file_start, "BAM\1", 4) != 0) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "fileobj: %R, is not a BAM file. No BAM magic, instead found: %R", 
+            file_obj, magic_and_header_size);
+        return NULL;
+    }
+    uint32_t l_text = *(uint32_t *)(file_start + 4);
+    Py_DECREF(magic_and_header_size);
+    PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
+    if (PyBytes_GET_SIZE(header) != l_text) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        return NULL;
+    }
+    PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
+    if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
+        PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(header);
+        return NULL;
+    }
+    uint32_t n_ref = *(uint32_t *)PyBytes_AS_STRING(n_ref_obj);
+    Py_DECREF(n_ref_obj);
+
+    for (size_t i=0; i < n_ref; i++) {
+        PyObject *l_name_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
+        if (PyBytes_GET_SIZE(l_name_obj) != 4) {
+            PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            Py_DECREF(header);
+            return NULL;
+        }
+        size_t l_name = *(uint32_t *)PyBytes_AS_STRING(l_name_obj);
+        Py_DECREF(l_name_obj);
+        Py_ssize_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
+        PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
+        if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
+            PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+            Py_DECREF(header);
+            return NULL;
+        }
+    }
+    /* The reader is now skipped ahead to the BAM Records */
+
+    BamParser *self = PyObject_New(BamParser, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    self->read_in_buffer = NULL;
+    self->read_in_buffer_size = 0;
+    self->buffer_end = self->read_in_buffer;
+    self->record_start = self->read_in_buffer;
+    self->read_in_size = read_in_size;
+    self->meta_buffer = NULL;
+    self->meta_buffer_size = 0;
+    Py_INCREF(file_obj);
+    self->file_obj = file_obj;
+    self->header = header;
+    return (PyObject *)self;
+}
+
+static PyObject *
+BamParser__iter__(BamParser *self) {
+    Py_INCREF(self);
+    return (PyObject *)self;
+}
+
+struct BamRecordHeader {
+    uint32_t block_size;
+    int32_t reference_id; 
+    int32_t pos;
+    uint8_t l_read_name;
+    uint8_t mapq;
+    uint16_t bin;
+    uint16_t n_cigar_op;
+    uint16_t flag;
+    uint32_t l_seq;
+    int32_t next_ref_id;
+    int32_t next_pos;
+    int32_t tlen;
+};
+
+static void 
+decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
+{
+    /* Reuse a trick from sam_internal.h in htslib. Have a table to lookup 
+       two characters simultaneously.*/
+    static const char code2base[512] =
+        "===A=C=M=G=R=S=V=T=W=Y=H=K=D=B=N"
+        "A=AAACAMAGARASAVATAWAYAHAKADABAN"
+        "C=CACCCMCGCRCSCVCTCWCYCHCKCDCBCN"
+        "M=MAMCMMMGMRMSMVMTMWMYMHMKMDMBMN"
+        "G=GAGCGMGGGRGSGVGTGWGYGHGKGDGBGN"
+        "R=RARCRMRGRRRSRVRTRWRYRHRKRDRBRN"
+        "S=SASCSMSGSRSSSVSTSWSYSHSKSDSBSN"
+        "V=VAVCVMVGVRVSVVVTVWVYVHVKVDVBVN"
+        "T=TATCTMTGTRTSTVTTTWTYTHTKTDTBTN"
+        "W=WAWCWMWGWRWSWVWTWWWYWHWKWDWBWN"
+        "Y=YAYCYMYGYRYSYVYTYWYYYHYKYDYBYN"
+        "H=HAHCHMHGHRHSHVHTHWHYHHHKHDHBHN"
+        "K=KAKCKMKGKRKSKVKTKWKYKHKKKDKBKN"
+        "D=DADCDMDGDRDSDVDTDWDYDHDKDDDBDN"
+        "B=BABCBMBGBRBSBVBTBWBYBHBKBDBBBN"
+        "N=NANCNMNGNRNSNVNTNWNYNHNKNDNBNN";
+    static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
+    const uint8_t *dest_end_ptr = dest + length;
+    uint8_t *dest_cursor = dest;
+    const uint8_t *encoded_cursor = encoded_sequence;
+    /* Do two at the time until it gets to the last even address. */
+    const uint8_t *dest_end_ptr_twoatatime = dest + (length & (~1ULL));
+    while (dest_cursor < dest_end_ptr_twoatatime) {
+        /* According to htslib, size_t cast helps the optimizer. 
+           Code confirmed to indeed run faster. */
+        memcpy(dest_cursor, code2base + ((size_t)*encoded_cursor * 2), 2);
+        dest_cursor += 2;
+        encoded_cursor += 1;
+    }
+    assert((dest_end_ptr - dest_cursor) < 2);
+    if (dest_cursor != dest_end_ptr) {
+        /* There is a single encoded nuc left */
+        uint8_t encoded_nucs = *encoded_cursor;
+        uint8_t upper_nuc_index = encoded_nucs >> 4;
+        dest_cursor[0] = nuc_lookup[upper_nuc_index];
+    }
+}
+
+static void 
+decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t length) 
+{
+    const uint8_t *end_ptr = encoded_qualities + length;
+    const uint8_t *cursor = encoded_qualities;
+    uint8_t *dest_cursor = dest; 
+    #ifdef __SSE2__
+    const uint8_t *vec_end_ptr = end_ptr - sizeof(__m128i);
+    while (cursor < vec_end_ptr) {
+        __m128i quals = _mm_loadu_si128((__m128i *)cursor);
+        __m128i phreds = _mm_add_epi8(quals, _mm_set1_epi8(33));
+        _mm_storeu_si128((__m128i *)dest_cursor, phreds);
+        cursor += sizeof(__m128i);
+        dest_cursor += sizeof(__m128i);
+    }
+    #endif
+    while (cursor < end_ptr) {
+        *dest_cursor = *cursor + 33; 
+        cursor += 1;
+        dest_cursor += 1;    
+    }
+}
+
+static PyObject *
+BamParser__next__(BamParser *self) {
+    uint8_t *record_start = self->record_start;
+    uint8_t *buffer_end = self->buffer_end;
+    size_t leftover_size = buffer_end - record_start;
+    memmove(self->read_in_buffer, record_start, leftover_size);
+    record_start = self->read_in_buffer;
+    buffer_end = record_start + leftover_size;
+    size_t parsed_records = 0;
+    PyObject *fastq_buffer_obj = NULL;
+
+    while (parsed_records == 0) {
+        /* Keep expanding input buffer until at least one record is parsed */
+        size_t read_in_size;
+        leftover_size = buffer_end - record_start;
+        if (leftover_size >= 4) {
+            // Immediately check how much the block is to load enough data;
+            uint32_t block_size = *(uint32_t *)record_start;
+            read_in_size = Py_MAX(block_size, self->read_in_size);
+        } else {
+        	// Fill up the buffer up to read_in_size
+        	read_in_size = self->read_in_size - leftover_size;
+        }
+        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
+        if (new_bytes == NULL) {
+            Py_XDECREF(fastq_buffer_obj);
+            return NULL;
+        }
+        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
+        uint8_t *new_bytes_buf = (uint8_t *)PyBytes_AS_STRING(new_bytes);
+        size_t new_buffer_size = leftover_size + new_bytes_size;
+        if (new_buffer_size == 0) {
+            // Entire file is read
+            PyErr_SetNone(PyExc_StopIteration);
+            Py_DECREF(new_bytes);
+            Py_XDECREF(fastq_buffer_obj);
+            return NULL;
+        } else if (new_bytes_size == 0) {
+            // Incomplete record at the end of file;
+            PyErr_Format(
+                PyExc_EOFError,
+                "Incomplete record at the end of file %s", 
+                record_start);
+            Py_XDECREF(fastq_buffer_obj);
+            Py_DECREF(new_bytes);
+            return NULL;
+        }
+        if (new_buffer_size > self->read_in_buffer_size) {
+            uint8_t *tmp_read_in_buffer = PyMem_Realloc(self->read_in_buffer, new_buffer_size);
+            if (tmp_read_in_buffer == NULL) {
+                Py_XDECREF(fastq_buffer_obj);
+                return PyErr_NoMemory();
+            }
+            self->read_in_buffer = tmp_read_in_buffer;
+            self->read_in_buffer_size = new_buffer_size;
+        }
+        memcpy(self->read_in_buffer + leftover_size, new_bytes_buf, new_bytes_size);
+        Py_DECREF(new_bytes);
+
+        record_start = self->read_in_buffer;
+        self->record_start = record_start;
+        buffer_end = record_start + new_buffer_size;
+
+        /* Bam record consists of name, cigar, sequence, qualities and tags. 
+           Only space for name, sequence and qualities is needed. Worst case 
+           scenario space wise is that sequence and qualities are close to 100% 
+           of the bam record. Quality always maps one to one, but sequence is 
+           compressed and maps one to two. So that is a 3:4 ratio for BAM:FASTQ.
+        */
+        Py_ssize_t fastq_buffer_size = (new_buffer_size * 4 + 2) / 3;
+        if (fastq_buffer_obj == NULL) {
+            fastq_buffer_obj = PyBytes_FromStringAndSize(NULL, fastq_buffer_size);
+            if (fastq_buffer_obj == NULL) {
+                Py_XDECREF(fastq_buffer_obj);
+                return PyErr_NoMemory();
+            }
+        } else {
+            if (_PyBytes_Resize(&fastq_buffer_obj, fastq_buffer_size) < 0) {
+                Py_XDECREF(fastq_buffer_obj);
+                return NULL;
+            }
+        }
+        uint8_t *fastq_buffer_record_start = (uint8_t *)PyBytes_AS_STRING(fastq_buffer_obj);
+
+        while (1) {
+            struct BamRecordHeader *header = (struct BamRecordHeader *)record_start;
+            uint8_t *record_end = record_start + 4 + header->block_size;
+            if (record_end > buffer_end) {
+                break;
+            }
+            uint8_t *bam_name_start = record_start + sizeof(struct BamRecordHeader);
+            uint32_t name_length = header->l_read_name;
+            uint8_t *bam_seq_start = bam_name_start + name_length + 
+                                     header->n_cigar_op * sizeof(uint32_t);
+            uint32_t seq_length = header->l_seq;
+            uint32_t encoded_seq_length = (seq_length + 1) / 2;
+            uint8_t *bam_qual_start = bam_seq_start + encoded_seq_length;
+            fastq_buffer_record_start[0] = '@';
+            uint8_t *fastq_buffer_cursor = fastq_buffer_record_start + 1;
+            if (name_length > 0) {
+                name_length -= 1;  /* Includes terminating NULL byte */
+                memcpy(fastq_buffer_cursor, bam_name_start, name_length);
+            }
+            /* The + and newlines are unncessary, but also do not require much 
+               space and compute time. So keep the in-memory presentation as 
+               a FASTQ record for homogeneity with FASTQ input. */
+            fastq_buffer_cursor += name_length;
+            fastq_buffer_cursor[0] = '\n';
+            fastq_buffer_cursor += 1;
+            decode_bam_sequence(fastq_buffer_cursor, bam_seq_start, seq_length);
+            fastq_buffer_cursor += seq_length;
+            memcpy(fastq_buffer_cursor, "\n+\n", 3);
+            fastq_buffer_cursor += 3;
+            decode_bam_qualities(fastq_buffer_cursor, bam_qual_start, seq_length);
+            fastq_buffer_cursor += seq_length;
+            fastq_buffer_cursor[0] = '\n';
+            fastq_buffer_cursor += 1;
+
+            parsed_records += 1;
+            if (parsed_records > self->meta_buffer_size) {
+                struct FastqMeta *tmp = PyMem_Realloc(
+                    self->meta_buffer, sizeof(struct FastqMeta) * parsed_records);
+                if (tmp == NULL) {
+                    return PyErr_NoMemory();
+                }
+                self->meta_buffer = tmp;
+                self->meta_buffer_size = parsed_records;
+            }
+            struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
+            uint32_t sequence_offset = 1 + name_length + 1; // For '@' and '\n'
+            uint32_t qualities_offset = sequence_offset + seq_length + 3; // for '\n+\n'
+            meta->record_start = fastq_buffer_record_start;
+            meta->name_length = name_length;
+            meta->sequence_offset = sequence_offset;
+            meta->sequence_length = seq_length;
+            meta->qualities_offset = qualities_offset;
+            meta->accumulated_error_rate = 0.0;
+            record_start = record_end;
+            fastq_buffer_record_start = fastq_buffer_cursor;
+        }
+    }
+    self->record_start = record_start;
+    self->buffer_end = buffer_end;
+    PyObject *record_array = FastqRecordArrayView_FromPointerSizeAndObject(
+        self->meta_buffer, parsed_records, fastq_buffer_obj);
+    Py_DECREF(fastq_buffer_obj);
+    return record_array;
+}
+
+static PyMemberDef BamParser_members[] = {
+    {"header", T_OBJECT_EX, offsetof(BamParser, header), READONLY, 
+     "The BAM header"},
+    {NULL}
+};
+
+PyTypeObject BamParser_Type = {
+    .tp_name = "_qc.BamParser",
+    .tp_basicsize = sizeof(BamParser),
+    .tp_dealloc = (destructor)BamParser_dealloc,
+    .tp_new = BamParser__new__,
+    .tp_iter = (iternextfunc)BamParser__iter__,
+    .tp_iternext = (iternextfunc)BamParser__next__,
+    .tp_members = BamParser_members,
 };
 
 /**************
@@ -3366,6 +3744,9 @@ PyInit__qc(void)
         return NULL;
     }
     if (python_module_add_type(m, &FastqParser_Type) != 0) {
+        return NULL;
+    }  
+    if (python_module_add_type(m, &BamParser_Type) != 0) {
         return NULL;
     }  
     if (python_module_add_type(m, &FastqRecordView_Type) != 0) {

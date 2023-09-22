@@ -9,6 +9,8 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Add a BAM parser to allow reading dorado produced unaligned BAM as well as
+  already aligned BAM files.
 + Guess sequencing technology from the file header, so only appropriate
   adapters can be loaded in the adapter searcher. This improves speed.
 + Make an assortment of nanopore adapter probes that make it possible to

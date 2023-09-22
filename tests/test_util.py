@@ -1,6 +1,13 @@
+from pathlib import Path
+
 import pytest
 
-from sequali.util import fastq_header_is_illumina, fastq_header_is_nanopore
+from sequali.util import (fastq_header_is_illumina, fastq_header_is_nanopore,
+                          guess_sequencing_technology_from_bam_header)
+
+DATA = Path(__file__).parent / "data"
+SAM = DATA / ("project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa."
+              "markDuplicates.sam")
 
 
 @pytest.mark.parametrize(["header", "is_illumina"], (
@@ -22,3 +29,8 @@ def test_fastq_header_is_illumina(header, is_illumina):
 ))
 def test_fastq_header_is_nanopore(header, is_nanopore):
     assert fastq_header_is_nanopore(header) == is_nanopore
+
+
+def test_guess_from_bam():
+    sam_file = SAM.read_bytes()
+    assert guess_sequencing_technology_from_bam_header(sam_file) == "illumina"
