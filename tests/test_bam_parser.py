@@ -79,12 +79,12 @@ def test_bam_parser_not_binary_error():
 
 def test_bam_parser_too_small_buffer():
     with pytest.raises(ValueError) as error:
-        BamParser(io.BytesIO(), initial_buffersize=0)
-    error.match("at least 1")
-    error.match("0")
+        BamParser(io.BytesIO(), initial_buffersize=3)
+    error.match("at least 4")
+    error.match("3")
 
 
-@pytest.mark.parametrize("initial_buffersize", [1, 2, 4, 8, 10, 20, 40])
+@pytest.mark.parametrize("initial_buffersize", [4, 8, 10, 20, 40])
 def test_small_initial_buffer(initial_buffersize):
     with xopen.xopen(SIMPLE_BAM, "rb") as fileobj:
         parser = BamParser(fileobj, initial_buffersize=initial_buffersize)

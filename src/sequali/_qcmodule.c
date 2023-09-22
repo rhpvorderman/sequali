@@ -841,9 +841,10 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         &file_obj, &read_in_size)) {
         return NULL;
     }
-    if (read_in_size < 1) {
+    if (read_in_size < 4) {
+        // At least 4 so the block_size of a new record can be immediately read.
         PyErr_Format(PyExc_ValueError, 
-                     "initial_buffersize must be at least 1, got %zd",
+                     "initial_buffersize must be at least 4, got %zd",
                      read_in_size);
         return NULL;
     }
