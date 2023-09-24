@@ -20,6 +20,11 @@ Installation
 
     pip install git+https://github.com/rhpvorderman/sequali.git
 
+Linux systems on x86_64 will have the SSSE3 instruction set enabled to allow
+faster BAM parsing. This can be disabled with::
+
+    SEQUALI_CPU_BASIC=1 pip install git+https://github.com/rhpvorderman/sequali.git
+
 Usage
 =====
 
