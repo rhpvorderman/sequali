@@ -164,7 +164,8 @@ def guess_sequencing_technology_from_bam_header(bam_header: bytes):
             # Use 1: because the first split will be @RG
             fields = line.split("\t")[1:]
             for field in fields:
-                tag, value = field.split(":")
+                # Due to timestamps containing colons, only split once.
+                tag, value = field.split(":", maxsplit=1)
                 if tag == "PL":
                     if value == "ONT":
                         return "nanopore"
