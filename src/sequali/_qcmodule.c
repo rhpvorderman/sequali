@@ -1153,6 +1153,9 @@ BamParser__next__(BamParser *self) {
         uint8_t *fastq_buffer_record_start = (uint8_t *)PyBytes_AS_STRING(fastq_buffer_obj);
 
         while (1) {
+            if (record_start + 4 >= buffer_end) {
+                break;  // Not enough bytes to read block_size
+            }
             struct BamRecordHeader *header = (struct BamRecordHeader *)record_start;
             uint8_t *record_end = record_start + 4 + header->block_size;
             if (record_end > buffer_end) {
