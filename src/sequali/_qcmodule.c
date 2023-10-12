@@ -658,58 +658,66 @@ FastqParser__next__(FastqParser *self)
         	// Fill up the buffer up to read_in_size
         	read_in_size = self->read_in_size - leftover_size;
         }
-        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
-        if (new_bytes == NULL) {
+        Py_ssize_t new_buffer_size = leftover_size + read_in_size;
+        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
+        if (new_buffer_obj == NULL) {
             return NULL;
         }
-        if (!PyBytes_CheckExact(new_bytes)) {
-            PyErr_Format(
-                PyExc_TypeError,
-                "file_obj %R is not a binary IO type, got %s", 
-                self->file_obj, Py_TYPE(self->file_obj)->tp_name
-            );
+        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        memcpy(new_buffer, record_start, leftover_size);
+        PyObject *remaining_space_view = PyMemoryView_FromMemory(
+            (char *)new_buffer + leftover_size, read_in_size, PyBUF_WRITE);
+        if (remaining_space_view == NULL) {
             return NULL;
         }
-        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
-        uint8_t *new_bytes_buf = (uint8_t *)PyBytes_AS_STRING(new_bytes);
-        if (!string_is_ascii((char *)new_bytes_buf, new_bytes_size)) {
-            size_t pos;
-            for (pos=0; pos<new_bytes_size; pos+=1) {
-                if (new_bytes_buf[pos] & ASCII_MASK_1BYTE) {
+        PyObject *read_bytes_obj = PyObject_CallMethod(
+            self->file_obj, "readinto", "O", remaining_space_view);
+        Py_DECREF(remaining_space_view);
+        if (read_bytes_obj == NULL) {
+            return NULL;
+        }
+        Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
+        if (read_bytes == -1) {
+            return NULL;
+        }
+        Py_DECREF(read_bytes_obj);
+        Py_ssize_t actual_buffer_size = leftover_size + read_bytes;
+        if (actual_buffer_size < new_buffer_size) {
+            if (_PyBytes_Resize(&new_buffer_obj, actual_buffer_size) == -1) {
+                return NULL;
+            }
+        }
+        new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        new_buffer_size = actual_buffer_size;
+        if (!string_is_ascii((char *)new_buffer + leftover_size, read_bytes)) {
+            Py_ssize_t pos;
+            for (pos=leftover_size; pos<new_buffer_size; pos+=1) {
+                if (new_buffer[pos] & ASCII_MASK_1BYTE) {
                     break;
                 }
             }
             PyErr_Format(
                 PyExc_ValueError, 
-                "Found non-ASCII character in file: %c", new_bytes_buf[pos]
+                "Found non-ASCII character in file: %c", new_buffer[pos]
             );
-            Py_DECREF(new_bytes);
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
-        size_t new_buffer_size = leftover_size + new_bytes_size;
+
         if (new_buffer_size == 0) {
             // Entire file is read
             PyErr_SetNone(PyExc_StopIteration);
-            Py_DECREF(new_bytes);
+            Py_DECREF(new_buffer_obj);
             return NULL;
-        } else if (new_bytes_size == 0) {
+        } else if (read_bytes == 0) {
             // Incomplete record at the end of file;
             PyErr_Format(
                 PyExc_EOFError,
                 "Incomplete record at the end of file %s", 
                 record_start);
-            Py_DECREF(new_bytes);
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
-        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
-        if (new_buffer_obj == NULL) {
-            Py_DECREF(new_bytes);
-            return NULL;
-        }
-        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
-        memcpy(new_buffer, record_start, leftover_size);
-        memcpy(new_buffer + leftover_size, new_bytes_buf, new_bytes_size);
-        Py_DECREF(new_bytes);
         PyObject *tmp = self->buffer_obj;
         self->buffer_obj = new_buffer_obj;
         Py_DECREF(tmp);
