@@ -177,6 +177,10 @@ struct FastqMeta {
     /* Store the accumulated error once calculated so it can be reused by
        the NanoStats module */
     double accumulated_error_rate;
+    // Nanopore specific metadata
+    time_t start_time;
+    float duration;
+    int32_t channel;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -3332,6 +3336,7 @@ static PyTypeObject SequenceDuplication_Type = {
 
 struct NanoInfo {
     time_t start_time; 
+    float duration;
     int32_t channel_id;
     uint32_t length;
     double cumulative_error_rate;
@@ -3358,6 +3363,10 @@ static PyObject *
 NanoporeReadInfo_get_cumulative_error_rate(NanoporeReadInfo *self, void *closure) {
     return PyFloat_FromDouble(self->info.cumulative_error_rate);
 }
+static PyObject *
+NanoporeReadInfo_get_duration(NanoporeReadInfo *self, void *closure) {
+    return PyFloat_FromDouble((double)self->info.duration);
+}
 
 static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL, 
@@ -3367,6 +3376,7 @@ static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"length", (getter)NanoporeReadInfo_get_length, NULL, NULL, NULL},
     {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
      NULL, "sum off all the bases' error rates.", NULL},
+    {"duation", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
     {NULL},
 };
 
