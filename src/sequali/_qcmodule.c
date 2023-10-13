@@ -1106,42 +1106,44 @@ BamParser__next__(BamParser *self) {
         	// Fill up the buffer up to read_in_size
         	read_in_size = self->read_in_size - leftover_size;
         }
-        PyObject *new_bytes = PyObject_CallMethod(self->file_obj, "read", "n", read_in_size);
-        if (new_bytes == NULL) {
+        size_t minimum_space_required = leftover_size + read_in_size;
+        if (minimum_space_required > self->read_in_buffer_size) {
+            uint8_t *tmp_read_in_buffer = PyMem_Realloc(self->read_in_buffer, minimum_space_required);
+            if (tmp_read_in_buffer == NULL) {
+                Py_XDECREF(fastq_buffer_obj);
+                return PyErr_NoMemory();
+            }
+            self->read_in_buffer = tmp_read_in_buffer;
+            self->read_in_buffer_size = minimum_space_required;
+        }
+        PyObject *buffer_view = PyMemoryView_FromMemory((char *)self->read_in_buffer + leftover_size, read_in_size, PyBUF_WRITE);
+        if (buffer_view == NULL) {
+            return NULL;
+        }
+        PyObject *read_bytes_obj = PyObject_CallMethod(self->file_obj, "readinto", "O", buffer_view);
+        Py_DECREF(buffer_view);
+        if (read_bytes_obj == NULL) {
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
         }
-        size_t new_bytes_size = PyBytes_GET_SIZE(new_bytes);
-        uint8_t *new_bytes_buf = (uint8_t *)PyBytes_AS_STRING(new_bytes);
-        size_t new_buffer_size = leftover_size + new_bytes_size;
+        Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
+        Py_DECREF(read_bytes_obj);
+        size_t new_buffer_size = leftover_size + read_bytes;
         if (new_buffer_size == 0) {
             // Entire file is read
             PyErr_SetNone(PyExc_StopIteration);
-            Py_DECREF(new_bytes);
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
-        } else if (new_bytes_size == 0) {
+        } else if (read_bytes == 0) {
             // Incomplete record at the end of file;
             PyErr_Format(
                 PyExc_EOFError,
                 "Incomplete record at the end of file %s", 
                 record_start);
             Py_XDECREF(fastq_buffer_obj);
-            Py_DECREF(new_bytes);
             return NULL;
         }
-        if (new_buffer_size > self->read_in_buffer_size) {
-            uint8_t *tmp_read_in_buffer = PyMem_Realloc(self->read_in_buffer, new_buffer_size);
-            if (tmp_read_in_buffer == NULL) {
-                Py_XDECREF(fastq_buffer_obj);
-                return PyErr_NoMemory();
-            }
-            self->read_in_buffer = tmp_read_in_buffer;
-            self->read_in_buffer_size = new_buffer_size;
-        }
-        memcpy(self->read_in_buffer + leftover_size, new_bytes_buf, new_bytes_size);
-        Py_DECREF(new_bytes);
-
+        
         record_start = self->read_in_buffer;
         self->record_start = record_start;
         buffer_end = record_start + new_buffer_size;
