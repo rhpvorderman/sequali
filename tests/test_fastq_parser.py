@@ -60,10 +60,10 @@ def test_truncated_record(end: int):
 def test_fastq_parser_not_binary_error():
     fileobj = io.StringIO("@Name\nAGC\n+\nHHH\n")
     parser = FastqParser(fileobj)
-    with pytest.raises(TypeError) as error:
+    with pytest.raises(AttributeError) as error:
         list(parser)
-    error.match("binary IO")
-    error.match(repr(fileobj))
+    error.match("readinto")
+    error.match("io.StringIO")
 
 
 def test_fastq_parser_non_ascii_input():
