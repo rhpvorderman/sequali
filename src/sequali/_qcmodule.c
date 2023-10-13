@@ -648,6 +648,7 @@ FastqParser__next__(FastqParser *self)
     uint8_t *record_start = self->record_start;
     uint8_t *buffer_end = self->buffer_end;
     size_t parsed_records = 0;
+    PyObject *new_buffer_obj = NULL;
     while (parsed_records == 0) {
         size_t leftover_size = buffer_end - record_start;
         size_t read_in_size;
@@ -659,12 +660,19 @@ FastqParser__next__(FastqParser *self)
         	read_in_size = self->read_in_size - leftover_size;
         }
         Py_ssize_t new_buffer_size = leftover_size + read_in_size;
-        PyObject *new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
         if (new_buffer_obj == NULL) {
-            return NULL;
+            new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
+            if (new_buffer_obj == NULL) {
+                return NULL;
+            }
+            memcpy(PyBytes_AS_STRING(new_buffer_obj), record_start, leftover_size);
+        } else {
+            if (_PyBytes_Resize(&new_buffer_obj, new_buffer_size) == -1) {
+                return NULL;
+            }
         }
         uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
-        memcpy(new_buffer, record_start, leftover_size);
+
         PyObject *remaining_space_view = PyMemoryView_FromMemory(
             (char *)new_buffer + leftover_size, read_in_size, PyBUF_WRITE);
         if (remaining_space_view == NULL) {
@@ -718,10 +726,6 @@ FastqParser__next__(FastqParser *self)
             Py_DECREF(new_buffer_obj);
             return NULL;
         }
-        PyObject *tmp = self->buffer_obj;
-        self->buffer_obj = new_buffer_obj;
-        Py_DECREF(tmp);
-    
         record_start = new_buffer;
         buffer_end = record_start + new_buffer_size;
 
@@ -800,10 +804,13 @@ FastqParser__next__(FastqParser *self)
             record_start = qualities_end + 1;
         }
     }
+    PyObject *tmp = self->buffer_obj;
+    self->buffer_obj = new_buffer_obj;
+    Py_DECREF(tmp);
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     return FastqRecordArrayView_FromPointerSizeAndObject(
-        self->meta_buffer, parsed_records, self->buffer_obj);
+        self->meta_buffer, parsed_records, new_buffer_obj);
 }
 
 PyTypeObject FastqParser_Type = {
