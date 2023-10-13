@@ -1208,11 +1208,11 @@ bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta
                 return -1;
         }
         size_t this_tag_length = (value_start - tags) + array_length * value_length;
-        if (this_tag_length < tags_length) {
+        if (this_tag_length > tags_length) {
             PyErr_SetString(PyExc_ValueError, "truncated tags");
             return -1;        
         }
-        tags = tags + tags_length;
+        tags = tags + this_tag_length;
         tags_length -= this_tag_length;
     }
     return 0;
