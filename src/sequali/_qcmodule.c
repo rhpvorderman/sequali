@@ -803,8 +803,10 @@ FastqParser__next__(FastqParser *self)
             meta->sequence_offset = sequence_start - record_start;
             meta->sequence_length = sequence_length;
             meta->qualities_offset = qualities_start - record_start;
-            meta->accumulated_error_rate
-     = 0.0;
+            meta->accumulated_error_rate = 0.0;
+            meta->channel=-1;
+            meta->duration=0.0;
+            meta->start_time=0;
             record_start = qualities_end + 1;
         }
     }
