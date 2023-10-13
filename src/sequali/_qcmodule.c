@@ -159,7 +159,7 @@ string_is_ascii(const char * string, size_t length) {
  * https://stackoverflow.com/questions/530519/stdmktime-and-timezone-info
 */
 static inline time_t 
-posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
+posix_gm_time(time_t year, time_t month, time_t mday, time_t hour, time_t minute, time_t second)
 {
     /* Following code is only true for years equal or greater than 1970*/
     if (year < 1970 || month < 1 || month > 12) {
@@ -168,7 +168,7 @@ posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
     year -= 1900; // Years are relative to 1900
     static const int mday_to_yday[12] = {
         0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-    int yday = mday_to_yday[month - 1] + mday - 1;
+    time_t yday = mday_to_yday[month - 1] + mday - 1;
     return second + minute*60 + hour*3600 + yday*86400 +
     (year-70)*31536000 + ((year-69)/4)*86400 -
     ((year-1)/100)*86400 + ((year+299)/400)*86400;
@@ -196,7 +196,33 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
        allows checking them all at once for this. */
     if ((year | month | day | hour | minute | second) < 0 || 
          s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || 
-         s[16] != ':' || s[19] != 'Z') {
+         s[16] != ':') {
+            return -1;
+    }
+    const uint8_t *tz_part = s + 19;
+    if (*tz_part == '.') {
+        size_t decimal_size = strspn(s + 20, "012345679");
+        tz_part += decimal_size + 1;
+    }
+    switch(tz_part[0]) {
+        case 'Z':
+            break;
+        case '+':
+        case '-':
+            ssize_t offset_hours = unsigned_decimal_integer_from_string(tz_part + 1, 2);
+            ssize_t offset_minutes = unsigned_decimal_integer_from_string(tz_part + 4, 2);
+            if ((offset_hours | offset_minutes) < 0 || tz_part[3] != ':' ) {
+                return -1;
+            }
+            if ((tz_part[0]) == '+') {
+                hour += offset_hours;
+                minute += offset_minutes;
+            } else {
+                hour -= offset_hours;
+                minute -= offset_minutes;
+            }
+            break;
+        default:
             return -1;
     }
     return posix_gm_time(year, month, day, hour, minute, second);
