@@ -1144,6 +1144,9 @@ decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t len
 static int
 bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta *meta)
 {
+    meta->channel = -1;
+    meta->duration = 0.0;
+    meta->start_time = 0;
     while (tags_length > 0) {
         if (tags_length < 4) {
             PyErr_SetString(PyExc_ValueError, "truncated tags");
@@ -1168,17 +1171,25 @@ bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta
         switch (tag_type) {
             case 'c':
             case 'C':
+                /* A very annoying habit of htslib to store a tag in the 
+                   smallest possible size rather than being consistent. */
                 value_length = 1;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
+                    meta->channel = *(uint8_t *)(value_start); 
+                }
                 break; 
             case 's':
             case 'S': 
                 value_length = 2;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
+                    meta->channel = *(uint16_t *)(value_start); 
+                }
                 break;
+            case 'I':
             case 'i':
                 if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
-                    meta->channel = *(int32_t *)(value_start); 
-                }
-            case 'I':   
+                    meta->channel = *(uint32_t *)(value_start); 
+                }   
                 value_length = 4;
                 break;
             case 'f':
@@ -3710,7 +3721,14 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     struct NanoInfo *info = self->nano_infos + self->number_of_reads;
     size_t sequence_length = meta->sequence_length;
     info->length = sequence_length;
-    if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
+
+    if (meta->channel !=-1) {
+        /* Already parsed from BAM */
+        info->channel_id = meta->channel;
+        info->duration = meta->duration;
+        info->start_time = meta->start_time;
+    }
+    else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
         self->skipped = true;
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %R",
