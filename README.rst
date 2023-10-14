@@ -22,13 +22,16 @@ Supported formats
 - FASTQ. Only the Sanger variation with a phred offset of 33 and the error rate
   calculation of 10 ^ (-phred/10) is supported. All sequencers use this
   format today.
-    + For sequences called by illumina base callers an additional plot with
-      the per tile quality will be provided.
-    + For sequences called by guppy additional plots for nanopore specific
-      data will be provided.
+
+  - For sequences called by illumina base callers an additional plot with the
+    per tile quality will be provided.
+  - For sequences called by guppy additional plots for nanopore specific
+    data will be provided.
+
 - unaligned BAM. Any alignment flags are currently ignored.
-    + For uBAM data as delivered by dorado additional nanopore plots will be
-      provided.
+
+  - For uBAM data as delivered by dorado additional nanopore plots will be
+    provided.
 
 Installation
 ============
