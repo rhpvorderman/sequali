@@ -1104,6 +1104,11 @@ class NanoStatsReport(ReportModule):
 
     def translocation_section(self):
         transl_speeds = self.translocation_speed
+        if sum(transl_speeds) == 0:
+            return """
+            <h2>translocation speeds</h2>
+            Duration information not available.
+            """
         too_slow = transl_speeds[:35] + [0] * 55
         too_fast = [0] * 45 + transl_speeds[45:]
         normal = [0] * 35 + transl_speeds[35:45] + [0] * 35
