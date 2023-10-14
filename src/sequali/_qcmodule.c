@@ -201,7 +201,7 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
     }
     const uint8_t *tz_part = s + 19;
     if (*tz_part == '.') {
-        size_t decimal_size = strspn(s + 20, "0123456789");
+        size_t decimal_size = strspn((char *)s + 20, "0123456789");
         tz_part += decimal_size + 1;
     }
     switch(tz_part[0]) {
