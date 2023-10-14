@@ -46,6 +46,9 @@ QUALITY_COLORS = dict(
     black="#000000",  # >=44
 )
 
+COLOR_GREEN = "#33cc33"
+COLOR_RED = "#ff0000"
+
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=list(QUALITY_COLORS.values()))
 ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",))  # Green
 MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle()
@@ -1099,6 +1102,36 @@ class NanoStatsReport(ReportModule):
         plot.add(None, serie)
         return plot.render(is_unicode=True)
 
+    def translocation_section(self):
+        transl_speeds = self.translocation_speed
+        too_slow = transl_speeds[:35] + [0] * 55
+        too_fast = [0] * 45 + transl_speeds[45:]
+        normal = [0] * 35 + transl_speeds[35:45] + [0] * 35
+        total = sum(transl_speeds)
+        within_bounds_frac = sum(normal) / total
+        too_fast_frac = sum(too_fast) / total
+        too_slow_frac = sum(too_slow) / total
+
+        plot = pygal.Bar(
+            title="Translocation speed distribution",
+            x_title="Translocation_speed",
+            y_title="active channels",
+            style=ONE_SERIE_STYLE,
+            x_labels = [str(i) for i in range(0, 800, 10)] + [">800"],
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("within bounds", normal, color=COLOR_GREEN)
+        plot.add("too slow", too_slow, color=COLOR_RED)
+        plot.add("too fast", too_fast, color=COLOR_RED)
+        return f"""
+        <h2>translocation speeds</h2>
+        Percentage of reads within accepted bounds: {within_bounds_frac:.2%}<br>
+        Percentage of reads that are too slow: {too_slow_frac:.2%}<br>
+        Percentage of reads that are too fast: {too_fast_frac:.2%}<br>
+        {plot.render(is_unicode=True)}
+        """
+
     def to_html(self) -> str:
         if self.skipped_reason:
             return f"""
@@ -1117,6 +1150,7 @@ class NanoStatsReport(ReportModule):
         {self.time_quality_distribution_plot()}
         <h2>Per channel base yield versus quality<h2>
         {self.channel_plot()}
+        {self.translocation_section()}
         """
 
 
