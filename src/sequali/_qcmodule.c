@@ -204,13 +204,15 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
         size_t decimal_size = strspn((char *)s + 20, "0123456789");
         tz_part += decimal_size + 1;
     }
+    ssize_t offset_hours;
+    ssize_t offset_minutes;
     switch(tz_part[0]) {
         case 'Z':
             break;
         case '+':
         case '-':
-            ssize_t offset_hours = unsigned_decimal_integer_from_string(tz_part + 1, 2);
-            ssize_t offset_minutes = unsigned_decimal_integer_from_string(tz_part + 4, 2);
+            offset_hours = unsigned_decimal_integer_from_string(tz_part + 1, 2);
+            offset_minutes = unsigned_decimal_integer_from_string(tz_part + 4, 2);
             if ((offset_hours | offset_minutes) < 0 || tz_part[3] != ':' ) {
                 return -1;
             }
