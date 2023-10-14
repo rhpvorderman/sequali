@@ -983,7 +983,7 @@ class NanoStatsReport(ReportModule):
                           range(time_slots)]
         per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
         per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
-        translocation_speeds= [0 for _ in range(81)]
+        translocation_speeds = [0] * 81
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
@@ -999,10 +999,10 @@ class NanoStatsReport(ReportModule):
             time_qualities[timeslot][phred_index] += 1
             per_channel_bases[channel_id] += length
             per_channel_cumulative_error[channel_id] += cumulative_error_rate
-            duration = readinfo.duration
-            if duration:
-                translocation_speed = min(round(length / duration), 800)
-                translocation_speed //=10
+            read_duration = readinfo.duration
+            if read_duration:
+                translocation_speed = min(round(length / read_duration), 800)
+                translocation_speed //= 10
                 translocation_speeds[translocation_speed] += 1
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
@@ -1123,7 +1123,7 @@ class NanoStatsReport(ReportModule):
             y_title="active channels",
             style=pygal.style.DefaultStyle(
                 colors=(COLOR_GREEN, COLOR_RED, COLOR_RED)),
-            x_labels = [str(i) for i in range(0, 800, 10)] + [">800"],
+            x_labels=[str(i) for i in range(0, 800, 10)] + [">800"],
             x_labels_major_every=10,
             show_minor_x_labels=False,
             **COMMON_GRAPH_OPTIONS
