@@ -1195,6 +1195,9 @@ bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta
         };
         size_t value_length;
         switch (tag_type) {
+            case 'A':
+                value_length = 1;
+                break;
             case 'c':
             case 'C':
                 /* A very annoying habit of htslib to store a tag in the 
