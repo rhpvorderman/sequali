@@ -379,6 +379,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->meta.sequence_length = sequence_length;
     self->meta.qualities_offset = 5 + name_length + sequence_length;
     self->meta.accumulated_error_rate = accumulated_error_rate;
+    self->meta.duration = 0.0;
+    self->meta.start_time = 0;
+    self->meta.channel = -1;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
