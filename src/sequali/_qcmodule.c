@@ -150,6 +150,88 @@ string_is_ascii(const char * string, size_t length) {
     return !(non_ascii_in_vec + (all_chars & ASCII_MASK_8BYTE));
 }
 
+/***
+ * Seconds since epoch for years of 1970 and higher is defined in the POSIX 
+ * specification.:
+ * https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16
+ * With a little help from Eric S. Raymond's solution in this stackoverflow
+ * answer:
+ * https://stackoverflow.com/questions/530519/stdmktime-and-timezone-info
+*/
+static inline time_t 
+posix_gm_time(time_t year, time_t month, time_t mday, time_t hour, time_t minute, time_t second)
+{
+    /* Following code is only true for years equal or greater than 1970*/
+    if (year < 1970 || month < 1 || month > 12) {
+        return -1;
+    } 
+    year -= 1900; // Years are relative to 1900
+    static const int mday_to_yday[12] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    time_t yday = mday_to_yday[month - 1] + mday - 1;
+    return second + minute*60 + hour*3600 + yday*86400 +
+    (year-70)*31536000 + ((year-69)/4)*86400 -
+    ((year-1)/100)*86400 + ((year+299)/400)*86400;
+}
+
+/**
+ * @brief Convert a timestring in Nanopore format to a timestamp. 
+ * 
+ * @param time_string A string in year-month-dateThour:minute:secondZ format.
+ * @return time_t The unix timestamp, -1 on failure. Nanopore was not invented 
+ *          on New Year's eve 1969 so this should not lead to confusion ;-).
+ */
+static time_t time_string_to_timestamp(const uint8_t *time_string) {
+    /* Time format used 2019-01-26T18:52:46Z
+       Could be parsed with sscanf, but it is much quicker to completely inline
+       the call by using an inlinable function. */
+    const uint8_t *s = time_string;
+    ssize_t year = unsigned_decimal_integer_from_string(s, 4);
+    ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
+    ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
+    ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
+    ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
+    ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
+    /* If one of year, month etc. is -1 the signed bit is set. Bitwise OR 
+       allows checking them all at once for this. */
+    if ((year | month | day | hour | minute | second) < 0 || 
+         s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || 
+         s[16] != ':') {
+            return -1;
+    }
+    const uint8_t *tz_part = s + 19;
+    /* Sometimes there is a miliseconds parts that needs to be parsed */
+    if (*tz_part == '.') {
+        size_t decimal_size = strspn((char *)s + 20, "0123456789");
+        tz_part += decimal_size + 1;
+    }
+    ssize_t offset_hours;
+    ssize_t offset_minutes;
+    switch(tz_part[0]) {
+        case 'Z':
+            /* UTC No special code needed. */
+            break;
+        case '+':
+        case '-':
+            offset_hours = unsigned_decimal_integer_from_string(tz_part + 1, 2);
+            offset_minutes = unsigned_decimal_integer_from_string(tz_part + 4, 2);
+            if ((offset_hours | offset_minutes) < 0 || tz_part[3] != ':' ) {
+                return -1;
+            }
+            if ((tz_part[0]) == '+') {
+                hour += offset_hours;
+                minute += offset_minutes;
+            } else {
+                hour -= offset_hours;
+                minute -= offset_minutes;
+            }
+            break;
+        default:
+            return -1;
+    }
+    return posix_gm_time(year, month, day, hour, minute, second);
+}
+
 /*********************
  * FASTQ RECORD VIEW *
  *********************/
@@ -177,6 +259,10 @@ struct FastqMeta {
     /* Store the accumulated error once calculated so it can be reused by
        the NanoStats module */
     double accumulated_error_rate;
+    // Nanopore specific metadata
+    time_t start_time;
+    float duration;
+    int32_t channel;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -297,6 +383,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->meta.sequence_length = sequence_length;
     self->meta.qualities_offset = 5 + name_length + sequence_length;
     self->meta.accumulated_error_rate = accumulated_error_rate;
+    self->meta.duration = 0.0;
+    self->meta.start_time = 0;
+    self->meta.channel = -1;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -799,8 +888,10 @@ FastqParser__next__(FastqParser *self)
             meta->sequence_offset = sequence_start - record_start;
             meta->sequence_length = sequence_length;
             meta->qualities_offset = qualities_start - record_start;
-            meta->accumulated_error_rate
-     = 0.0;
+            meta->accumulated_error_rate = 0.0;
+            meta->channel=-1;
+            meta->duration=0.0;
+            meta->start_time=0;
             record_start = qualities_end + 1;
         }
     }
@@ -1083,6 +1174,97 @@ decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t len
     }
 }
 
+static int
+bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta *meta)
+{
+    meta->channel = -1;
+    meta->duration = 0.0;
+    meta->start_time = 0;
+    while (tags_length > 0) {
+        if (tags_length < 4) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return -1;
+        }
+        const uint8_t *tag_id = tags;
+        uint8_t tag_type = tags[2];
+        bool is_array = false;
+        const uint8_t *value_start = tags + 3;
+        uint32_t array_length = 1;
+        if (tag_type == 'B') {
+            is_array = true; 
+            value_start = tags + 8;
+            tag_type = tags[3];
+            if (tags_length < 8) {
+                PyErr_SetString(PyExc_ValueError, "truncated tags");
+                return -1;
+            }
+            array_length = *(uint32_t *)(tags + 4);
+        };
+        size_t value_length;
+        switch (tag_type) {
+            case 'A':
+                value_length = 1;
+                break;
+            case 'c':
+            case 'C':
+                /* A very annoying habit of htslib to store a tag in the 
+                   smallest possible size rather than being consistent. */
+                value_length = 1;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
+                    meta->channel = *(uint8_t *)(value_start); 
+                }
+                break; 
+            case 's':
+            case 'S': 
+                value_length = 2;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
+                    meta->channel = *(uint16_t *)(value_start); 
+                }
+                break;
+            case 'I':
+            case 'i':
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
+                    meta->channel = *(uint32_t *)(value_start); 
+                }   
+                value_length = 4;
+                break;
+            case 'f':
+                if (memcmp(tag_id, "du", 2) == 0 && tags_length >= 7) {
+                    meta->duration = *(float *)(value_start); 
+                }
+                value_length = 4;
+                break;
+            case 'Z':
+            case 'H':
+                if (is_array) {
+                    PyErr_Format(PyExc_ValueError, "Invalid type for array %c", tag_type);
+                    return -1;
+                }
+                uint8_t *string_end = memchr(value_start, 0, tags_length - 3);
+                if (string_end == NULL) {
+                    PyErr_SetString(PyExc_ValueError, "truncated tags");
+                    return -1;
+                }
+                value_length = (string_end - value_start) + 1; // +1 for terminating null
+                if (memcmp(tag_id, "st", 2) == 0) {
+                    meta->start_time = time_string_to_timestamp(value_start);    
+                }
+                break;
+            default:
+                PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
+                return -1;
+        }
+        size_t this_tag_length = (value_start - tags) + array_length * value_length;
+        if (this_tag_length > tags_length) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return -1;        
+        }
+        tags = tags + this_tag_length;
+        tags_length -= this_tag_length;
+    }
+    return 0;
+}
+
 static PyObject *
 BamParser__next__(BamParser *self) {
     uint8_t *record_start = self->record_start;
@@ -1187,6 +1369,8 @@ BamParser__next__(BamParser *self) {
             uint8_t *bam_qual_start = bam_seq_start + encoded_seq_length;
             fastq_buffer_record_start[0] = '@';
             uint8_t *fastq_buffer_cursor = fastq_buffer_record_start + 1;
+            uint8_t *tag_start = bam_qual_start + seq_length;
+            size_t tags_length = record_end - tag_start;
             if (name_length > 0) {
                 name_length -= 1;  /* Includes terminating NULL byte */
                 memcpy(fastq_buffer_cursor, bam_name_start, name_length);
@@ -1225,6 +1409,9 @@ BamParser__next__(BamParser *self) {
             meta->sequence_length = seq_length;
             meta->qualities_offset = qualities_offset;
             meta->accumulated_error_rate = 0.0;
+            if (bam_tags_to_fastq_meta(tag_start, tags_length, meta) < 0) {
+                return NULL;
+            }
             record_start = record_end;
             fastq_buffer_record_start = fastq_buffer_cursor;
         }
@@ -3332,6 +3519,7 @@ static PyTypeObject SequenceDuplication_Type = {
 
 struct NanoInfo {
     time_t start_time; 
+    float duration;
     int32_t channel_id;
     uint32_t length;
     double cumulative_error_rate;
@@ -3358,6 +3546,10 @@ static PyObject *
 NanoporeReadInfo_get_cumulative_error_rate(NanoporeReadInfo *self, void *closure) {
     return PyFloat_FromDouble(self->info.cumulative_error_rate);
 }
+static PyObject *
+NanoporeReadInfo_get_duration(NanoporeReadInfo *self, void *closure) {
+    return PyFloat_FromDouble((double)self->info.duration);
+}
 
 static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL, 
@@ -3367,6 +3559,7 @@ static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"length", (getter)NanoporeReadInfo_get_length, NULL, NULL, NULL},
     {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
      NULL, "sum off all the bases' error rates.", NULL},
+    {"duration", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
     {NULL},
 };
 
@@ -3480,58 +3673,6 @@ NanoStats__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
 }
 
 
-/***
- * Seconds since epoch for years of 1970 and higher is defined in the POSIX 
- * specification.:
- * https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16
- * With a little help from Eric S. Raymond's solution in this stackoverflow
- * answer:
- * https://stackoverflow.com/questions/530519/stdmktime-and-timezone-info
-*/
-static inline time_t 
-posix_gm_time(int year, int month, int mday, int hour, int minute, int second)
-{
-    /* Following code is only true for years equal or greater than 1970*/
-    if (year < 1970 || month < 1 || month > 12) {
-        return -1;
-    } 
-    year -= 1900; // Years are relative to 1900
-    static const int mday_to_yday[12] = {
-        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-    int yday = mday_to_yday[month - 1] + mday - 1;
-    return second + minute*60 + hour*3600 + yday*86400 +
-    (year-70)*31536000 + ((year-69)/4)*86400 -
-    ((year-1)/100)*86400 + ((year+299)/400)*86400;
-}
-
-/**
- * @brief Convert a timestring in Nanopore format to a timestamp. 
- * 
- * @param time_string A string in year-month-dateThour:minute:secondZ format.
- * @return time_t The unix timestamp, -1 on failure. Nanopore was not invented 
- *          on New Year's eve 1969 so this should not lead to confusion ;-).
- */
-static time_t time_string_to_timestamp(const uint8_t *time_string) {
-    /* Time format used 2019-01-26T18:52:46Z
-       Could be parsed with sscanf, but it is much quicker to completely inline
-       the call by using an inlinable function. */
-    const uint8_t *s = time_string;
-    ssize_t year = unsigned_decimal_integer_from_string(s, 4);
-    ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
-    ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
-    ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
-    ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
-    ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
-    /* If one of year, month etc. is -1 the signed bit is set. Bitwise OR 
-       allows checking them all at once for this. */
-    if ((year | month | day | hour | minute | second) < 0 || 
-         s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || 
-         s[16] != ':' || s[19] != 'Z') {
-            return -1;
-    }
-    return posix_gm_time(year, month, day, hour, minute, second);
-}
-
 /**
  * @brief Parse read, channel_id and start_time fields from a nanopore FASTQ
  *        header. Other fields are untouched.
@@ -3616,7 +3757,14 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     struct NanoInfo *info = self->nano_infos + self->number_of_reads;
     size_t sequence_length = meta->sequence_length;
     info->length = sequence_length;
-    if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
+
+    if (meta->channel !=-1) {
+        /* Already parsed from BAM */
+        info->channel_id = meta->channel;
+        info->duration = meta->duration;
+        info->start_time = meta->start_time;
+    }
+    else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
         self->skipped = true;
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %R",

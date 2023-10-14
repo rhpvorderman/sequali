@@ -3,8 +3,10 @@ sequali
 ========
 Sequence quality metrics
 
-FASTQ Quality control with the following goals:
+Sequence quality control with the following goals:
 
++ Being the fastest, most versatile and most useful sequencing quality
+  check tool.
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
 + Correct interpretation of Phred quality scores. For nanopore QC programs this
@@ -14,6 +16,22 @@ FASTQ Quality control with the following goals:
   <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_
   from Wouter de Coster (nanoplot author).
 + Low resource usage in terms of CPU, memory and install size.
+
+Supported formats
+=================
+- FASTQ. Only the Sanger variation with a phred offset of 33 and the error rate
+  calculation of 10 ^ (-phred/10) is supported. All sequencers use this
+  format today.
+
+  - For sequences called by illumina base callers an additional plot with the
+    per tile quality will be provided.
+  - For sequences called by guppy additional plots for nanopore specific
+    data will be provided.
+
+- unaligned BAM. Any alignment flags are currently ignored.
+
+  - For uBAM data as delivered by dorado additional nanopore plots will be
+    provided.
 
 Installation
 ============

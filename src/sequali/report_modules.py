@@ -46,6 +46,9 @@ QUALITY_COLORS = dict(
     black="#000000",  # >=44
 )
 
+COLOR_GREEN = "#33cc33"
+COLOR_RED = "#ff0000"
+
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=list(QUALITY_COLORS.values()))
 ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",))  # Green
 MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle()
@@ -938,6 +941,7 @@ class NanoStatsReport(ReportModule):
     qual_percentages_over_time: List[List[float]]
     per_channel_bases: Dict[int, int]
     per_channel_quality: Dict[int, float]
+    translocation_speed: List[int]
     skipped_reason: Optional[str] = None
 
     @staticmethod
@@ -958,6 +962,7 @@ class NanoStatsReport(ReportModule):
                 [],
                 {},
                 {},
+                [],
                 nanostats.skipped_reason
             )
         run_start_time = nanostats.minimum_time
@@ -978,6 +983,7 @@ class NanoStatsReport(ReportModule):
                           range(time_slots)]
         per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
         per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
+        translocation_speeds = [0] * 81
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
@@ -993,7 +999,11 @@ class NanoStatsReport(ReportModule):
             time_qualities[timeslot][phred_index] += 1
             per_channel_bases[channel_id] += length
             per_channel_cumulative_error[channel_id] += cumulative_error_rate
-
+            read_duration = readinfo.duration
+            if read_duration:
+                translocation_speed = min(round(length / read_duration), 800)
+                translocation_speed //= 10
+                translocation_speeds[translocation_speed] += 1
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
@@ -1016,6 +1026,7 @@ class NanoStatsReport(ReportModule):
             time_reads=time_reads,
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
+            translocation_speed=translocation_speeds,
             skipped_reason=nanostats.skipped_reason
         )
 
@@ -1091,6 +1102,43 @@ class NanoStatsReport(ReportModule):
         plot.add(None, serie)
         return plot.render(is_unicode=True)
 
+    def translocation_section(self):
+        transl_speeds = self.translocation_speed
+        if sum(transl_speeds) == 0:
+            return """
+            <h2>translocation speeds</h2>
+            Duration information not available.
+            """
+        too_slow = transl_speeds[:35] + [0] * 55
+        too_fast = [0] * 45 + transl_speeds[45:]
+        normal = [0] * 35 + transl_speeds[35:45] + [0] * 35
+        total = sum(transl_speeds)
+        within_bounds_frac = sum(normal) / total
+        too_fast_frac = sum(too_fast) / total
+        too_slow_frac = sum(too_slow) / total
+
+        plot = pygal.Bar(
+            title="Translocation speed distribution",
+            x_title="Translocation_speed",
+            y_title="active channels",
+            style=pygal.style.DefaultStyle(
+                colors=(COLOR_GREEN, COLOR_RED, COLOR_RED)),
+            x_labels=[str(i) for i in range(0, 800, 10)] + [">800"],
+            x_labels_major_every=10,
+            show_minor_x_labels=False,
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("within bounds", normal)
+        plot.add("too slow", too_slow)
+        plot.add("too fast", too_fast)
+        return f"""
+        <h2>translocation speeds</h2>
+        Percentage of reads within accepted bounds: {within_bounds_frac:.2%}<br>
+        Percentage of reads that are too slow: {too_slow_frac:.2%}<br>
+        Percentage of reads that are too fast: {too_fast_frac:.2%}<br>
+        {plot.render(is_unicode=True)}
+        """
+
     def to_html(self) -> str:
         if self.skipped_reason:
             return f"""
@@ -1109,6 +1157,7 @@ class NanoStatsReport(ReportModule):
         {self.time_quality_distribution_plot()}
         <h2>Per channel base yield versus quality<h2>
         {self.channel_plot()}
+        {self.translocation_section()}
         """
 
 

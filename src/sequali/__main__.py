@@ -69,7 +69,7 @@ def argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main():
+def main() -> None:
     args = argument_parser().parse_args()
     fraction_threshold = args.overrepresentation_threshold_fraction
     max_threshold = args.overrepresentation_max_threshold
@@ -83,14 +83,13 @@ def main():
     filename: str = args.input
     with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
-        seqtech = guess_sequencing_technology_from_file(file)
         if filename.endswith(".bam") or (
                 hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
             reader = BamParser(file)
             seqtech = guess_sequencing_technology_from_bam_header(reader.header)
         else:
-            reader = FastqParser(file)
-            seqtech = guess_sequencing_technology_from_file(file)
+            reader = FastqParser(file)  # type: ignore
+            seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
         adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
         adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:
