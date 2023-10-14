@@ -938,6 +938,7 @@ class NanoStatsReport(ReportModule):
     qual_percentages_over_time: List[List[float]]
     per_channel_bases: Dict[int, int]
     per_channel_quality: Dict[int, float]
+    translocation_speed: List[int]
     skipped_reason: Optional[str] = None
 
     @staticmethod
@@ -958,6 +959,7 @@ class NanoStatsReport(ReportModule):
                 [],
                 {},
                 {},
+                [],
                 nanostats.skipped_reason
             )
         run_start_time = nanostats.minimum_time
@@ -978,6 +980,7 @@ class NanoStatsReport(ReportModule):
                           range(time_slots)]
         per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
         per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
+        translocation_speeds= [0 for _ in range(81)]
         for readinfo in nanostats.nano_info_iterator():
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
@@ -993,7 +996,11 @@ class NanoStatsReport(ReportModule):
             time_qualities[timeslot][phred_index] += 1
             per_channel_bases[channel_id] += length
             per_channel_cumulative_error[channel_id] += cumulative_error_rate
-
+            duration = readinfo.duration
+            if duration:
+                translocation_speed = min(round(length / duration), 800)
+                translocation_speed //=10
+                translocation_speeds[translocation_speed] += 1
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
@@ -1016,6 +1023,7 @@ class NanoStatsReport(ReportModule):
             time_reads=time_reads,
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
+            translocation_speed=sorted(translocation_speeds),
             skipped_reason=nanostats.skipped_reason
         )
 

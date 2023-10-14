@@ -3549,7 +3549,7 @@ static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"length", (getter)NanoporeReadInfo_get_length, NULL, NULL, NULL},
     {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
      NULL, "sum off all the bases' error rates.", NULL},
-    {"duation", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
+    {"duration", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
     {NULL},
 };
 

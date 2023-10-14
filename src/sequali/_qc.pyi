@@ -105,6 +105,7 @@ class NanoporeReadInfo:
     channel_id: int
     length: int
     cumulative_error_rate: float
+    duration: float
 
 class NanoStats:
     number_of_reads: int
