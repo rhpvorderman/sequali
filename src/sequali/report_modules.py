@@ -1026,7 +1026,7 @@ class NanoStatsReport(ReportModule):
             time_reads=time_reads,
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
-            translocation_speed=sorted(translocation_speeds),
+            translocation_speed=translocation_speeds,
             skipped_reason=nanostats.skipped_reason
         )
 
@@ -1116,14 +1116,16 @@ class NanoStatsReport(ReportModule):
             title="Translocation speed distribution",
             x_title="Translocation_speed",
             y_title="active channels",
-            style=ONE_SERIE_STYLE,
+            style=pygal.style.DefaultStyle(
+                colors=(COLOR_GREEN, COLOR_RED, COLOR_RED)),
             x_labels = [str(i) for i in range(0, 800, 10)] + [">800"],
             x_labels_major_every=10,
+            show_minor_x_labels=False,
             **COMMON_GRAPH_OPTIONS
         )
-        plot.add("within bounds", normal, color=COLOR_GREEN)
-        plot.add("too slow", too_slow, color=COLOR_RED)
-        plot.add("too fast", too_fast, color=COLOR_RED)
+        plot.add("within bounds", normal)
+        plot.add("too slow", too_slow)
+        plot.add("too fast", too_fast)
         return f"""
         <h2>translocation speeds</h2>
         Percentage of reads within accepted bounds: {within_bounds_frac:.2%}<br>
