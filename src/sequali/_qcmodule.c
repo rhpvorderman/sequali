@@ -200,6 +200,7 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
             return -1;
     }
     const uint8_t *tz_part = s + 19;
+    /* Sometimes there is a miliseconds parts that needs to be parsed */
     if (*tz_part == '.') {
         size_t decimal_size = strspn((char *)s + 20, "0123456789");
         tz_part += decimal_size + 1;
@@ -208,6 +209,7 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
     ssize_t offset_minutes;
     switch(tz_part[0]) {
         case 'Z':
+            /* UTC No special code needed. */
             break;
         case '+':
         case '-':
