@@ -257,81 +257,88 @@ class SequenceLengthDistribution(ReportModule):
         return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths)
 
 
-# @dataclasses.dataclass
-# class PerBaseAverageSequenceQuality(ReportModule):
-#     x_labels: List[str]
-#     A: List[float]
-#     C: List[float]
-#     G: List[float]
-#     T: List[float]
-#     N: List[float]
-#     mean: List[float]
-#
-#     def plot(self) -> str:
-#         plot = pygal.Line(
-#             title="Per base average sequence quality",
-#             dots_size=1,
-#             x_title="position",
-#             y_title="phred score",
-#             style=MULTIPLE_SERIES_STYLE,
-#             **label_settings(self.x_labels),
-#             **COMMON_GRAPH_OPTIONS,
-#         )
-#         plot.add("A", label_values(self.A, self.x_labels))
-#         plot.add("C", label_values(self.C, self.x_labels))
-#         plot.add("G", label_values(self.G, self.x_labels))
-#         plot.add("T", label_values(self.T, self.x_labels))
-#         plot.add("mean", label_values(self.mean, self.x_labels))
-#         return plot.render(is_unicode=True)
-#
-#     def to_html(self):
-#         return f"""
-#             <h2>Per position average quality score</h2>
-#             {self.plot()}
-#         """
-#
-#     @classmethod
-#     def from_table_and_labels(cls, count_tables: array.ArrayType, x_labels):
-#         total_tables = len(count_tables) // TABLE_SIZE
-#         mean_qualities = [0.0 for _ in range(total_tables)]
-#         base_qualities = [
-#             [0.0 for _ in range(total_tables)]
-#             for _ in range(NUMBER_OF_NUCS)
-#         ]
-#         for cat_index, table in enumerate(table_iterator(count_tables)):
-#             nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
-#             nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
-#             total_count = 0
-#             total_prob = 0.0
-#             for phred_p_value, offset in zip(
-#                     PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
-#             ):
-#                 nucs = table[offset: offset + NUMBER_OF_NUCS]
-#                 count = sum(nucs)
-#                 total_count += count
-#                 total_prob += count * phred_p_value
-#                 for i, count in enumerate(nucs):
-#                     nuc_counts[i] += count
-#                     nuc_probs[i] += phred_p_value * count
-#             if total_count == 0:
-#                 continue
-#             mean_qualities[cat_index] = -10 * math.log10(
-#                 total_prob / total_count)
-#             for i in range(NUMBER_OF_NUCS):
-#                 if nuc_counts[i] == 0:
-#                     continue
-#                 base_qualities[i][cat_index] = -10 * math.log10(
-#                     nuc_probs[i] / nuc_counts[i]
-#                 )
-#         return cls(
-#             x_labels=x_labels,
-#             A=base_qualities[A],
-#             C=base_qualities[C],
-#             G=base_qualities[G],
-#             T=base_qualities[T],
-#             N=base_qualities[N],
-#             mean=mean_qualities
-#         )
+@dataclasses.dataclass
+class PerBaseQualityPercentiles(ReportModule):
+    x_labels: List[str]
+    p1: List[float]
+    p5: List[float]
+    p10: List[float]
+    p25: List[float]
+    p50: List[float]
+    p75: List[float]
+    p90: List[float]
+    p95: List[float]
+    p99: List[float]
+
+    def plot(self) -> str:
+        plot = pygal.Line(
+            title="Per base quality percentiles",
+            dots_size=1,
+            x_title="position",
+            y_title="phred score",
+            style=MULTIPLE_SERIES_STYLE,
+            **label_settings(self.x_labels),
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("1%", label_values(self.p1, self.x_labels))
+        plot.add("5%", label_values(self.p5, self.x_labels))
+        plot.add("10%", label_values(self.p10, self.x_labels))
+        plot.add("25%", label_values(self.p25, self.x_labels))
+        plot.add("50%", label_values(self.p50, self.x_labels))
+        plot.add("75%", label_values(self.p75, self.x_labels))
+        plot.add("90%", label_values(self.p90, self.x_labels))
+        plot.add("95%", label_values(self.p95, self.x_labels))
+        plot.add("99%", label_values(self.p99, self.x_labels))
+        return plot.render(is_unicode=True)
+
+    def to_html(self):
+        return f"""
+            <h2>Per position average quality score</h2>
+            {self.plot()}
+        """
+
+    @classmethod
+    def from_phred_table_and_labels(cls, phred_tables: array.ArrayType, x_labels):
+        total_tables = len(phred_tables) // NUMBER_OF_PHREDS
+        mean_qualities = [0.0 for _ in range(total_tables)]
+        base_qualities = [
+            [0.0 for _ in range(total_tables)]
+            for _ in range(NUMBER_OF_NUCS)
+        ]
+        for cat_index, table in enumerate(table_iterator(phred_tables)):
+            nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
+            nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
+            total_count = 0
+            total_prob = 0.0
+            for phred_p_value, offset in zip(
+                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
+            ):
+                nucs = table[offset: offset + NUMBER_OF_NUCS]
+                count = sum(nucs)
+                total_count += count
+                total_prob += count * phred_p_value
+                for i, count in enumerate(nucs):
+                    nuc_counts[i] += count
+                    nuc_probs[i] += phred_p_value * count
+            if total_count == 0:
+                continue
+            mean_qualities[cat_index] = -10 * math.log10(
+                total_prob / total_count)
+            for i in range(NUMBER_OF_NUCS):
+                if nuc_counts[i] == 0:
+                    continue
+                base_qualities[i][cat_index] = -10 * math.log10(
+                    nuc_probs[i] / nuc_counts[i]
+                )
+        return cls(
+            x_labels=x_labels,
+            A=base_qualities[A],
+            C=base_qualities[C],
+            G=base_qualities[G],
+            T=base_qualities[T],
+            N=base_qualities[N],
+            mean=mean_qualities
+        )
 
 
 @dataclasses.dataclass
@@ -1269,8 +1276,8 @@ def qc_metrics_modules(metrics: QCMetrics,
             base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
             aggregated_phred_matrix, x_labels),
-        # PerBaseAverageSequenceQuality.from_table_and_labels(
-        #     aggregrated_matrix, x_labels),
+        PerBaseQualityPercentiles.from_phred_table_and_labels(
+           aggregated_phred_matrix, x_labels),
         PerSequenceAverageQualityScores.from_qc_metrics(metrics),
         PerPositionBaseContent.from_base_count_tables_and_labels(
             aggregrated_base_matrix, x_labels),
