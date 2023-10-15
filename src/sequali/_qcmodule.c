@@ -1629,7 +1629,14 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         sequence_ptr += 1; 
         staging_base_counts_ptr += 1;
     }
-    
+    uint64_t at_counts = base_counts[A] + base_counts[T];
+    uint64_t gc_counts = base_counts[C] + base_counts[G];
+    double gc_content_percentage = (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
+    uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
+    assert(gc_content_index >= 0);
+    assert(gc_content_index <= 100);
+    self->gc_content[gc_content_index] += 1;
+
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities;
@@ -1648,14 +1655,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         staging_phred_counts_ptr += 1;
         qualities_ptr += 1;
     }
-
-    uint64_t at_counts = base_counts[A] + base_counts[T];
-    uint64_t gc_counts = base_counts[C] + base_counts[G];
-    double gc_content_percentage = (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
-    uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
-    assert(gc_content_index >= 0);
-    assert(gc_content_index <= 100);
-    self->gc_content[gc_content_index] += 1;
 
     meta->accumulated_error_rate = accumulated_error_rate;
     double average_error_rate = accumulated_error_rate / (double)sequence_length;
