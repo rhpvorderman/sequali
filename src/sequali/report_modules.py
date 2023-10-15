@@ -104,7 +104,8 @@ def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
     ]
 
 
-def table_iterator(count_tables: array.ArrayType, table_size: int) -> Iterator[memoryview]:
+def table_iterator(count_tables: array.ArrayType,
+                   table_size: int) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
     for i in range(0, len(count_tables), table_size):
         yield table_view[i: i + table_size]
@@ -346,7 +347,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_PHREDS)
         ]
-        for cat_index, table in enumerate(table_iterator(phred_tables, NUMBER_OF_PHREDS)):
+        for cat_index, table in enumerate(
+                table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total_nucs = sum(table)
             for offset, phred_count in enumerate(table):
                 if phred_count == 0:
@@ -466,7 +468,8 @@ class PerPositionBaseContent(ReportModule):
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_NUCS)
         ]
-        for index, table in enumerate(table_iterator(base_count_tables, NUMBER_OF_NUCS)):
+        for index, table in enumerate(
+                table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             total_bases = sum(table)
             n_bases = table[N]
             named_total = total_bases - n_bases
@@ -495,7 +498,8 @@ class PerPositionNContent(ReportModule):
             cls, base_count_tables: array.ArrayType, labels: Sequence[str]):
         total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         n_fractions = [0.0 for _ in range(total_tables)]
-        for index, table in enumerate(table_iterator(base_count_tables, NUMBER_OF_NUCS)):
+        for index, table in enumerate(
+                table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             total_bases = sum(table)
             if total_bases == 0:
                 continue
@@ -1234,8 +1238,12 @@ def qc_metrics_modules(metrics: QCMetrics,
     aggregated_phred_matrix = aggregate_count_matrix(
         phred_count_table, data_ranges, NUMBER_OF_PHREDS)
     summary_bases = aggregate_count_matrix(
-        aggregrated_base_matrix, [(0, len(aggregrated_base_matrix) // NUMBER_OF_NUCS)], NUMBER_OF_NUCS)
-    summary_phreds = aggregate_count_matrix(aggregated_phred_matrix, [(0, len(aggregated_phred_matrix) // NUMBER_OF_PHREDS)], NUMBER_OF_PHREDS)
+        aggregrated_base_matrix,
+        [(0, len(aggregrated_base_matrix) // NUMBER_OF_NUCS)], NUMBER_OF_NUCS)
+    summary_phreds = aggregate_count_matrix(
+        aggregated_phred_matrix,
+        [(0, len(aggregated_phred_matrix) // NUMBER_OF_PHREDS)],
+        NUMBER_OF_PHREDS)
     total_bases = sum(summary_bases)
     minimum_length = 0
     total_reads = metrics.number_of_reads
@@ -1257,17 +1265,17 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_bases=total_bases,
             q20_bases=sum(summary_phreds[5:]),
             total_gc_fraction=gc_content),
-        SequenceLengthDistribution.from_base_count_tables(base_count_tables, total_reads,
-                                                          data_ranges),
+        SequenceLengthDistribution.from_base_count_tables(
+            base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
-            phred_count_table, x_labels),
+            aggregated_phred_matrix, x_labels),
         # PerBaseAverageSequenceQuality.from_table_and_labels(
         #     aggregrated_matrix, x_labels),
         PerSequenceAverageQualityScores.from_qc_metrics(metrics),
         PerPositionBaseContent.from_base_count_tables_and_labels(
-            base_count_tables, x_labels),
+            aggregrated_base_matrix, x_labels),
         PerPositionNContent.from_base_count_tables_and_labels(
-            base_count_tables, x_labels),
+            aggregrated_base_matrix, x_labels),
         PerSequenceGCContent.from_qc_metrics(metrics),
     ]
 
