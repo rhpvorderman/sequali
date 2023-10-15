@@ -1639,7 +1639,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
-    const uint8_t *qualities_end_ptr = qualities;
+    const uint8_t *qualities_end_ptr = qualities + sequence_length;
     while(qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;    
         if (q > PHRED_MAX) {
