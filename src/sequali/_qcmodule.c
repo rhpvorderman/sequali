@@ -1650,7 +1650,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             return -1;
         }
         uint8_t q_index = phred_to_index(q);
-        staging_base_counts_ptr[0][q_index] += 1;
+        staging_phred_counts_ptr[0][q_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         staging_phred_counts_ptr += 1;
         qualities_ptr += 1;
