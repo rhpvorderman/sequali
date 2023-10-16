@@ -1640,6 +1640,31 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
+    const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
+    while(qualities_ptr < qualities_unroll_end_ptr) {
+        uint8_t q0 = qualities_ptr[0] - phred_offset;    
+        uint8_t q1 = qualities_ptr[1] - phred_offset;   
+        uint8_t q2 = qualities_ptr[2] - phred_offset;   
+        uint8_t q3 = qualities_ptr[3] - phred_offset;   
+        if (q0 > PHRED_MAX || q1 > PHRED_MAX || q2 > PHRED_MAX || q3 > PHRED_MAX) {
+            break;
+        }
+        uint8_t q0_index = phred_to_index(q0);
+        uint8_t q1_index = phred_to_index(q1);
+        uint8_t q2_index = phred_to_index(q2);
+        uint8_t q3_index = phred_to_index(q3);
+        staging_phred_counts_ptr[0][q0_index] += 1;
+        staging_phred_counts_ptr[1][q1_index] += 1;
+        staging_phred_counts_ptr[2][q2_index] += 1;
+        staging_phred_counts_ptr[3][q3_index] += 1;
+        /* By writing it as multiple independent additions this takes advantage 
+           of out of order execution. */
+        accumulated_error_rate += (
+            SCORE_TO_ERROR_RATE[q0] + SCORE_TO_ERROR_RATE[q1]) + 
+            (SCORE_TO_ERROR_RATE[q2] + SCORE_TO_ERROR_RATE[q3]);
+        staging_phred_counts_ptr += 4;
+        qualities_ptr += 4;
+    }
     while(qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;    
         if (q > PHRED_MAX) {
