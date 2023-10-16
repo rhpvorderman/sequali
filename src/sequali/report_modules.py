@@ -22,7 +22,7 @@ from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 from .util import fasta_parser
 
-PHRED_TO_ERROR_RATE = [
+PHRED_INDEX_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
@@ -260,15 +260,7 @@ class SequenceLengthDistribution(ReportModule):
 @dataclasses.dataclass
 class PerBaseQualityPercentiles(ReportModule):
     x_labels: List[str]
-    p1: List[float]
-    p5: List[float]
-    p10: List[float]
-    p25: List[float]
-    p50: List[float]
-    p75: List[float]
-    p90: List[float]
-    p95: List[float]
-    p99: List[float]
+    percentiles: List[Tuple[str, List[float]]]
 
     def plot(self) -> str:
         plot = pygal.Line(
@@ -280,15 +272,8 @@ class PerBaseQualityPercentiles(ReportModule):
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
-        plot.add("1%", label_values(self.p1, self.x_labels))
-        plot.add("5%", label_values(self.p5, self.x_labels))
-        plot.add("10%", label_values(self.p10, self.x_labels))
-        plot.add("25%", label_values(self.p25, self.x_labels))
-        plot.add("50%", label_values(self.p50, self.x_labels))
-        plot.add("75%", label_values(self.p75, self.x_labels))
-        plot.add("90%", label_values(self.p90, self.x_labels))
-        plot.add("95%", label_values(self.p95, self.x_labels))
-        plot.add("99%", label_values(self.p99, self.x_labels))
+        for label, serie in self.percentiles:
+            plot.add(label, label_values(serie, self.x_labels))
         return plot.render(is_unicode=True)
 
     def to_html(self):
@@ -299,46 +284,46 @@ class PerBaseQualityPercentiles(ReportModule):
 
     @classmethod
     def from_phred_table_and_labels(cls, phred_tables: array.ArrayType, x_labels):
+        percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+        percentile_names = [f"{i}%" for i in percentiles]
+        percentile_fractions = [i / 100 for i in percentiles]
         total_tables = len(phred_tables) // NUMBER_OF_PHREDS
-        mean_qualities = [0.0 for _ in range(total_tables)]
-        base_qualities = [
-            [0.0 for _ in range(total_tables)]
-            for _ in range(NUMBER_OF_NUCS)
-        ]
-        for cat_index, table in enumerate(table_iterator(phred_tables)):
-            nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
-            nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
-            total_count = 0
-            total_prob = 0.0
-            for phred_p_value, offset in zip(
-                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
-            ):
-                nucs = table[offset: offset + NUMBER_OF_NUCS]
-                count = sum(nucs)
-                total_count += count
-                total_prob += count * phred_p_value
-                for i, count in enumerate(nucs):
-                    nuc_counts[i] += count
-                    nuc_probs[i] += phred_p_value * count
-            if total_count == 0:
-                continue
-            mean_qualities[cat_index] = -10 * math.log10(
-                total_prob / total_count)
-            for i in range(NUMBER_OF_NUCS):
-                if nuc_counts[i] == 0:
-                    continue
-                base_qualities[i][cat_index] = -10 * math.log10(
-                    nuc_probs[i] / nuc_counts[i]
-                )
+        percentile_tables = [[0.0 for _ in range(total_tables)]
+                             for _ in percentiles]
+        for cat_index, table in enumerate(
+                table_iterator(phred_tables, NUMBER_OF_PHREDS)):
+            total = sum(table)
+            percentile_thresholds = [int(f * total) for f in percentile_fractions]
+            accumulated_count = 0
+            accumulated_prob = 0.0
+            threshold_iter = enumerate(percentile_thresholds)
+            tresh_index, current_threshold = next(threshold_iter)
+            for phred_index, count in enumerate(table):
+                while count > 0:
+                    remaining_threshold = current_threshold - accumulated_count
+                    if count > remaining_threshold:
+                        accumulated_prob += (remaining_threshold *
+                                             PHRED_INDEX_TO_ERROR_RATE[phred_index])
+                        phred = -10 * math.log10(accumulated_prob / current_threshold)
+                        percentile_tables[tresh_index][cat_index] = phred
+                        accumulated_count += remaining_threshold
+                        count -= remaining_threshold
+                        try:
+                            tresh_index, current_threshold = next(threshold_iter)
+                        except StopIteration:
+                            # This will make sure the next cat_index is reached
+                            # since 2 ** 65 will not be reached
+                            tresh_index = sys.maxsize
+                            current_threshold = 2**65
+                        continue
+                    break
+                accumulated_count += count
+                accumulated_prob += count * PHRED_INDEX_TO_ERROR_RATE[phred_index]
+
         return cls(
             x_labels=x_labels,
-            A=base_qualities[A],
-            C=base_qualities[C],
-            G=base_qualities[G],
-            T=base_qualities[T],
-            N=base_qualities[N],
-            mean=mean_qualities
-        )
+            percentiles=list(zip(percentile_names, percentile_tables))
+            )
 
 
 @dataclasses.dataclass
@@ -1183,7 +1168,7 @@ class NanoStatsReport(ReportModule):
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "summary": Summary,
-    #"per_position_average_quality": PerBaseAverageSequenceQuality,
+    "per_position_quality_percentiles": PerBaseQualityPercentiles,
     "per_position_quality_distribution": PerBaseQualityScoreDistribution,
     "sequence_length_distribution": SequenceLengthDistribution,
     "per_position_base_content": PerPositionBaseContent,
