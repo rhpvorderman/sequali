@@ -26,6 +26,8 @@ PHRED_INDEX_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
+PHRED_INDEX_TO_PHRED = [-10 * math.log10(PHRED_INDEX_TO_ERROR_RATE[i])
+                        for i in range(NUMBER_OF_PHREDS)]
 
 QUALITY_SERIES_NAMES = (
     "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
@@ -264,7 +266,7 @@ class PerBaseQualityPercentiles(ReportModule):
 
     def plot(self) -> str:
         plot = pygal.Line(
-            title="Per base quality percentiles",
+            title="Per position quality percentiles",
             dots_size=1,
             x_title="position",
             y_title="phred score",
@@ -278,7 +280,9 @@ class PerBaseQualityPercentiles(ReportModule):
 
     def to_html(self):
         return f"""
-            <h2>Per position average quality score</h2>
+            <h2>Per position quality percentiles</h2>
+            Per position quality percentiles based on the categories sampled 
+            for the per base quality distribution graph.<br>
             {self.plot()}
         """
 
@@ -295,17 +299,14 @@ class PerBaseQualityPercentiles(ReportModule):
             total = sum(table)
             percentile_thresholds = [int(f * total) for f in percentile_fractions]
             accumulated_count = 0
-            accumulated_prob = 0.0
             threshold_iter = enumerate(percentile_thresholds)
             tresh_index, current_threshold = next(threshold_iter)
             for phred_index, count in enumerate(table):
                 while count > 0:
                     remaining_threshold = current_threshold - accumulated_count
                     if count > remaining_threshold:
-                        accumulated_prob += (remaining_threshold *
-                                             PHRED_INDEX_TO_ERROR_RATE[phred_index])
-                        phred = -10 * math.log10(accumulated_prob / current_threshold)
-                        percentile_tables[tresh_index][cat_index] = phred
+                        percentile_tables[tresh_index][cat_index] = (
+                            PHRED_INDEX_TO_PHRED)[phred_index]
                         accumulated_count += remaining_threshold
                         count -= remaining_threshold
                         try:
@@ -318,7 +319,6 @@ class PerBaseQualityPercentiles(ReportModule):
                         continue
                     break
                 accumulated_count += count
-                accumulated_prob += count * PHRED_INDEX_TO_ERROR_RATE[phred_index]
 
         return cls(
             x_labels=x_labels,
