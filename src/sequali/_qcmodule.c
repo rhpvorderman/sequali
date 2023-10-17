@@ -1597,11 +1597,10 @@ QCMetrics_flush_staging(QCMetrics *self) {
 
 #ifdef __SSE2__
 static inline size_t horizontal_add_epu8(__m128i vec) {
-    uint8_t x[16]; 
-    _mm_storeu_si128((__m128i *)x, vec);
-    size_t total = x[0] + x[1] + x[2] + x[3] + x[4] + x[5] + x[6] + x[7] +
-        x[8] + x[9] + x[10] + x[11] + x[12] + x[13] + x[14] + x[15];
-    return total;
+    __m128i hadd = _mm_sad_epu8(vec, _mm_setzero_si128());
+    uint64_t count_store[2]; 
+    _mm_storeu_si128((__m128i*)count_store, hadd);
+    return count_store[0] + count_store[1];
 }
 #endif
 
