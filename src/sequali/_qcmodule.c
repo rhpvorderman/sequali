@@ -1602,9 +1602,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     size_t sequence_length = meta->sequence_length;
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
-    uint8_t phred_offset = self->phred_offset;
-    uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
-    double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
@@ -1621,6 +1618,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     staging_base_table *staging_base_counts_ptr = self->staging_base_counts;
     const uint8_t *sequence_ptr = sequence; 
     const uint8_t *sequence_end_ptr = sequence + sequence_length;
+    uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     while(sequence_ptr < sequence_end_ptr) {
         uint8_t c = *sequence_ptr;
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
@@ -1641,6 +1639,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
     const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
+    uint8_t phred_offset = self->phred_offset;
+    double accumulated_error_rate = 0.0;
     while(qualities_ptr < qualities_unroll_end_ptr) {
         uint8_t q0 = qualities_ptr[0] - phred_offset;    
         uint8_t q1 = qualities_ptr[1] - phred_offset;   
