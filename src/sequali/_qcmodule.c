@@ -1688,13 +1688,13 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         size_t g_bases = horizontal_add_epu8(G_counts);
         size_t t_bases = horizontal_add_epu8(T_counts);
         size_t total = a_bases + c_bases + g_bases + t_bases;
-        base_counts[A] = a_bases;
-        base_counts[C] = c_bases;
-        base_counts[G] = g_bases;
-        base_counts[T] = t_bases;
+        base_counts[A] += a_bases;
+        base_counts[C] += c_bases;
+        base_counts[G] += g_bases;
+        base_counts[T] += t_bases;
         // By substracting the ACGT bases from the length over which the 
         // count was run, we get the N bases.
-        base_counts[N] = (iterations * 16) - total;
+        base_counts[N] += (iterations * 16) - total;
 
     }
     #endif
