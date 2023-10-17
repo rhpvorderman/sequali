@@ -1619,6 +1619,71 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *sequence_ptr = sequence; 
     const uint8_t *sequence_end_ptr = sequence + sequence_length;
     uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
+    #ifdef __SSE2__
+    const uint8_t *sequence_vec_end_ptr = sequence_end_ptr - sizeof(__m128i);
+    while (sequence_ptr < sequence_vec_end_ptr) {
+        size_t remaining_length = sequence_vec_end_ptr - sequence_ptr;
+        size_t remaining_vecs = (remaining_length + 15) / 16;
+        size_t iterations = Py_MIN(255, remaining_vecs);
+        register __m128i A_counts = _mm_setzero_si128();
+        register __m128i C_counts = _mm_setzero_si128();
+        register __m128i G_counts = _mm_setzero_si128();
+        register __m128i T_counts = _mm_setzero_si128();
+        for (size_t i=0; i<iterations; i++) {
+            __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
+            // This will make all the nucleotides uppercase.
+            nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
+            __m128i A_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
+            __m128i All_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            A_counts = _mm_add_epi8(A_counts, All_indices);
+            __m128i C_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
+            __m128i C_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            C_counts = _mm_add_epi8(C_counts, C_indices);
+            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(C_nucs, _mm_set1_epi8(253)));
+            __m128i G_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
+            __m128i G_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            G_counts = _mm_add_epi8(G_counts, G_indices);
+            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(G_nucs, _mm_set1_epi8(252)));
+            __m128i T_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
+            __m128i T_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            T_counts = _mm_add_epi8(T_counts, T_indices);
+            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(T_nucs, _mm_set1_epi8(251)));
+            All_indices = _mm_add_epi8(All_indices, _mm_setr_epi8(
+                0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75));
+            static uint8_t indice_store[16];
+            _mm_storeu_si128((__m128i *)indice_store, All_indices);
+            uint16_t *counts_ptr = (uint16_t *)staging_base_counts_ptr; 
+            for (size_t j=0; j<16; j++) {
+                counts_ptr[indice_store[j]] += 1;
+            }
+            sequence_ptr += 16;
+            staging_base_counts_ptr += 16;
+        }
+        int64_t count_store[2];
+        A_counts = _mm_sad_epu8(A_counts, _mm_setzero_si128());
+        _mm_storeu_si64(count_store, A_counts);
+        base_counts[A] = count_store[0] + count_store[1];
+        C_counts = _mm_sad_epu8(C_counts, _mm_setzero_si128());
+        _mm_storeu_si64(count_store, C_counts);
+        base_counts[C] = count_store[0] + count_store[1];
+        G_counts = _mm_sad_epu8(G_counts, _mm_setzero_si128());
+        _mm_storeu_si64(count_store, G_counts);
+        base_counts[G] = count_store[0] + count_store[1];
+        T_counts = _mm_sad_epu8(T_counts, _mm_setzero_si128());
+        _mm_storeu_si64(count_store, T_counts);
+        base_counts[T] = count_store[0] + count_store[1];
+        __m128i total_counts = _mm_add_epi64(
+            _mm_add_epi64(A_counts, C_counts),
+            _mm_add_epi64(G_counts, T_counts)
+        );
+        _mm_storeu_si64(count_store, total_counts);
+        size_t total = count_store[0] + count_store[1];
+        // By substracting the ACGT bases from the length over which the 
+        // count was run, we get the N bases.
+        base_counts[N] = remaining_length - total;
+    }
+    #endif
+
     while(sequence_ptr < sequence_end_ptr) {
         uint8_t c = *sequence_ptr;
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
