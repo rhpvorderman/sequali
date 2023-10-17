@@ -1659,7 +1659,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             sequence_ptr += 16;
             staging_base_counts_ptr += 16;
         }
-        int64_t count_store[2];
+        uint64_t count_store[2] = {0, 0};
         A_counts = _mm_sad_epu8(A_counts, _mm_setzero_si128());
         _mm_storeu_si64(count_store, A_counts);
         base_counts[A] = count_store[0] + count_store[1];
