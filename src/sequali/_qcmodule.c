@@ -1595,6 +1595,16 @@ QCMetrics_flush_staging(QCMetrics *self) {
     self->staging_count = 0;
 }
 
+#ifdef __SSE2__
+static inline size_t horizontal_add_epu8(__m128i vec) {
+    uint8_t x[16]; 
+    _mm_storeu_si128((__m128i *)x, vec);
+    size_t total = x[0] + x[1] + x[2] + x[3] + x[4] + x[5] + x[6] + x[7] +
+        x[8] + x[9] + x[10] + x[11] + x[12] + x[13] + x[14] + x[15];
+    return total;
+}
+#endif
+
 static inline int 
 QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
@@ -1637,15 +1647,15 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             __m128i All_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
             A_counts = _mm_add_epi8(A_counts, All_indices);
             __m128i C_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i C_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            __m128i C_indices = _mm_subs_epu8(C_nucs, _mm_set1_epi8(254));
             C_counts = _mm_add_epi8(C_counts, C_indices);
             All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(C_nucs, _mm_set1_epi8(253)));
             __m128i G_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i G_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            __m128i G_indices = _mm_subs_epu8(G_nucs, _mm_set1_epi8(254));
             G_counts = _mm_add_epi8(G_counts, G_indices);
             All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(G_nucs, _mm_set1_epi8(252)));
             __m128i T_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i T_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
+            __m128i T_indices = _mm_subs_epu8(T_nucs, _mm_set1_epi8(254));
             T_counts = _mm_add_epi8(T_counts, T_indices);
             All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(T_nucs, _mm_set1_epi8(251)));
             All_indices = _mm_add_epi8(All_indices, _mm_setr_epi8(
@@ -1659,28 +1669,19 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             sequence_ptr += 16;
             staging_base_counts_ptr += 16;
         }
-        uint64_t count_store[2] = {0, 0};
-        A_counts = _mm_sad_epu8(A_counts, _mm_setzero_si128());
-        _mm_storeu_si64(count_store, A_counts);
-        base_counts[A] = count_store[0] + count_store[1];
-        C_counts = _mm_sad_epu8(C_counts, _mm_setzero_si128());
-        _mm_storeu_si64(count_store, C_counts);
-        base_counts[C] = count_store[0] + count_store[1];
-        G_counts = _mm_sad_epu8(G_counts, _mm_setzero_si128());
-        _mm_storeu_si64(count_store, G_counts);
-        base_counts[G] = count_store[0] + count_store[1];
-        T_counts = _mm_sad_epu8(T_counts, _mm_setzero_si128());
-        _mm_storeu_si64(count_store, T_counts);
-        base_counts[T] = count_store[0] + count_store[1];
-        __m128i total_counts = _mm_add_epi64(
-            _mm_add_epi64(A_counts, C_counts),
-            _mm_add_epi64(G_counts, T_counts)
-        );
-        _mm_storeu_si64(count_store, total_counts);
-        size_t total = count_store[0] + count_store[1];
+        size_t a_bases = horizontal_add_epu8(A_counts);
+        size_t c_bases = horizontal_add_epu8(C_counts);
+        size_t g_bases = horizontal_add_epu8(G_counts);
+        size_t t_bases = horizontal_add_epu8(T_counts);
+        size_t total = a_bases + c_bases + g_bases + t_bases;
+        base_counts[A] = a_bases;
+        base_counts[C] = c_bases;
+        base_counts[G] = g_bases;
+        base_counts[T] = t_bases;
         // By substracting the ACGT bases from the length over which the 
         // count was run, we get the N bases.
-        base_counts[N] = remaining_length - total;
+        base_counts[N] = (iterations * 16) - total;
+
     }
     #endif
 
