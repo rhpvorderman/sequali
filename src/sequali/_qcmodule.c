@@ -1638,6 +1638,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i C_counts = _mm_setzero_si128();
         register __m128i G_counts = _mm_setzero_si128();
         register __m128i T_counts = _mm_setzero_si128();
+        /* Allocate outside inner loop*/
+        uint8_t indice_store[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
             // This will make all the nucleotides uppercase.
@@ -1659,7 +1661,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(T_nucs, _mm_set1_epi8(251)));
             All_indices = _mm_add_epi8(All_indices, _mm_setr_epi8(
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75));
-            static uint8_t indice_store[16];
             _mm_storeu_si128((__m128i *)indice_store, All_indices);
             uint16_t *counts_ptr = (uint16_t *)staging_base_counts_ptr; 
             for (size_t j=0; j<16; j++) {
