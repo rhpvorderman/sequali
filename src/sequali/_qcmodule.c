@@ -1639,7 +1639,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i G_counts = _mm_setzero_si128();
         register __m128i T_counts = _mm_setzero_si128();
         /* Allocate outside inner loop*/
-        uint8_t indice_store[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
             // This will make all the nucleotides uppercase.
@@ -1650,36 +1649,30 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             __m128i C_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
             __m128i C_indices = _mm_subs_epu8(C_nucs, _mm_set1_epi8(254));
             C_counts = _mm_add_epi8(C_counts, C_indices);
-            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(C_nucs, _mm_set1_epi8(253)));
             __m128i G_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
             __m128i G_indices = _mm_subs_epu8(G_nucs, _mm_set1_epi8(254));
             G_counts = _mm_add_epi8(G_counts, G_indices);
-            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(G_nucs, _mm_set1_epi8(252)));
             __m128i T_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
             __m128i T_indices = _mm_subs_epu8(T_nucs, _mm_set1_epi8(254));
             T_counts = _mm_add_epi8(T_counts, T_indices);
-            All_indices = _mm_or_si128(All_indices, _mm_subs_epu8(T_nucs, _mm_set1_epi8(251)));
-            All_indices = _mm_add_epi8(All_indices, _mm_setr_epi8(
-                0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75));
-            _mm_storeu_si128((__m128i *)indice_store, All_indices);
-            uint16_t *counts_ptr = (uint16_t *)staging_base_counts_ptr; 
             /* Manual loop unrolling gives the best result here */
-            counts_ptr[indice_store[0]] += 1;
-            counts_ptr[indice_store[1]] += 1;
-            counts_ptr[indice_store[2]] += 1;
-            counts_ptr[indice_store[3]] += 1;
-            counts_ptr[indice_store[4]] += 1;
-            counts_ptr[indice_store[5]] += 1;
-            counts_ptr[indice_store[6]] += 1;
-            counts_ptr[indice_store[7]] += 1;
-            counts_ptr[indice_store[8]] += 1;
-            counts_ptr[indice_store[9]] += 1;
-            counts_ptr[indice_store[10]] += 1;
-            counts_ptr[indice_store[11]] += 1;
-            counts_ptr[indice_store[12]] += 1;
-            counts_ptr[indice_store[13]] += 1;
-            counts_ptr[indice_store[14]] += 1;
-            counts_ptr[indice_store[15]] += 1;
+            
+            staging_base_counts_ptr[0][NUCLEOTIDE_TO_INDEX[sequence_ptr[0]]] += 1;
+            staging_base_counts_ptr[1][NUCLEOTIDE_TO_INDEX[sequence_ptr[1]]] += 1;
+            staging_base_counts_ptr[2][NUCLEOTIDE_TO_INDEX[sequence_ptr[2]]] += 1;
+            staging_base_counts_ptr[3][NUCLEOTIDE_TO_INDEX[sequence_ptr[3]]] += 1;
+            staging_base_counts_ptr[4][NUCLEOTIDE_TO_INDEX[sequence_ptr[4]]] += 1;
+            staging_base_counts_ptr[5][NUCLEOTIDE_TO_INDEX[sequence_ptr[5]]] += 1;
+            staging_base_counts_ptr[6][NUCLEOTIDE_TO_INDEX[sequence_ptr[6]]] += 1;
+            staging_base_counts_ptr[7][NUCLEOTIDE_TO_INDEX[sequence_ptr[7]]] += 1;
+            staging_base_counts_ptr[8][NUCLEOTIDE_TO_INDEX[sequence_ptr[8]]] += 1;
+            staging_base_counts_ptr[9][NUCLEOTIDE_TO_INDEX[sequence_ptr[9]]] += 1;
+            staging_base_counts_ptr[10][NUCLEOTIDE_TO_INDEX[sequence_ptr[10]]] += 1;
+            staging_base_counts_ptr[11][NUCLEOTIDE_TO_INDEX[sequence_ptr[11]]] += 1;
+            staging_base_counts_ptr[12][NUCLEOTIDE_TO_INDEX[sequence_ptr[12]]] += 1;
+            staging_base_counts_ptr[13][NUCLEOTIDE_TO_INDEX[sequence_ptr[13]]] += 1;
+            staging_base_counts_ptr[14][NUCLEOTIDE_TO_INDEX[sequence_ptr[14]]] += 1;
+            staging_base_counts_ptr[15][NUCLEOTIDE_TO_INDEX[sequence_ptr[15]]] += 1;
             sequence_ptr += 16;
             staging_base_counts_ptr += 16;
         }
