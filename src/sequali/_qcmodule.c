@@ -1663,9 +1663,23 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
                 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75));
             _mm_storeu_si128((__m128i *)indice_store, All_indices);
             uint16_t *counts_ptr = (uint16_t *)staging_base_counts_ptr; 
-            for (size_t j=0; j<16; j++) {
-                counts_ptr[indice_store[j]] += 1;
-            }
+            /* Manual loop unrolling gives the best result here */
+            counts_ptr[indice_store[0]] += 1;
+            counts_ptr[indice_store[1]] += 1;
+            counts_ptr[indice_store[2]] += 1;
+            counts_ptr[indice_store[3]] += 1;
+            counts_ptr[indice_store[4]] += 1;
+            counts_ptr[indice_store[5]] += 1;
+            counts_ptr[indice_store[6]] += 1;
+            counts_ptr[indice_store[7]] += 1;
+            counts_ptr[indice_store[8]] += 1;
+            counts_ptr[indice_store[9]] += 1;
+            counts_ptr[indice_store[10]] += 1;
+            counts_ptr[indice_store[11]] += 1;
+            counts_ptr[indice_store[12]] += 1;
+            counts_ptr[indice_store[13]] += 1;
+            counts_ptr[indice_store[14]] += 1;
+            counts_ptr[indice_store[15]] += 1;
             sequence_ptr += 16;
             staging_base_counts_ptr += 16;
         }
