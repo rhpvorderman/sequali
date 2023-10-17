@@ -1634,27 +1634,27 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         size_t remaining_length = sequence_vec_end_ptr - sequence_ptr;
         size_t remaining_vecs = (remaining_length + 15) / 16;
         size_t iterations = Py_MIN(255, remaining_vecs);
-        register __m128i A_counts = _mm_setzero_si128();
-        register __m128i C_counts = _mm_setzero_si128();
-        register __m128i G_counts = _mm_setzero_si128();
-        register __m128i T_counts = _mm_setzero_si128();
+        register __m128i a_counts = _mm_setzero_si128();
+        register __m128i c_counts = _mm_setzero_si128();
+        register __m128i g_counts = _mm_setzero_si128();
+        register __m128i t_counts = _mm_setzero_si128();
         /* Allocate outside inner loop*/
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
             // This will make all the nucleotides uppercase.
             nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
-            __m128i A_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
-            __m128i All_indices = _mm_subs_epu8(A_nucs, _mm_set1_epi8(254));
-            A_counts = _mm_add_epi8(A_counts, All_indices);
-            __m128i C_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i C_indices = _mm_subs_epu8(C_nucs, _mm_set1_epi8(254));
-            C_counts = _mm_add_epi8(C_counts, C_indices);
-            __m128i G_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i G_indices = _mm_subs_epu8(G_nucs, _mm_set1_epi8(254));
-            G_counts = _mm_add_epi8(G_counts, G_indices);
-            __m128i T_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i T_indices = _mm_subs_epu8(T_nucs, _mm_set1_epi8(254));
-            T_counts = _mm_add_epi8(T_counts, T_indices);
+            __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
+            __m128i a_positions = _mm_subs_epu8(a_nucs, _mm_set1_epi8(254));
+            a_counts = _mm_add_epi8(a_counts, a_positions);
+            __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
+            __m128i c_positions = _mm_subs_epu8(c_nucs, _mm_set1_epi8(254));
+            c_counts = _mm_add_epi8(c_counts, c_positions);
+            __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
+            __m128i g_positions = _mm_subs_epu8(g_nucs, _mm_set1_epi8(254));
+            g_counts = _mm_add_epi8(g_counts, g_positions);
+            __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
+            __m128i t_positions = _mm_subs_epu8(t_nucs, _mm_set1_epi8(254));
+            t_counts = _mm_add_epi8(t_counts, t_positions);
             /* Manual loop unrolling gives the best result here */
             
             staging_base_counts_ptr[0][NUCLEOTIDE_TO_INDEX[sequence_ptr[0]]] += 1;
@@ -1676,10 +1676,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
             sequence_ptr += 16;
             staging_base_counts_ptr += 16;
         }
-        size_t a_bases = horizontal_add_epu8(A_counts);
-        size_t c_bases = horizontal_add_epu8(C_counts);
-        size_t g_bases = horizontal_add_epu8(G_counts);
-        size_t t_bases = horizontal_add_epu8(T_counts);
+        size_t a_bases = horizontal_add_epu8(a_counts);
+        size_t c_bases = horizontal_add_epu8(c_counts);
+        size_t g_bases = horizontal_add_epu8(g_counts);
+        size_t t_bases = horizontal_add_epu8(t_counts);
         size_t total = a_bases + c_bases + g_bases + t_bases;
         base_counts[A] += a_bases;
         base_counts[C] += c_bases;
