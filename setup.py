@@ -62,7 +62,7 @@ setup(
     ],
     python_requires=">=3.8",  # SupportsIndex requires 3.8
     install_requires=[
-        "xopen",
+        "xopen>=1.8.0",
         "pygal>=3.0.0",
         "tqdm"
     ],

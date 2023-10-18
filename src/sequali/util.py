@@ -26,6 +26,12 @@ import tqdm
 from ._qc import FastqRecordArrayView
 
 
+try:
+    from isal.igzip_threaded import _ThreadedGzipReader
+except ImportError:
+    _ThreadedGzipReader = None  # type: ignore
+
+
 class ProgressUpdater():
     """
     A simple wrapper to update the progressbar based on the parsed
@@ -50,6 +56,9 @@ class ProgressUpdater():
         total: Optional[int] = os.stat(filename).st_size
         if isinstance(filereader, gzip.GzipFile):
             self._get_position = filereader.fileobj.tell
+        if (isinstance(filereader, io.BufferedReader) and
+                isinstance(filereader.raw, _ThreadedGzipReader)):
+            self._get_position = filereader.raw.raw.tell
         elif filereader.seekable():
             self._get_position = filereader.tell
         else:
