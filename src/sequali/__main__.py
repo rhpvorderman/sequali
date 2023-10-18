@@ -81,7 +81,7 @@ def main() -> None:
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
     nanostats = NanoStats()
     filename: str = args.input
-    with xopen.xopen(filename, "rb", threads=0) as file:  # type: ignore
+    with xopen.xopen(filename, "rb", threads=1) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
         if filename.endswith(".bam") or (
                 hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
