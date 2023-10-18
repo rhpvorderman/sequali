@@ -56,7 +56,7 @@ class ProgressUpdater():
         total: Optional[int] = os.stat(filename).st_size
         if isinstance(filereader, gzip.GzipFile):
             self._get_position = filereader.fileobj.tell
-        if (isinstance(filereader, io.BufferedReader) and
+        elif (isinstance(filereader, io.BufferedReader) and
                 isinstance(filereader.raw, _ThreadedGzipReader)):
             self._get_position = filereader.raw.raw.tell
         elif filereader.seekable():
