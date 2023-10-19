@@ -260,69 +260,109 @@ class SequenceLengthDistribution(ReportModule):
 
 
 @dataclasses.dataclass
-class PerBaseQualityPercentiles(ReportModule):
+class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
     percentiles: List[Tuple[str, List[float]]]
 
     def plot(self) -> str:
         plot = pygal.Line(
             title="Per position quality percentiles",
-            dots_size=1,
+            show_dots=False,
             x_title="position",
             y_title="phred score",
-            style=MULTIPLE_SERIES_STYLE,
+            y_labels=list(range(0, 51, 10)),
+            style=pygal.style.DefaultStyle(colors=["#000000"] * 12),
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
-        for label, serie in self.percentiles:
-            plot.add(label, label_values(serie, self.x_labels))
+        percentiles = dict(self.percentiles)
+        plot.add("top 1%", label_values(percentiles["top 1%"], self.x_labels),
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", label_values(percentiles["top 5%"], self.x_labels),
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", label_values(percentiles["mean"], self.x_labels),
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", label_values(percentiles["bottom 5%"], self.x_labels),
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", label_values(percentiles["bottom 1%"], self.x_labels),
+                 stroke_style={"dasharray": '1,2'})
         return plot.render(is_unicode=True)
 
     def to_html(self):
         return f"""
             <h2>Per position quality percentiles</h2>
-            Per position quality percentiles based on the categories sampled 
-            for the per base quality distribution graph.<br>
+            Shows the mean for all bases and the means of the lowest and
+            highest percentiles to indicate the spread. Since the graph is
+            based on the sampled categories, rather than exact phreds, it is
+            an approximation.<br>
             {self.plot()}
         """
 
     @classmethod
     def from_phred_table_and_labels(cls, phred_tables: array.ArrayType, x_labels):
         percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
-        percentile_names = [f"{i}%" for i in percentiles]
         percentile_fractions = [i / 100 for i in percentiles]
         total_tables = len(phred_tables) // NUMBER_OF_PHREDS
         percentile_tables = [[0.0 for _ in range(total_tables)]
                              for _ in percentiles]
+        reversed_percentile_tables = [[0.0 for _ in range(total_tables)]
+                                      for _ in percentiles]
+        mean = [0.0 for _ in range(total_tables)]
         for cat_index, table in enumerate(
                 table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total = sum(table)
+            total_error_rate = sum(
+                PHRED_INDEX_TO_ERROR_RATE[i] * x for i, x in enumerate(table))
             percentile_thresholds = [int(f * total) for f in percentile_fractions]
+            mean[cat_index] = -10 * math.log10(total_error_rate / total)
             accumulated_count = 0
+            accumulated_errors = 0.0
             threshold_iter = enumerate(percentile_thresholds)
-            tresh_index, current_threshold = next(threshold_iter)
+            thresh_index, current_threshold = next(threshold_iter)
             for phred_index, count in enumerate(table):
                 while count > 0:
                     remaining_threshold = current_threshold - accumulated_count
                     if count > remaining_threshold:
-                        percentile_tables[tresh_index][cat_index] = (
-                            PHRED_INDEX_TO_PHRED)[phred_index]
+                        accumulated_errors += (remaining_threshold *
+                                               PHRED_INDEX_TO_ERROR_RATE[phred_index])
                         accumulated_count += remaining_threshold
+                        percentile_tables[thresh_index][cat_index] = (
+                            -10 * math.log10(
+                                accumulated_errors / accumulated_count))
+                        reversed_percentile_tables[thresh_index][cat_index] = (
+                            -10 * math.log10(
+                                (total_error_rate - accumulated_errors) /
+                                (total - accumulated_count)
+                            )
+                        )
                         count -= remaining_threshold
                         try:
-                            tresh_index, current_threshold = next(threshold_iter)
+                            thresh_index, current_threshold = next(threshold_iter)
                         except StopIteration:
                             # This will make sure the next cat_index is reached
                             # since 2 ** 65 will not be reached
-                            tresh_index = sys.maxsize
+                            thresh_index = sys.maxsize
                             current_threshold = 2**65
                         continue
                     break
                 accumulated_count += count
-
+                accumulated_errors += PHRED_INDEX_TO_ERROR_RATE[phred_index] * count
+        graph_series = [
+            ("bottom 1%", percentile_tables[0]),
+            ("bottom 5%", percentile_tables[1]),
+            ("bottom 10%", percentile_tables[2]),
+            ("bottom 25%", percentile_tables[3]),
+            ("bottom 50%", percentile_tables[4]),
+            ("mean", mean),
+            ("top 50%", reversed_percentile_tables[-5]),
+            ("top 25%", reversed_percentile_tables[-4]),
+            ("top 10%", reversed_percentile_tables[-3]),
+            ("top 5%", reversed_percentile_tables[-2]),
+            ("top 1%", reversed_percentile_tables[-1]),
+        ]
         return cls(
             x_labels=x_labels,
-            percentiles=list(zip(percentile_names, percentile_tables))
+            percentiles=graph_series
             )
 
 
@@ -1168,7 +1208,7 @@ class NanoStatsReport(ReportModule):
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "summary": Summary,
-    "per_position_quality_percentiles": PerBaseQualityPercentiles,
+    "per_position_mean_quality_and_spread": PerPositionMeanQualityAndSpread,
     "per_position_quality_distribution": PerBaseQualityScoreDistribution,
     "sequence_length_distribution": SequenceLengthDistribution,
     "per_position_base_content": PerPositionBaseContent,
@@ -1261,7 +1301,7 @@ def qc_metrics_modules(metrics: QCMetrics,
             base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
             aggregated_phred_matrix, x_labels),
-        PerBaseQualityPercentiles.from_phred_table_and_labels(
+        PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
            aggregated_phred_matrix, x_labels),
         PerSequenceAverageQualityScores.from_qc_metrics(metrics),
         PerPositionBaseContent.from_base_count_tables_and_labels(
