@@ -1597,10 +1597,17 @@ QCMetrics_flush_staging(QCMetrics *self) {
 
 #ifdef __SSE2__
 static inline size_t horizontal_add_epu8(__m128i vec) {
+    /* _mm_sad_epu8 calculates absolute differences between a and b and then 
+       summes the lower 8 bytes horizontally and saves it is in the lower 16 
+       bits of the lower 64-bit integer. It does the same for the upper 8 
+       bytes and stores it in the upper 64-bit integer. 
+       _mm_cvtsi128_si64 gets the lower 64-bit integer. Using 
+       _mm_bsrli_si128 we can shift the result 8 bytes to the right, resulting
+       in the upper integer being in the place of the lower integer. */
     __m128i hadd = _mm_sad_epu8(vec, _mm_setzero_si128());
-    uint64_t count_store[2]; 
-    _mm_storeu_si128((__m128i*)count_store, hadd);
-    return count_store[0] + count_store[1];
+    uint64_t lower_count = _mm_cvtsi128_si64(hadd);
+    uint64_t upper_count = _mm_cvtsi128_si64(_mm_bsrli_si128(hadd, 8));
+    return lower_count + upper_count;
 }
 #endif
 
