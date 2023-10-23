@@ -68,3 +68,17 @@ def test_long_sequence():
     metrics.add_read(FastqRecordView("name", sequence, qualities))
     assert metrics.phred_scores()[20] == 1
     assert metrics.gc_content()[50] == 1
+
+
+def test_average_long_quality():
+    metrics = QCMetrics()
+    sequence = 20_000_000 * "A"
+    # After creating a big error float of 1000.0 we start adding very small
+    # probabilities of 1 in 100_000. If the counting is too imprecise, the
+    # rounding errors will lead to an incorrect average score for
+    # the entire read.
+    qualities = 1000 * chr(0 + 33) + 19_999_000 * chr(50 + 33)
+    error_rate = (1 + 19999 * 10 ** -5) / 20000
+    phred = -10 * math.log10(error_rate)
+    metrics.add_read(FastqRecordView("name", sequence, qualities))
+    assert metrics.phred_scores()[round(phred)] == 1
