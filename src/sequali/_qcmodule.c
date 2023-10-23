@@ -1634,7 +1634,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     staging_base_table *staging_base_counts_ptr = self->staging_base_counts;
     const uint8_t *sequence_ptr = sequence; 
     const uint8_t *sequence_end_ptr = sequence + sequence_length;
-    uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
+    // uint32_t is ample as the maximum length of a sequence is saved in a uint32_r
+    uint32_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
     #ifdef __SSE2__
     const uint8_t *sequence_vec_end_ptr = sequence_end_ptr - sizeof(__m128i);
     while (sequence_ptr < sequence_vec_end_ptr) {
