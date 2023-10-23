@@ -56,3 +56,15 @@ def test_qc_metrics():
         assert base_array[T + NUMBER_OF_NUCS * i] == 1
     for i in range(40, 50):
         assert base_array[N + NUMBER_OF_NUCS * i] == 1
+
+
+def test_long_sequence():
+    metrics = QCMetrics()
+    # This will test the base counting in vectors properly as that is limited
+    # at 255 * 16 nucleotides (4080 bytes) and thus needs to flush the counts
+    # properly.
+    sequence = 4096 * 'A' + 4096 * 'C'
+    qualities = 8192 * chr(20 + 33)
+    metrics.add_read(FastqRecordView("name", sequence, qualities))
+    assert metrics.phred_scores()[20] == 1
+    assert metrics.gc_content()[50] == 1
