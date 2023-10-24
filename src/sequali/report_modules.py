@@ -61,7 +61,7 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
-    width=1000,
+    width=1500,
     explicit_size=True,
     disable_xml_declaration=True,
 )
@@ -469,15 +469,12 @@ class PerSequenceAverageQualityScores(ReportModule):
         plot = pygal.Bar(
             title="Per sequence quality scores",
             x_labels=range(PHRED_MAX + 1),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
             x_labels_major_every=3,
             show_minor_x_labels=False,
             style=ONE_SERIE_STYLE,
             x_title="Phred score",
             y_title="Percentage of total",
-            truncate_label=-1,
+            **COMMON_GRAPH_OPTIONS
         )
         total = sum(self.average_quality_counts)
         percentage_scores = [100 * score / total
