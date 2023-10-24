@@ -194,7 +194,7 @@ class Summary(ReportModule):
             <h2>Summary</h2>
             <table>
             <tr><td>Mean length</td><td align="right">
-                {self.mean_length:.2f}</td></tr>
+                {self.mean_length:,.2f}</td></tr>
             <tr><td>Length range (min-max)</td><td align="right">
                 {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
             <tr><td>total reads</td><td align="right">{self.total_reads:,}</td></tr>
@@ -241,6 +241,17 @@ class SequenceLengthDistribution(ReportModule):
     def to_html(self):
         return f"""
             <h2>Sequence length distribution</h2>
+            <table>
+                <tr><td>N1</td><td align="right">{self.q1:,}</td></tr>
+                <tr><td>N5</td><td align="right">{self.q5:,}</td></tr>
+                <tr><td>N10</td><td align="right">{self.q10:,}</td></tr>
+                <tr><td>N25</td><td align="right">{self.q25:,}</td></tr>
+                <tr><td>N50</td><td align="right">{self.q50:,}</td></tr>
+                <tr><td>N75</td><td align="right">{self.q75:,}</td></tr>
+                <tr><td>N90</td><td align="right">{self.q90:,}</td></tr>
+                <tr><td>N95</td><td align="right">{self.q95:,}</td></tr>
+                <tr><td>N99</td><td align="right">{self.q99:,}</td></tr>
+            </table>
             {self.plot()}
         """
 
@@ -1325,7 +1336,7 @@ def qc_metrics_modules(metrics: QCMetrics,
     gc_content = (g_bases + c_bases) / (a_bases + c_bases + g_bases + t_bases)
     return [
         Summary(
-            mean_length=total_bases // total_reads,
+            mean_length=total_bases / total_reads,
             minimum_length=minimum_length,
             maximum_length=metrics.max_length,
             total_reads=total_reads,
