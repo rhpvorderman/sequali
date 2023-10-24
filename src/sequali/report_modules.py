@@ -17,15 +17,17 @@ import pygal.style  # type: ignore
 from ._qc import A, C, G, N, T
 from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
     SequenceDuplication
-from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
+from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
 from .util import fasta_parser
 
-PHRED_TO_ERROR_RATE = [
+PHRED_INDEX_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
     for start in range(NUMBER_OF_PHREDS)
 ]
+PHRED_INDEX_TO_PHRED = [-10 * math.log10(PHRED_INDEX_TO_ERROR_RATE[i])
+                        for i in range(NUMBER_OF_PHREDS)]
 
 QUALITY_SERIES_NAMES = (
     "0-3", "4-7", "8-11", "12-15", "16-19", "20-23", "24-27", "28-31",
@@ -104,27 +106,41 @@ def stringify_ranges(data_ranges: Iterable[Tuple[int, int]]):
     ]
 
 
-def table_iterator(count_tables: array.ArrayType) -> Iterator[memoryview]:
+def table_iterator(count_tables: array.ArrayType,
+                   table_size: int) -> Iterator[memoryview]:
     table_view = memoryview(count_tables)
-    for i in range(0, len(count_tables), TABLE_SIZE):
-        yield table_view[i: i + TABLE_SIZE]
+    for i in range(0, len(count_tables), table_size):
+        yield table_view[i: i + table_size]
 
 
 def aggregate_count_matrix(
         count_tables: array.ArrayType,
-        data_ranges: Sequence[Tuple[int, int]]) -> array.ArrayType:
+        data_ranges: Sequence[Tuple[int, int]],
+        table_size: int) -> array.ArrayType:
     count_view = memoryview(count_tables)
     aggregated_matrix = array.array(
-        "Q", bytes(8 * TABLE_SIZE * len(data_ranges)))
+        "Q", bytes(8 * table_size * len(data_ranges)))
     ag_view = memoryview(aggregated_matrix)
     for cat_index, (start, stop) in enumerate(data_ranges):
-        cat_offset = cat_index * TABLE_SIZE
-        cat_view = ag_view[cat_offset:cat_offset + TABLE_SIZE]
-        table_start = start * TABLE_SIZE
-        table_stop = stop * TABLE_SIZE
-        for i in range(TABLE_SIZE):
-            cat_view[i] = sum(count_view[table_start + i: table_stop: TABLE_SIZE])
+        cat_offset = cat_index * table_size
+        cat_view = ag_view[cat_offset:cat_offset + table_size]
+        table_start = start * table_size
+        table_stop = stop * table_size
+        for i in range(table_size):
+            cat_view[i] = sum(count_view[table_start + i: table_stop: table_size])
     return aggregated_matrix
+
+
+def aggregate_base_tables(
+        count_tables: array.ArrayType,
+        data_ranges: Sequence[Tuple[int, int]],) -> array.ArrayType:
+    return aggregate_count_matrix(count_tables, data_ranges, NUMBER_OF_NUCS)
+
+
+def aggregate_phred_tables(
+        count_tables: array.ArrayType,
+        data_ranges: Sequence[Tuple[int, int]],) -> array.ArrayType:
+    return aggregate_count_matrix(count_tables, data_ranges, NUMBER_OF_PHREDS)
 
 
 def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
@@ -220,16 +236,16 @@ class SequenceLengthDistribution(ReportModule):
         """
 
     @classmethod
-    def from_count_tables(cls,
-                          count_tables: array.ArrayType,
-                          total_sequences: int,
-                          data_ranges: Sequence[Tuple[int, int]]):
-        max_length = len(count_tables) // TABLE_SIZE
+    def from_base_count_tables(cls,
+                               base_count_tables: array.ArrayType,
+                               total_sequences: int,
+                               data_ranges: Sequence[Tuple[int, int]]):
+        max_length = len(base_count_tables) // NUMBER_OF_NUCS
         # use bytes constructor to initialize to 0
         sequence_lengths = array.array("Q", bytes(8 * (max_length + 1)))
         base_counts = array.array("Q", bytes(8 * (max_length + 1)))
         base_counts[0] = total_sequences  # all reads have at least 0 bases
-        for i, table in enumerate(table_iterator(count_tables)):
+        for i, table in enumerate(table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             base_counts[i + 1] = sum(table)
         previous_count = 0
         for i in range(max_length, 0, -1):
@@ -244,80 +260,110 @@ class SequenceLengthDistribution(ReportModule):
 
 
 @dataclasses.dataclass
-class PerBaseAverageSequenceQuality(ReportModule):
+class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
-    A: List[float]
-    C: List[float]
-    G: List[float]
-    T: List[float]
-    N: List[float]
-    mean: List[float]
+    percentiles: List[Tuple[str, List[float]]]
 
     def plot(self) -> str:
         plot = pygal.Line(
-            title="Per base average sequence quality",
-            dots_size=1,
+            title="Per position quality percentiles",
+            show_dots=False,
             x_title="position",
             y_title="phred score",
-            style=MULTIPLE_SERIES_STYLE,
+            y_labels=list(range(0, 51, 10)),
+            style=pygal.style.DefaultStyle(colors=["#000000"] * 12),
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
-        plot.add("A", label_values(self.A, self.x_labels))
-        plot.add("C", label_values(self.C, self.x_labels))
-        plot.add("G", label_values(self.G, self.x_labels))
-        plot.add("T", label_values(self.T, self.x_labels))
-        plot.add("mean", label_values(self.mean, self.x_labels))
+        percentiles = dict(self.percentiles)
+        plot.add("top 1%", label_values(percentiles["top 1%"], self.x_labels),
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", label_values(percentiles["top 5%"], self.x_labels),
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", label_values(percentiles["mean"], self.x_labels),
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", label_values(percentiles["bottom 5%"], self.x_labels),
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", label_values(percentiles["bottom 1%"], self.x_labels),
+                 stroke_style={"dasharray": '1,2'})
         return plot.render(is_unicode=True)
 
     def to_html(self):
         return f"""
-            <h2>Per position average quality score</h2>
+            <h2>Per position quality percentiles</h2>
+            Shows the mean for all bases and the means of the lowest and
+            highest percentiles to indicate the spread. Since the graph is
+            based on the sampled categories, rather than exact phreds, it is
+            an approximation.<br>
             {self.plot()}
         """
 
     @classmethod
-    def from_table_and_labels(cls, count_tables: array.ArrayType, x_labels):
-        total_tables = len(count_tables) // TABLE_SIZE
-        mean_qualities = [0.0 for _ in range(total_tables)]
-        base_qualities = [
-            [0.0 for _ in range(total_tables)]
-            for _ in range(NUMBER_OF_NUCS)
+    def from_phred_table_and_labels(cls, phred_tables: array.ArrayType, x_labels):
+        percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+        percentile_fractions = [i / 100 for i in percentiles]
+        total_tables = len(phred_tables) // NUMBER_OF_PHREDS
+        percentile_tables = [[0.0 for _ in range(total_tables)]
+                             for _ in percentiles]
+        reversed_percentile_tables = [[0.0 for _ in range(total_tables)]
+                                      for _ in percentiles]
+        mean = [0.0 for _ in range(total_tables)]
+        for cat_index, table in enumerate(
+                table_iterator(phred_tables, NUMBER_OF_PHREDS)):
+            total = sum(table)
+            total_error_rate = sum(
+                PHRED_INDEX_TO_ERROR_RATE[i] * x for i, x in enumerate(table))
+            percentile_thresholds = [int(f * total) for f in percentile_fractions]
+            mean[cat_index] = -10 * math.log10(total_error_rate / total)
+            accumulated_count = 0
+            accumulated_errors = 0.0
+            threshold_iter = enumerate(percentile_thresholds)
+            thresh_index, current_threshold = next(threshold_iter)
+            for phred_index, count in enumerate(table):
+                while count > 0:
+                    remaining_threshold = current_threshold - accumulated_count
+                    if count > remaining_threshold:
+                        accumulated_errors += (remaining_threshold *
+                                               PHRED_INDEX_TO_ERROR_RATE[phred_index])
+                        accumulated_count += remaining_threshold
+                        percentile_tables[thresh_index][cat_index] = (
+                            -10 * math.log10(
+                                accumulated_errors / accumulated_count))
+                        reversed_percentile_tables[thresh_index][cat_index] = (
+                            -10 * math.log10(
+                                (total_error_rate - accumulated_errors) /
+                                (total - accumulated_count)
+                            )
+                        )
+                        count -= remaining_threshold
+                        try:
+                            thresh_index, current_threshold = next(threshold_iter)
+                        except StopIteration:
+                            # This will make sure the next cat_index is reached
+                            # since 2 ** 65 will not be reached
+                            thresh_index = sys.maxsize
+                            current_threshold = 2**65
+                        continue
+                    break
+                accumulated_count += count
+                accumulated_errors += PHRED_INDEX_TO_ERROR_RATE[phred_index] * count
+        graph_series = [
+            ("bottom 1%", percentile_tables[0]),
+            ("bottom 5%", percentile_tables[1]),
+            ("bottom 10%", percentile_tables[2]),
+            ("bottom 25%", percentile_tables[3]),
+            ("bottom 50%", percentile_tables[4]),
+            ("mean", mean),
+            ("top 50%", reversed_percentile_tables[-5]),
+            ("top 25%", reversed_percentile_tables[-4]),
+            ("top 10%", reversed_percentile_tables[-3]),
+            ("top 5%", reversed_percentile_tables[-2]),
+            ("top 1%", reversed_percentile_tables[-1]),
         ]
-        for cat_index, table in enumerate(table_iterator(count_tables)):
-            nuc_probs = [0.0 for _ in range(NUMBER_OF_NUCS)]
-            nuc_counts = [0 for _ in range(NUMBER_OF_NUCS)]
-            total_count = 0
-            total_prob = 0.0
-            for phred_p_value, offset in zip(
-                    PHRED_TO_ERROR_RATE, range(0, TABLE_SIZE, NUMBER_OF_NUCS)
-            ):
-                nucs = table[offset: offset + NUMBER_OF_NUCS]
-                count = sum(nucs)
-                total_count += count
-                total_prob += count * phred_p_value
-                for i, count in enumerate(nucs):
-                    nuc_counts[i] += count
-                    nuc_probs[i] += phred_p_value * count
-            if total_count == 0:
-                continue
-            mean_qualities[cat_index] = -10 * math.log10(
-                total_prob / total_count)
-            for i in range(NUMBER_OF_NUCS):
-                if nuc_counts[i] == 0:
-                    continue
-                base_qualities[i][cat_index] = -10 * math.log10(
-                    nuc_probs[i] / nuc_counts[i]
-                )
         return cls(
             x_labels=x_labels,
-            A=base_qualities[A],
-            C=base_qualities[C],
-            G=base_qualities[G],
-            T=base_qualities[T],
-            N=base_qualities[N],
-            mean=mean_qualities
-        )
+            percentiles=graph_series
+            )
 
 
 @dataclasses.dataclass
@@ -326,22 +372,21 @@ class PerBaseQualityScoreDistribution(ReportModule):
     series: Sequence[Sequence[float]]
 
     @classmethod
-    def from_count_table_and_labels(
-            cls, count_tables: array.ArrayType, x_labels: Sequence[str]):
+    def from_phred_count_table_and_labels(
+            cls, phred_tables: array.ArrayType, x_labels: Sequence[str]):
         total_tables = len(x_labels)
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_PHREDS)
         ]
-        for cat_index, table in enumerate(table_iterator(count_tables)):
+        for cat_index, table in enumerate(
+                table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total_nucs = sum(table)
-            for offset in range(0, TABLE_SIZE, NUMBER_OF_NUCS):
-                category_nucs = sum(table[offset: offset + NUMBER_OF_NUCS])
-                if category_nucs == 0:
+            for offset, phred_count in enumerate(table):
+                if phred_count == 0:
                     continue
-                nuc_fraction = category_nucs / total_nucs
-                quality_distribution[offset // NUMBER_OF_NUCS][
-                    cat_index] = nuc_fraction
+                nuc_fraction = phred_count / total_nucs
+                quality_distribution[offset][cat_index] = nuc_fraction
         return cls(x_labels, quality_distribution)
 
     def plot(self) -> str:
@@ -447,25 +492,25 @@ class PerPositionBaseContent(ReportModule):
         """
 
     @classmethod
-    def from_count_tables_and_labels(cls,
-                                     count_tables: array.ArrayType,
-                                     labels: Sequence[str]):
-        total_tables = len(count_tables) // TABLE_SIZE
+    def from_base_count_tables_and_labels(cls,
+                                          base_count_tables: array.ArrayType,
+                                          labels: Sequence[str]):
+        total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         base_fractions = [
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_NUCS)
         ]
-        for index, table in enumerate(table_iterator(count_tables)):
+        for index, table in enumerate(
+                table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             total_bases = sum(table)
-            n_bases = sum(table[N::NUMBER_OF_NUCS])
+            n_bases = table[N]
             named_total = total_bases - n_bases
             if named_total == 0:
                 continue
-            for i in range(NUMBER_OF_NUCS):
-                if i == N:
-                    continue
-                nuc_count = sum(table[i::NUMBER_OF_NUCS])
-                base_fractions[i][index] = nuc_count / named_total
+            base_fractions[A][index] = table[A] / named_total
+            base_fractions[C][index] = table[C] / named_total
+            base_fractions[G][index] = table[G] / named_total
+            base_fractions[T][index] = table[T] / named_total
         return cls(
             labels,
             A=base_fractions[A],
@@ -481,16 +526,16 @@ class PerPositionNContent(ReportModule):
     n_content: Sequence[float]
 
     @classmethod
-    def from_count_tables_and_labels(
-            cls, count_tables: array.ArrayType, labels: Sequence[str]):
-        total_tables = len(count_tables) // TABLE_SIZE
+    def from_base_count_tables_and_labels(
+            cls, base_count_tables: array.ArrayType, labels: Sequence[str]):
+        total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         n_fractions = [0.0 for _ in range(total_tables)]
-        for index, table in enumerate(table_iterator(count_tables)):
+        for index, table in enumerate(
+                table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             total_bases = sum(table)
             if total_bases == 0:
                 continue
-            n_bases = sum(table[N::NUMBER_OF_NUCS])
-            n_fractions[index] = n_bases / total_bases
+            n_fractions[index] = table[N] / total_bases
         return cls(
             labels,
             n_fractions
@@ -1163,7 +1208,7 @@ class NanoStatsReport(ReportModule):
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "summary": Summary,
-    "per_position_average_quality": PerBaseAverageSequenceQuality,
+    "per_position_mean_quality_and_spread": PerPositionMeanQualityAndSpread,
     "per_position_quality_distribution": PerBaseQualityScoreDistribution,
     "sequence_length_distribution": SequenceLengthDistribution,
     "per_position_base_content": PerPositionBaseContent,
@@ -1217,22 +1262,31 @@ def write_html_report(report_modules: Iterable[ReportModule],
 def qc_metrics_modules(metrics: QCMetrics,
                        data_ranges: Sequence[Tuple[int, int]]
                        ) -> List[ReportModule]:
-    count_tables = metrics.count_table()
+    base_count_tables = metrics.base_count_table()
+    phred_count_table = metrics.phred_count_table()
     x_labels = stringify_ranges(data_ranges)
-    aggregrated_matrix = aggregate_count_matrix(count_tables, data_ranges)
-    summary_table = aggregate_count_matrix(
-        aggregrated_matrix, [(0, len(aggregrated_matrix) // TABLE_SIZE)])
-    total_bases = sum(summary_table)
+    aggregrated_base_matrix = aggregate_count_matrix(
+        base_count_tables, data_ranges, NUMBER_OF_NUCS)
+    aggregated_phred_matrix = aggregate_count_matrix(
+        phred_count_table, data_ranges, NUMBER_OF_PHREDS)
+    summary_bases = aggregate_count_matrix(
+        aggregrated_base_matrix,
+        [(0, len(aggregrated_base_matrix) // NUMBER_OF_NUCS)], NUMBER_OF_NUCS)
+    summary_phreds = aggregate_count_matrix(
+        aggregated_phred_matrix,
+        [(0, len(aggregated_phred_matrix) // NUMBER_OF_PHREDS)],
+        NUMBER_OF_PHREDS)
+    total_bases = sum(summary_bases)
     minimum_length = 0
     total_reads = metrics.number_of_reads
-    for table in table_iterator(count_tables):
+    for table in table_iterator(base_count_tables, NUMBER_OF_NUCS):
         if sum(table) < total_reads:
             break
         minimum_length += 1
-    a_bases = sum(summary_table[A::NUMBER_OF_NUCS])
-    c_bases = sum(summary_table[C::NUMBER_OF_NUCS])
-    g_bases = sum(summary_table[G::NUMBER_OF_NUCS])
-    t_bases = sum(summary_table[T::NUMBER_OF_NUCS])
+    a_bases = summary_bases[A]
+    c_bases = summary_bases[C]
+    g_bases = summary_bases[G]
+    t_bases = summary_bases[T]
     gc_content = (g_bases + c_bases) / (a_bases + c_bases + g_bases + t_bases)
     return [
         Summary(
@@ -1241,19 +1295,19 @@ def qc_metrics_modules(metrics: QCMetrics,
             maximum_length=metrics.max_length,
             total_reads=total_reads,
             total_bases=total_bases,
-            q20_bases=sum(summary_table[5 * NUMBER_OF_NUCS:]),
+            q20_bases=sum(summary_phreds[5:]),
             total_gc_fraction=gc_content),
-        SequenceLengthDistribution.from_count_tables(count_tables, total_reads,
-                                                     data_ranges),
-        PerBaseQualityScoreDistribution.from_count_table_and_labels(
-            aggregrated_matrix, x_labels),
-        PerBaseAverageSequenceQuality.from_table_and_labels(
-            aggregrated_matrix, x_labels),
+        SequenceLengthDistribution.from_base_count_tables(
+            base_count_tables, total_reads, data_ranges),
+        PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
+            aggregated_phred_matrix, x_labels),
+        PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
+           aggregated_phred_matrix, x_labels),
         PerSequenceAverageQualityScores.from_qc_metrics(metrics),
-        PerPositionBaseContent.from_count_tables_and_labels(
-            aggregrated_matrix, x_labels),
-        PerPositionNContent.from_count_tables_and_labels(
-            aggregrated_matrix, x_labels),
+        PerPositionBaseContent.from_base_count_tables_and_labels(
+            aggregrated_base_matrix, x_labels),
+        PerPositionNContent.from_base_count_tables_and_labels(
+            aggregrated_base_matrix, x_labels),
         PerSequenceGCContent.from_qc_metrics(metrics),
     ]
 

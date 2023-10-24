@@ -1479,25 +1479,10 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
-/* Illumina reads often use a limited set of phreds rather than the full range
-   of 0-93. Putting phreds before nucleotides in the array type therefore gives
-   nice dense spots in the array where all nucleotides with the same phred sit
-   next to eachother. That leads to better cache locality. */
-typedef uint64_t counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
-
-/* The counttable currently spans 5 * 12 = 60 integers. With uint64_t this 
-   means 480 bytes and 8 cache lines. Using smaller than 64-bit integers has 
-   the disadvantage that there will be overflow. 
-   Using a uint16_t count array reduces memory usage by 4x (and therefore 
-   has better cache locality). We can prevent overflow by simply keeping it
-   next to a uint64_t count array and simply adding the result to the uint64_t
-   count array when 65535 entries are counted in the uint16_t staging array.
-   For short reads, this is mainly extra work and therefore has a very small
-   penalty. For long reads it is very beneficial.
-   uint8_t was also tested but that made things a lot slower for long reads
-   due to having to transverse the count arrays very frequently.
-*/
-typedef uint16_t staging_counttable_t[PHRED_TABLE_SIZE][NUC_TABLE_SIZE];
+typedef uint16_t staging_base_table[NUC_TABLE_SIZE];
+typedef uint16_t staging_phred_table[PHRED_TABLE_SIZE];
+typedef uint64_t base_table[NUC_TABLE_SIZE];
+typedef uint64_t phred_table[PHRED_TABLE_SIZE];
 
 static inline uint8_t phred_to_index(uint8_t phred) {
     if (phred > PHRED_LIMIT){
@@ -1511,8 +1496,10 @@ typedef struct _QCMetricsStruct {
     uint8_t phred_offset;
     uint16_t staging_count;
     size_t max_length;
-    staging_counttable_t *staging_count_tables;
-    counttable_t *count_tables;
+    staging_base_table *staging_base_counts;
+    staging_phred_table *staging_phred_counts;
+    base_table *base_counts;
+    phred_table *phred_counts;
     size_t number_of_reads;
     uint64_t gc_content[101];
     uint64_t phred_scores[PHRED_MAX + 1];
@@ -1520,8 +1507,10 @@ typedef struct _QCMetricsStruct {
 
 static void
 QCMetrics_dealloc(QCMetrics *self) {
-    PyMem_Free(self->count_tables);
-    PyMem_Free(self->staging_count_tables);
+    PyMem_Free(self->staging_base_counts);
+    PyMem_Free(self->staging_phred_counts);
+    PyMem_Free(self->base_counts);
+    PyMem_Free(self->phred_counts);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -1536,8 +1525,10 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
     QCMetrics *self = PyObject_New(QCMetrics, type);
     self->max_length = 0;
     self->phred_offset = phred_offset;
-    self->count_tables = NULL;
-    self->staging_count_tables = NULL;
+    self->staging_base_counts = NULL;
+    self->staging_phred_counts = NULL;
+    self->base_counts = NULL;
+    self->phred_counts = NULL;
     self->number_of_reads = 0;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
@@ -1547,29 +1538,35 @@ QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs){
 static int
 QCMetrics_resize(QCMetrics *self, Py_ssize_t new_size) 
 {
-    counttable_t *tmp = PyMem_Realloc(
-        self->count_tables, new_size * sizeof(counttable_t)
-    );
-    if (tmp == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    self->count_tables = tmp;
-    /* Set the added part to 0 */
-    memset(self->count_tables + self->max_length, 0, 
-           (new_size - self->max_length) * sizeof(counttable_t));
+    staging_base_table *staging_base_tmp = PyMem_Realloc(
+        self->staging_base_counts, new_size *sizeof(staging_base_table));
+    staging_phred_table *staging_phred_tmp = PyMem_Realloc(
+        self->staging_phred_counts, new_size * sizeof(staging_phred_table));
+    base_table *base_table_tmp = PyMem_Realloc(
+        self->base_counts, new_size * sizeof(base_table));
+    phred_table *phred_table_tmp = PyMem_Realloc( 
+        self->phred_counts, new_size *sizeof(phred_table));
 
-    staging_counttable_t *staging_tmp = PyMem_Realloc(
-        self->staging_count_tables, new_size * sizeof(staging_counttable_t)
-    );
-    if (staging_tmp == NULL) {
+    if (staging_base_tmp == NULL || staging_phred_tmp == NULL || base_table_tmp == NULL || phred_table_tmp == NULL) {
         PyErr_NoMemory();
+        PyMem_Free(staging_base_tmp);
+        PyMem_Free(staging_phred_tmp);
+        PyMem_Free(base_table_tmp);
+        PyMem_Free(phred_table_tmp);
         return -1;
     }
-    self->staging_count_tables = staging_tmp;
-    /* Set the added part to 0 */
-    memset(self->staging_count_tables + self->max_length, 0, 
-           (new_size - self->max_length) * sizeof(staging_counttable_t));
+
+    size_t old_size = self->max_length;
+    size_t new_slots = new_size - old_size;
+    memset(staging_base_tmp + old_size, 0, new_slots * sizeof(staging_base_table));
+    memset(staging_phred_tmp + old_size, 0, new_slots * sizeof(staging_phred_table));
+    memset(base_table_tmp + old_size, 0, new_slots * sizeof(base_table));
+    memset(phred_table_tmp + old_size, 0, new_slots * sizeof(phred_table));
+    
+    self->staging_base_counts = staging_base_tmp;
+    self->staging_phred_counts = staging_phred_tmp;
+    self->base_counts = base_table_tmp;
+    self->phred_counts = phred_table_tmp;
     self->max_length = new_size;
     return 0;
 }
@@ -1579,15 +1576,40 @@ QCMetrics_flush_staging(QCMetrics *self) {
     if (self->staging_count == 0) {
         return;
     }
-    uint64_t *counts = (uint64_t *)self->count_tables;
-    uint16_t *staging_counts = (uint16_t *)self->staging_count_tables;
-    size_t number_of_ints = self->max_length * PHRED_TABLE_SIZE * NUC_TABLE_SIZE;
-    for (size_t i=0; i < number_of_ints; i++) {
-        counts[i] += staging_counts[i];
+    uint64_t *base_counts = (uint64_t *)self->base_counts;
+    uint16_t *staging_base_counts = (uint16_t *)self->staging_base_counts;
+    size_t number_of_base_slots = self->max_length * NUC_TABLE_SIZE;
+    for (size_t i=0; i < number_of_base_slots; i++) {
+        base_counts[i] += staging_base_counts[i];
     }
-    memset(staging_counts, 0, number_of_ints * sizeof(uint16_t));
+    memset(staging_base_counts, 0, number_of_base_slots * sizeof(uint16_t));
+
+    uint64_t *phred_counts = (uint64_t *)self->phred_counts;
+    uint16_t *staging_phred_counts = (uint16_t *)self->staging_phred_counts;
+    size_t number_of_phred_slots = self->max_length * PHRED_TABLE_SIZE;
+    for (size_t i=0; i < number_of_phred_slots; i++) {
+        phred_counts[i] += staging_phred_counts[i];
+    }
+    memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
+
     self->staging_count = 0;
 }
+
+#ifdef __SSE2__
+static inline size_t horizontal_add_epu8(__m128i vec) {
+    /* _mm_sad_epu8 calculates absolute differences between a and b and then 
+       summes the lower 8 bytes horizontally and saves it is in the lower 16 
+       bits of the lower 64-bit integer. It does the same for the upper 8 
+       bytes and stores it in the upper 64-bit integer. 
+       _mm_cvtsi128_si64 gets the lower 64-bit integer. Using 
+       _mm_bsrli_si128 we can shift the result 8 bytes to the right, resulting
+       in the upper integer being in the place of the lower integer. */
+    __m128i hadd = _mm_sad_epu8(vec, _mm_setzero_si128());
+    uint64_t lower_count = _mm_cvtsi128_si64(hadd);
+    uint64_t upper_count = _mm_cvtsi128_si64(_mm_bsrli_si128(hadd, 8));
+    return lower_count + upper_count;
+}
+#endif
 
 static inline int 
 QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
@@ -1596,9 +1618,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     size_t sequence_length = meta->sequence_length;
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
-    uint8_t phred_offset = self->phred_offset;
-    uint64_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
-    double accumulated_error_rate = 0.0;
 
     if (sequence_length > self->max_length) {
         if (QCMetrics_resize(self, sequence_length) != 0) {
@@ -1611,29 +1630,85 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         QCMetrics_flush_staging(self);
     }   
     self->staging_count += 1;
-    staging_counttable_t *staging_count_tables = self->staging_count_tables;
+
+    staging_base_table *staging_base_counts_ptr = self->staging_base_counts;
     const uint8_t *sequence_ptr = sequence; 
-    const uint8_t *qualities_ptr = qualities;
     const uint8_t *sequence_end_ptr = sequence + sequence_length;
-    staging_counttable_t *staging_count_ptr = staging_count_tables;
+    // uint32_t is ample as the maximum length of a sequence is saved in a uint32_r
+    uint32_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
+    #ifdef __SSE2__
+    const uint8_t *sequence_vec_end_ptr = sequence_end_ptr - sizeof(__m128i);
+    while (sequence_ptr < sequence_vec_end_ptr) {
+        /* Store nucleotide in count vectors. This means we can do at most 
+           255 loop as the 8-bit integers can become saturated. After 255 loops
+           the result is flushed. */
+        size_t remaining_length = sequence_vec_end_ptr - sequence_ptr;
+        size_t remaining_vecs = (remaining_length + 15) / sizeof(__m128i);
+        size_t iterations = Py_MIN(255, remaining_vecs);
+        register __m128i a_counts = _mm_setzero_si128();
+        register __m128i c_counts = _mm_setzero_si128();
+        register __m128i g_counts = _mm_setzero_si128();
+        register __m128i t_counts = _mm_setzero_si128();
+        register __m128i all254 = _mm_set1_epi8(254);
+        for (size_t i=0; i<iterations; i++) {
+            __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
+            // This will make all the nucleotides uppercase.
+            nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
+            __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
+            __m128i a_positions = _mm_subs_epu8(a_nucs, all254);
+            a_counts = _mm_add_epi8(a_counts, a_positions);
+            __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
+            __m128i c_positions = _mm_subs_epu8(c_nucs, all254);
+            c_counts = _mm_add_epi8(c_counts, c_positions);
+            __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
+            __m128i g_positions = _mm_subs_epu8(g_nucs, all254);
+            g_counts = _mm_add_epi8(g_counts, g_positions);
+            __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
+            __m128i t_positions = _mm_subs_epu8(t_nucs, all254);
+            t_counts = _mm_add_epi8(t_counts, t_positions);
+
+            /* Manual loop unrolling gives the best result here */
+            staging_base_counts_ptr[0][NUCLEOTIDE_TO_INDEX[sequence_ptr[0]]] += 1;
+            staging_base_counts_ptr[1][NUCLEOTIDE_TO_INDEX[sequence_ptr[1]]] += 1;
+            staging_base_counts_ptr[2][NUCLEOTIDE_TO_INDEX[sequence_ptr[2]]] += 1;
+            staging_base_counts_ptr[3][NUCLEOTIDE_TO_INDEX[sequence_ptr[3]]] += 1;
+            staging_base_counts_ptr[4][NUCLEOTIDE_TO_INDEX[sequence_ptr[4]]] += 1;
+            staging_base_counts_ptr[5][NUCLEOTIDE_TO_INDEX[sequence_ptr[5]]] += 1;
+            staging_base_counts_ptr[6][NUCLEOTIDE_TO_INDEX[sequence_ptr[6]]] += 1;
+            staging_base_counts_ptr[7][NUCLEOTIDE_TO_INDEX[sequence_ptr[7]]] += 1;
+            staging_base_counts_ptr[8][NUCLEOTIDE_TO_INDEX[sequence_ptr[8]]] += 1;
+            staging_base_counts_ptr[9][NUCLEOTIDE_TO_INDEX[sequence_ptr[9]]] += 1;
+            staging_base_counts_ptr[10][NUCLEOTIDE_TO_INDEX[sequence_ptr[10]]] += 1;
+            staging_base_counts_ptr[11][NUCLEOTIDE_TO_INDEX[sequence_ptr[11]]] += 1;
+            staging_base_counts_ptr[12][NUCLEOTIDE_TO_INDEX[sequence_ptr[12]]] += 1;
+            staging_base_counts_ptr[13][NUCLEOTIDE_TO_INDEX[sequence_ptr[13]]] += 1;
+            staging_base_counts_ptr[14][NUCLEOTIDE_TO_INDEX[sequence_ptr[14]]] += 1;
+            staging_base_counts_ptr[15][NUCLEOTIDE_TO_INDEX[sequence_ptr[15]]] += 1;
+            sequence_ptr += sizeof(__m128i);
+            staging_base_counts_ptr += sizeof(__m128i);
+        }
+        size_t a_bases = horizontal_add_epu8(a_counts);
+        size_t c_bases = horizontal_add_epu8(c_counts);
+        size_t g_bases = horizontal_add_epu8(g_counts);
+        size_t t_bases = horizontal_add_epu8(t_counts);
+        size_t total = a_bases + c_bases + g_bases + t_bases;
+        base_counts[A] += a_bases;
+        base_counts[C] += c_bases;
+        base_counts[G] += g_bases;
+        base_counts[T] += t_bases;
+        // By substracting the ACGT bases from the length over which the 
+        // count was run, we get the N bases.
+        base_counts[N] += (iterations * sizeof(__m128i)) - total;
+    }
+    #endif
+
     while(sequence_ptr < sequence_end_ptr) {
         uint8_t c = *sequence_ptr;
-        uint8_t q = *qualities_ptr - phred_offset;
-        if (q > PHRED_MAX) {
-            PyErr_Format(
-                PyExc_ValueError, 
-                "Not a valid phred character: %c", *qualities_ptr
-            );
-            return -1;
-        }
-        uint8_t q_index = phred_to_index(q);
         uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-        staging_count_ptr[0][q_index][c_index] += 1;
         base_counts[c_index] += 1;
-        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+        staging_base_counts_ptr[0][c_index] += 1;
         sequence_ptr += 1; 
-        qualities_ptr += 1;
-        staging_count_ptr +=1;
+        staging_base_counts_ptr += 1;
     }
     uint64_t at_counts = base_counts[A] + base_counts[T];
     uint64_t gc_counts = base_counts[C] + base_counts[G];
@@ -1642,6 +1717,52 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     assert(gc_content_index >= 0);
     assert(gc_content_index <= 100);
     self->gc_content[gc_content_index] += 1;
+
+    staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
+    const uint8_t *qualities_ptr = qualities;
+    const uint8_t *qualities_end_ptr = qualities + sequence_length;
+    const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
+    uint8_t phred_offset = self->phred_offset;
+    double accumulated_error_rate = 0.0;
+    while(qualities_ptr < qualities_unroll_end_ptr) {
+        uint8_t q0 = qualities_ptr[0] - phred_offset;    
+        uint8_t q1 = qualities_ptr[1] - phred_offset;   
+        uint8_t q2 = qualities_ptr[2] - phred_offset;   
+        uint8_t q3 = qualities_ptr[3] - phred_offset;   
+        if (q0 > PHRED_MAX || q1 > PHRED_MAX || q2 > PHRED_MAX || q3 > PHRED_MAX) {
+            break;
+        }
+        uint8_t q0_index = phred_to_index(q0);
+        uint8_t q1_index = phred_to_index(q1);
+        uint8_t q2_index = phred_to_index(q2);
+        uint8_t q3_index = phred_to_index(q3);
+        staging_phred_counts_ptr[0][q0_index] += 1;
+        staging_phred_counts_ptr[1][q1_index] += 1;
+        staging_phred_counts_ptr[2][q2_index] += 1;
+        staging_phred_counts_ptr[3][q3_index] += 1;
+        /* By writing it as multiple independent additions this takes advantage 
+           of out of order execution. */
+        accumulated_error_rate += (
+            SCORE_TO_ERROR_RATE[q0] + SCORE_TO_ERROR_RATE[q1]) + 
+            (SCORE_TO_ERROR_RATE[q2] + SCORE_TO_ERROR_RATE[q3]);
+        staging_phred_counts_ptr += 4;
+        qualities_ptr += 4;
+    }
+    while(qualities_ptr < qualities_end_ptr) {
+        uint8_t q = *qualities_ptr - phred_offset;    
+        if (q > PHRED_MAX) {
+            PyErr_Format(
+                PyExc_ValueError, 
+                "Not a valid phred character: %c", *qualities_ptr
+            );
+            return -1;
+        }
+        uint8_t q_index = phred_to_index(q);
+        staging_phred_counts_ptr[0][q_index] += 1;
+        accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
+        staging_phred_counts_ptr += 1;
+        qualities_ptr += 1;
+    }
 
     meta->accumulated_error_rate = accumulated_error_rate;
     double average_error_rate = accumulated_error_rate / (double)sequence_length;
@@ -1711,23 +1832,42 @@ QCMetrics_add_record_array(QCMetrics *self, FastqRecordArrayView *record_array)
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(QCMetrics_count_table__doc__,
-"count_table($self, /)\n"
+PyDoc_STRVAR(QCMetrics_base_count_table__doc__,
+"base_count_table($self, /)\n"
 "--\n"
 "\n"
-"Return a array.array on the produced count table. \n"
+"Return a array.array on the produced base count table. \n"
 );
 
-#define QCMetrics_count_table_method METH_NOARGS
+#define QCMetrics_base_count_table_method METH_NOARGS
 
 static PyObject *
-QCMetrics_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+QCMetrics_base_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
     QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer(
         'Q', 
-        self->count_tables, 
-        self->max_length *sizeof(counttable_t));
+        self->base_counts, 
+        self->max_length *sizeof(base_table));
+}
+
+PyDoc_STRVAR(QCMetrics_phred_count_table__doc__,
+"phred_table($self, /)\n"
+"--\n"
+"\n"
+"Return a array.array on the produced phred count table. \n"
+);
+
+#define QCMetrics_phred_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_phred_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer(
+        'Q', 
+        self->phred_counts, 
+        self->max_length *sizeof(phred_table));
 }
 
 PyDoc_STRVAR(QCMetrics_gc_content__doc__,
@@ -1775,8 +1915,10 @@ static PyMethodDef QCMetrics_methods[] = {
      QCMetrics_add_read_method,  QCMetrics_add_read__doc__},
     {"add_record_array", (PyCFunction)QCMetrics_add_record_array,
      QCMetrics_add_record_array_method, QCMetrics_add_record_array__doc__},
-    {"count_table", (PyCFunction)QCMetrics_count_table, 
-     QCMetrics_count_table_method, QCMetrics_count_table__doc__},
+    {"base_count_table", (PyCFunction)QCMetrics_base_count_table, 
+     QCMetrics_base_count_table_method, QCMetrics_base_count_table__doc__},
+    {"phred_count_table", (PyCFunction)QCMetrics_phred_count_table, 
+     QCMetrics_phred_count_table_method, QCMetrics_phred_count_table__doc__},
     {"gc_content", (PyCFunction)QCMetrics_gc_content, 
      QCMetrics_gc_content_method, QCMetrics_gc_content__doc__},
     {"phred_scores", (PyCFunction)QCMetrics_phred_scores, 
