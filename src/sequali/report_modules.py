@@ -390,7 +390,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
         return cls(x_labels, quality_distribution)
 
     def plot(self) -> str:
-        plot = pygal.StackedLine(
+        plot = pygal.StackedBar(
             title="Per base quality distribution",
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
@@ -420,7 +420,7 @@ class PerSequenceAverageQualityScores(ReportModule):
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
-        plot = pygal.Line(
+        plot = pygal.Bar(
             title="Per sequence quality scores",
             x_labels=range(PHRED_MAX + 1),
             width=1000,
@@ -542,7 +542,7 @@ class PerPositionNContent(ReportModule):
         )
 
     def plot(self):
-        plot = pygal.Line(
+        plot = pygal.Bar(
             title="Per position N content",
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
@@ -1112,7 +1112,7 @@ class NanoStatsReport(ReportModule):
         return plot.render(is_unicode=True)
 
     def time_quality_distribution_plot(self):
-        plot = pygal.StackedLine(
+        plot = pygal.StackedBar(
             title="Quality distribution over time",
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
