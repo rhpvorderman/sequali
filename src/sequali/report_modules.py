@@ -216,6 +216,15 @@ class Summary(ReportModule):
 class SequenceLengthDistribution(ReportModule):
     length_ranges: List[str]
     counts: List[int]
+    q1: int
+    q5: int
+    q10: int
+    q25: int
+    q50: int
+    q75: int
+    q90: int
+    q95: int
+    q99:int
 
     def plot(self) -> str:
         plot = pygal.Bar(
@@ -256,7 +265,33 @@ class SequenceLengthDistribution(ReportModule):
         lengths = [sum(seqlength_view[start:stop]) for start, stop in
                    data_ranges]
         x_labels = stringify_ranges(data_ranges)
-        return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths)
+        percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+        percentile_thresholds = [int(p * total_sequences / 100) for p in percentiles]
+        thresh_iter = enumerate(percentile_thresholds)
+        thresh_index, current_threshold = next(thresh_iter)
+        accumulated_count = 0
+        percentile_lengths = [0 for _ in percentiles]
+        done = False
+        for length, count in enumerate(sequence_lengths):
+            while count > 0 and not done:
+                remaining_threshold = current_threshold - accumulated_count
+                if count > remaining_threshold:
+                    accumulated_count += remaining_threshold
+                    percentile_lengths[thresh_index] = length
+                    count -= remaining_threshold
+                    try:
+                        thresh_index, current_threshold = next(thresh_iter)
+                    except StopIteration:
+                        done = True
+                        break
+                    continue
+                break
+            accumulated_count += count
+            if done:
+                break
+
+        return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
+                   *percentile_lengths)
 
 
 @dataclasses.dataclass
