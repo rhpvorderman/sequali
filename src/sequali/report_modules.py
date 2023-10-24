@@ -196,13 +196,13 @@ class Summary(ReportModule):
             <tr><td>Mean length</td><td align="right">
                 {self.mean_length:.2f}</td></tr>
             <tr><td>Length range (min-max)</td><td align="right">
-                {self.minimum_length}-{self.maximum_length}</td></tr>
-            <tr><td>total reads</td><td align="right">{self.total_reads}</td></tr>
-            <tr><td>total bases</td><td align="right">{self.total_bases}</td></tr>
+                {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
+            <tr><td>total reads</td><td align="right">{self.total_reads:,}</td></tr>
+            <tr><td>total bases</td><td align="right">{self.total_bases:,}</td></tr>
             <tr>
                 <td>Q20 bases</td>
                 <td align="right">
-                    {self.q20_bases} ({self.q20_bases * 100 / self.total_bases:.2f}%)
+                    {self.q20_bases:,} ({self.q20_bases * 100 / self.total_bases:.2f}%)
                 </td>
             </tr>
             <tr><td>GC content</td><td align="right">
