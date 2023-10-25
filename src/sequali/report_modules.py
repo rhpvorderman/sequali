@@ -795,7 +795,7 @@ class PerTileQualityReport(ReportModule):
     def to_html(self) -> str:
         header = "<h2>Per tile quality</h2>"
         if self.skipped_reason:
-            return header + (f"Per tile quality skipper. Reason: "
+            return header + (f"Per tile quality skipped. Reason: "
                              f"{self.skipped_reason}.")
         return header + f"""
             Tiles with more than 2 times the average error:
@@ -842,9 +842,9 @@ class DuplicationCounts(ReportModule):
         return f"""
             <h2>Duplication percentages</h2>
             This estimates the fraction of the duplication based on the first
-            {self.counted_unique_sequences} unique sequences in the first
-            {self.counted_sequences_at_unique_limit} sequences of
-            {self.total_sequences} total sequences. <br>
+            {self.counted_unique_sequences:,} unique sequences in the first
+            {self.counted_sequences_at_unique_limit:,} sequences of
+            {self.total_sequences:,} total sequences. <br>
             Estimated remaining sequences if deduplicated:
                 {self.remaining_fraction:.2%}
             <br>
@@ -913,10 +913,15 @@ class DuplicationCounts(ReportModule):
     def from_sequence_duplication(cls, seqdup: SequenceDuplication):
         duplication_counts: List[Tuple[int, int]] = sorted(
             collections.Counter(seqdup.duplication_counts()).items())
-        estimated_duplication_counts = cls.estimate_duplication_counts(
-            duplication_counts,
-            seqdup.number_of_sequences,
-            seqdup.stopped_collecting_at)
+        if seqdup.collected_unique_sequences < seqdup.max_unique_sequences:
+            # When all unique sequences have been collected there is no
+            # need for estimation
+            estimated_duplication_counts = dict(duplication_counts)
+        else:
+            estimated_duplication_counts = cls.estimate_duplication_counts(
+                duplication_counts,
+                seqdup.number_of_sequences,
+                seqdup.stopped_collecting_at)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             estimated_duplication_counts.items())
         deduplicated_fraction = cls.deduplicated_fraction(
