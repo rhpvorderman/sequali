@@ -861,8 +861,7 @@ class DuplicationCounts(ReportModule):
             chance_of_random_draw = duplicates / total_sequences
             chance_of_random_not_draw = 1 - chance_of_random_draw
             chance_of_not_draw_at_gathering = (chance_of_random_not_draw **
-                                               gathered_sequences)  # noqa:
-            # E501
+                                               gathered_sequences)
             chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
             estimated_counts[duplicates] = round(
                 number_of_occurences / chance_of_draw_at_gathering)
