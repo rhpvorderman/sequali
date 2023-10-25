@@ -64,6 +64,7 @@ COMMON_GRAPH_OPTIONS = dict(
     width=1500,
     explicit_size=True,
     disable_xml_declaration=True,
+    js=[], # Script is globally downloaded once
 )
 
 
@@ -252,7 +253,9 @@ class SequenceLengthDistribution(ReportModule):
                 <tr><td>N95</td><td align="right">{self.q95:,}</td></tr>
                 <tr><td>N99</td><td align="right">{self.q99:,}</td></tr>
             </table>
+            <figure>
             {self.plot()}
+            </figure>
         """
 
     @classmethod
@@ -1289,10 +1292,14 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 def write_html_report(report_modules: Iterable[ReportModule],
                       html: str,
                       filename: str):
+    default_config = pygal.Config()
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
             <html>
             <head>
+                <script 
+                    type="text/javascript" 
+                    src="https://{default_config.js[0]}"></script>
                 <meta http-equiv="content-type"
                 content="text/html:charset=utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
