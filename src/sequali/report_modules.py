@@ -64,7 +64,7 @@ COMMON_GRAPH_OPTIONS = dict(
     width=1500,
     explicit_size=True,
     disable_xml_declaration=True,
-    js=[], # Script is globally downloaded once
+    js=[],  # Script is globally downloaded once
 )
 
 
@@ -225,7 +225,7 @@ class SequenceLengthDistribution(ReportModule):
     q75: int
     q90: int
     q95: int
-    q99:int
+    q99: int
 
     def plot(self) -> str:
         plot = pygal.Bar(
@@ -1297,8 +1297,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
         html_file.write(f"""
             <html>
             <head>
-                <script 
-                    type="text/javascript" 
+                <script type="text/javascript"
                     src="https://{default_config.js[0]}"></script>
                 <meta http-equiv="content-type"
                 content="text/html:charset=utf-8">
