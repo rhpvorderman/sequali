@@ -61,9 +61,10 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
-    width=1000,
+    width=1500,
     explicit_size=True,
     disable_xml_declaration=True,
+    js=[],  # Script is globally downloaded once
 )
 
 
@@ -194,15 +195,15 @@ class Summary(ReportModule):
             <h2>Summary</h2>
             <table>
             <tr><td>Mean length</td><td align="right">
-                {self.mean_length:.2f}</td></tr>
+                {self.mean_length:,.2f}</td></tr>
             <tr><td>Length range (min-max)</td><td align="right">
-                {self.minimum_length}-{self.maximum_length}</td></tr>
-            <tr><td>total reads</td><td align="right">{self.total_reads}</td></tr>
-            <tr><td>total bases</td><td align="right">{self.total_bases}</td></tr>
+                {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
+            <tr><td>total reads</td><td align="right">{self.total_reads:,}</td></tr>
+            <tr><td>total bases</td><td align="right">{self.total_bases:,}</td></tr>
             <tr>
                 <td>Q20 bases</td>
                 <td align="right">
-                    {self.q20_bases} ({self.q20_bases * 100 / self.total_bases:.2f}%)
+                    {self.q20_bases:,} ({self.q20_bases * 100 / self.total_bases:.2f}%)
                 </td>
             </tr>
             <tr><td>GC content</td><td align="right">
@@ -216,6 +217,15 @@ class Summary(ReportModule):
 class SequenceLengthDistribution(ReportModule):
     length_ranges: List[str]
     counts: List[int]
+    q1: int
+    q5: int
+    q10: int
+    q25: int
+    q50: int
+    q75: int
+    q90: int
+    q95: int
+    q99: int
 
     def plot(self) -> str:
         plot = pygal.Bar(
@@ -232,7 +242,20 @@ class SequenceLengthDistribution(ReportModule):
     def to_html(self):
         return f"""
             <h2>Sequence length distribution</h2>
+            <table>
+                <tr><td>N1</td><td align="right">{self.q1:,}</td></tr>
+                <tr><td>N5</td><td align="right">{self.q5:,}</td></tr>
+                <tr><td>N10</td><td align="right">{self.q10:,}</td></tr>
+                <tr><td>N25</td><td align="right">{self.q25:,}</td></tr>
+                <tr><td>N50</td><td align="right">{self.q50:,}</td></tr>
+                <tr><td>N75</td><td align="right">{self.q75:,}</td></tr>
+                <tr><td>N90</td><td align="right">{self.q90:,}</td></tr>
+                <tr><td>N95</td><td align="right">{self.q95:,}</td></tr>
+                <tr><td>N99</td><td align="right">{self.q99:,}</td></tr>
+            </table>
+            <figure>
             {self.plot()}
+            </figure>
         """
 
     @classmethod
@@ -256,7 +279,33 @@ class SequenceLengthDistribution(ReportModule):
         lengths = [sum(seqlength_view[start:stop]) for start, stop in
                    data_ranges]
         x_labels = stringify_ranges(data_ranges)
-        return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths)
+        percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+        percentile_thresholds = [int(p * total_sequences / 100) for p in percentiles]
+        thresh_iter = enumerate(percentile_thresholds)
+        thresh_index, current_threshold = next(thresh_iter)
+        accumulated_count = 0
+        percentile_lengths = [0 for _ in percentiles]
+        done = False
+        for length, count in enumerate(sequence_lengths):
+            while count > 0 and not done:
+                remaining_threshold = current_threshold - accumulated_count
+                if count > remaining_threshold:
+                    accumulated_count += remaining_threshold
+                    percentile_lengths[thresh_index] = length
+                    count -= remaining_threshold
+                    try:
+                        thresh_index, current_threshold = next(thresh_iter)
+                    except StopIteration:
+                        done = True
+                        break
+                    continue
+                break
+            accumulated_count += count
+            if done:
+                break
+
+        return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
+                   *percentile_lengths)
 
 
 @dataclasses.dataclass
@@ -390,7 +439,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
         return cls(x_labels, quality_distribution)
 
     def plot(self) -> str:
-        plot = pygal.StackedLine(
+        plot = pygal.StackedBar(
             title="Per base quality distribution",
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
@@ -420,18 +469,15 @@ class PerSequenceAverageQualityScores(ReportModule):
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
-        plot = pygal.Line(
+        plot = pygal.Bar(
             title="Per sequence quality scores",
             x_labels=range(PHRED_MAX + 1),
-            width=1000,
-            explicit_size=True,
-            disable_xml_declaration=True,
             x_labels_major_every=3,
             show_minor_x_labels=False,
             style=ONE_SERIE_STYLE,
             x_title="Phred score",
             y_title="Percentage of total",
-            truncate_label=-1,
+            **COMMON_GRAPH_OPTIONS
         )
         total = sum(self.average_quality_counts)
         percentage_scores = [100 * score / total
@@ -542,7 +588,7 @@ class PerPositionNContent(ReportModule):
         )
 
     def plot(self):
-        plot = pygal.Line(
+        plot = pygal.Bar(
             title="Per position N content",
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
@@ -752,7 +798,7 @@ class PerTileQualityReport(ReportModule):
     def to_html(self) -> str:
         header = "<h2>Per tile quality</h2>"
         if self.skipped_reason:
-            return header + (f"Per tile quality skipper. Reason: "
+            return header + (f"Per tile quality skipped. Reason: "
                              f"{self.skipped_reason}.")
         return header + f"""
             Tiles with more than 2 times the average error:
@@ -799,9 +845,9 @@ class DuplicationCounts(ReportModule):
         return f"""
             <h2>Duplication percentages</h2>
             This estimates the fraction of the duplication based on the first
-            {self.counted_unique_sequences} unique sequences in the first
-            {self.counted_sequences_at_unique_limit} sequences of
-            {self.total_sequences} total sequences. <br>
+            {self.counted_unique_sequences:,} unique sequences in the first
+            {self.counted_sequences_at_unique_limit:,} sequences of
+            {self.total_sequences:,} total sequences. <br>
             Estimated remaining sequences if deduplicated:
                 {self.remaining_fraction:.2%}
             <br>
@@ -818,8 +864,7 @@ class DuplicationCounts(ReportModule):
             chance_of_random_draw = duplicates / total_sequences
             chance_of_random_not_draw = 1 - chance_of_random_draw
             chance_of_not_draw_at_gathering = (chance_of_random_not_draw **
-                                               gathered_sequences)  # noqa:
-            # E501
+                                               gathered_sequences)
             chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
             estimated_counts[duplicates] = round(
                 number_of_occurences / chance_of_draw_at_gathering)
@@ -870,10 +915,15 @@ class DuplicationCounts(ReportModule):
     def from_sequence_duplication(cls, seqdup: SequenceDuplication):
         duplication_counts: List[Tuple[int, int]] = sorted(
             collections.Counter(seqdup.duplication_counts()).items())
-        estimated_duplication_counts = cls.estimate_duplication_counts(
-            duplication_counts,
-            seqdup.number_of_sequences,
-            seqdup.stopped_collecting_at)
+        if seqdup.collected_unique_sequences < seqdup.max_unique_sequences:
+            # When all unique sequences have been collected there is no
+            # need for estimation
+            estimated_duplication_counts = dict(duplication_counts)
+        else:
+            estimated_duplication_counts = cls.estimate_duplication_counts(
+                duplication_counts,
+                seqdup.number_of_sequences,
+                seqdup.stopped_collecting_at)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             estimated_duplication_counts.items())
         deduplicated_fraction = cls.deduplicated_fraction(
@@ -1112,7 +1162,7 @@ class NanoStatsReport(ReportModule):
         return plot.render(is_unicode=True)
 
     def time_quality_distribution_plot(self):
-        plot = pygal.StackedLine(
+        plot = pygal.StackedBar(
             title="Quality distribution over time",
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
@@ -1242,10 +1292,13 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 def write_html_report(report_modules: Iterable[ReportModule],
                       html: str,
                       filename: str):
+    default_config = pygal.Config()
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
             <html>
             <head>
+                <script type="text/javascript"
+                    src="https://{default_config.js[0]}"></script>
                 <meta http-equiv="content-type"
                 content="text/html:charset=utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
@@ -1290,7 +1343,7 @@ def qc_metrics_modules(metrics: QCMetrics,
     gc_content = (g_bases + c_bases) / (a_bases + c_bases + g_bases + t_bases)
     return [
         Summary(
-            mean_length=total_bases // total_reads,
+            mean_length=total_bases / total_reads,
             minimum_length=minimum_length,
             maximum_length=metrics.max_length,
             total_reads=total_reads,
