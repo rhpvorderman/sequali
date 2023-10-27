@@ -811,7 +811,7 @@ FastqParser__next__(FastqParser *self)
             PyErr_Format(
                 PyExc_EOFError,
                 "Incomplete record at the end of file %s", 
-                record_start);
+                new_buffer);
             Py_DECREF(new_buffer_obj);
             return NULL;
         }
