@@ -684,6 +684,7 @@ FastqParser_dealloc(FastqParser *self)
 {
     Py_XDECREF(self->buffer_obj);
     Py_XDECREF(self->file_obj);
+    PyMem_Free(self->meta_buffer);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -771,10 +772,12 @@ FastqParser__next__(FastqParser *self)
             self->file_obj, "readinto", "O", remaining_space_view);
         Py_DECREF(remaining_space_view);
         if (read_bytes_obj == NULL) {
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
         Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
         if (read_bytes == -1) {
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
         Py_DECREF(read_bytes_obj);
@@ -811,7 +814,7 @@ FastqParser__next__(FastqParser *self)
             PyErr_Format(
                 PyExc_EOFError,
                 "Incomplete record at the end of file %s", 
-                record_start);
+                new_buffer);
             Py_DECREF(new_buffer_obj);
             return NULL;
         }
@@ -828,6 +831,7 @@ FastqParser__next__(FastqParser *self)
                     "Record does not start with @ but with %c", 
                     record_start[0]
                 );
+                Py_DECREF(new_buffer_obj);
                 return NULL;
             }
             uint8_t *name_end = memchr(record_start, '\n', 
@@ -850,6 +854,7 @@ FastqParser__next__(FastqParser *self)
                     "Record second header does not start with + but with %c",
                     second_header_start[0]
                 );
+                Py_DECREF(new_buffer_obj);
                 return NULL;
             }
             uint8_t *second_header_end = memchr(second_header_start, '\n', 
@@ -865,11 +870,14 @@ FastqParser__next__(FastqParser *self)
             }
             size_t qualities_length = qualities_end - qualities_start;
             if (sequence_length != qualities_length) {
+                PyObject *record_name_obj = PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL);
                 PyErr_Format(
                     PyExc_ValueError,
                     "Record sequence and qualities do not have equal length, %R",
-                    PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL)
+                    record_name_obj
                 );
+                Py_DECREF(new_buffer_obj);
+                Py_DECREF(record_name_obj);
                 return NULL;
             }
             parsed_records += 1;
@@ -984,6 +992,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             PyExc_ValueError,
             "fileobj: %R, is not a BAM file. No BAM magic, instead found: %R", 
             file_obj, magic_and_header_size);
+        Py_DECREF(magic_and_header_size);
         return NULL;
     }
     uint32_t l_text = *(uint32_t *)(file_start + 4);
@@ -991,11 +1000,13 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
     if (PyBytes_GET_SIZE(header) != l_text) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(header);
         return NULL;
     }
     PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
     if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(n_ref_obj);
         Py_DECREF(header);
         return NULL;
     }
@@ -1013,7 +1024,9 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(l_name_obj);
         Py_ssize_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
         PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
-        if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
+        Py_ssize_t actual_reference_chunk_size = PyBytes_GET_SIZE(reference_chunk);
+        Py_DECREF(reference_chunk);
+        if (actual_reference_chunk_size != reference_chunk_size) {
             PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
             Py_DECREF(header);
             return NULL;
@@ -1317,11 +1330,12 @@ BamParser__next__(BamParser *self) {
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
         } else if (read_bytes == 0) {
-            // Incomplete record at the end of file;
+            PyObject *remaining_obj = PyBytes_FromStringAndSize((char *)self->read_in_buffer, leftover_size);
             PyErr_Format(
                 PyExc_EOFError,
-                "Incomplete record at the end of file %s", 
-                record_start);
+                "Incomplete record at the end of file %R", 
+                remaining_obj);
+            Py_DECREF(remaining_obj);
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
         }
@@ -2778,9 +2792,14 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
 
     ssize_t tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
+        PyObject *header_obj = PyUnicode_DecodeASCII((const char *)header, header_length, NULL);
+        if (header_obj == NULL) {
+            return -1;
+        } 
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %R",
-            PyUnicode_DecodeASCII((const char *)header, header_length, NULL));
+            header_obj);
+        Py_DECREF(header_obj);
         self->skipped = 1;
         return 0;
     }
