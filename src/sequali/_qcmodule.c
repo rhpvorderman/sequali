@@ -2792,9 +2792,14 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
 
     ssize_t tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
+        PyObject *header_obj = PyUnicode_DecodeASCII((const char *)header, header_length, NULL);
+        if (header_obj == NULL) {
+            return -1;
+        } 
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %R",
-            PyUnicode_DecodeASCII((const char *)header, header_length, NULL));
+            header_obj);
+        Py_DECREF(header_obj);
         self->skipped = 1;
         return 0;
     }
