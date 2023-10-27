@@ -996,6 +996,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
     if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(n_ref_obj);
         Py_DECREF(header);
         return NULL;
     }
@@ -1317,11 +1318,12 @@ BamParser__next__(BamParser *self) {
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
         } else if (read_bytes == 0) {
-            // Incomplete record at the end of file;
+            PyObject *remaining_obj = PyBytes_FromStringAndSize((char *)self->read_in_buffer, leftover_size);
             PyErr_Format(
                 PyExc_EOFError,
-                "Incomplete record at the end of file %s", 
-                record_start);
+                "Incomplete record at the end of file %R", 
+                remaining_obj);
+            Py_DECREF(remaining_obj);
             Py_XDECREF(fastq_buffer_obj);
             return NULL;
         }
