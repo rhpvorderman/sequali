@@ -984,6 +984,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             PyExc_ValueError,
             "fileobj: %R, is not a BAM file. No BAM magic, instead found: %R", 
             file_obj, magic_and_header_size);
+        Py_DECREF(magic_and_header_size);
         return NULL;
     }
     uint32_t l_text = *(uint32_t *)(file_start + 4);
@@ -991,6 +992,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
     if (PyBytes_GET_SIZE(header) != l_text) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
+        Py_DECREF(header);
         return NULL;
     }
     PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
