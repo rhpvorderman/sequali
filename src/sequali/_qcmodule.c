@@ -1014,7 +1014,9 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(l_name_obj);
         Py_ssize_t reference_chunk_size = l_name + 4;  // Includes name and uint32_t for size.
         PyObject *reference_chunk = PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
-        if (PyBytes_GET_SIZE(reference_chunk) != reference_chunk_size) {
+        Py_ssize_t actual_reference_chunk_size = PyBytes_GET_SIZE(reference_chunk);
+        Py_DECREF(reference_chunk);
+        if (actual_reference_chunk_size != reference_chunk_size) {
             PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
             Py_DECREF(header);
             return NULL;
