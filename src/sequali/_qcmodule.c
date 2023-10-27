@@ -684,6 +684,7 @@ FastqParser_dealloc(FastqParser *self)
 {
     Py_XDECREF(self->buffer_obj);
     Py_XDECREF(self->file_obj);
+    PyMem_Free(self->meta_buffer);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
