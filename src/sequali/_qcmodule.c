@@ -772,10 +772,12 @@ FastqParser__next__(FastqParser *self)
             self->file_obj, "readinto", "O", remaining_space_view);
         Py_DECREF(remaining_space_view);
         if (read_bytes_obj == NULL) {
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
         Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
         if (read_bytes == -1) {
+            Py_DECREF(new_buffer_obj);
             return NULL;
         }
         Py_DECREF(read_bytes_obj);
@@ -829,6 +831,7 @@ FastqParser__next__(FastqParser *self)
                     "Record does not start with @ but with %c", 
                     record_start[0]
                 );
+                Py_DECREF(new_buffer_obj);
                 return NULL;
             }
             uint8_t *name_end = memchr(record_start, '\n', 
@@ -851,6 +854,7 @@ FastqParser__next__(FastqParser *self)
                     "Record second header does not start with + but with %c",
                     second_header_start[0]
                 );
+                Py_DECREF(new_buffer_obj);
                 return NULL;
             }
             uint8_t *second_header_end = memchr(second_header_start, '\n', 
@@ -866,11 +870,14 @@ FastqParser__next__(FastqParser *self)
             }
             size_t qualities_length = qualities_end - qualities_start;
             if (sequence_length != qualities_length) {
+                PyObject *record_name_obj = PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL);
                 PyErr_Format(
                     PyExc_ValueError,
                     "Record sequence and qualities do not have equal length, %R",
-                    PyUnicode_DecodeASCII((char *)record_start + 1, name_length, NULL)
+                    record_name_obj
                 );
+                Py_DECREF(new_buffer_obj);
+                Py_DECREF(record_name_obj);
                 return NULL;
             }
             parsed_records += 1;
