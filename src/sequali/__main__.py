@@ -20,7 +20,8 @@ import sys
 
 import xopen
 
-from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
+from ._qc import (AdapterCounter, BamParser, DedupEstimator,
+                  DEFAULT_MAX_UNIQUE_SEQUENCES,
                   FastqParser, NanoStats, PerTileQuality, QCMetrics,
                   SequenceDuplication)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
@@ -79,6 +80,7 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
+    dedup_estimator = DedupEstimator()
     nanostats = NanoStats()
     filename: str = args.input
     with xopen.xopen(filename, "rb", threads=1) as file:  # type: ignore
@@ -99,6 +101,7 @@ def main() -> None:
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
                 nanostats.add_record_array(record_array)
+                dedup_estimator.add_record_array(record_array)
                 progress.update(record_array)
     report_modules = calculate_stats(
         metrics,
