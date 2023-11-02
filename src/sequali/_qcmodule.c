@@ -3674,6 +3674,49 @@ static PyTypeObject SequenceDuplication_Type = {
     .tp_methods = SequenceDuplication_methods,
 };
 
+/*******************
+ * DEDUP ESTIMATOR *
+ *******************/
+
+#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 20
+struct EstimatorEntry {
+    uint64_t hash; 
+    uint64_t count;
+};
+
+typedef struct _DedupEstimatorStruct {
+    PyObject_HEAD 
+    uint8_t hash_table_size_bits;
+    uint8_t modulo_bits;
+    struct EstimatorEntry *hash_table;
+} DedupEstimator;
+
+static void 
+DedupEstimator_dealloc(DedupEstimator *self) {
+    PyMem_Free(self->hash_table);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *
+DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
+    Py_ssize_t hash_table_size_bits = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS;
+    static char *kwargnames[] = {"hash_table_size_bits", NULL};
+    static char *format = "|n:DedupEstimator";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+            &hash_table_size_bits)) {
+        return NULL;
+    }
+    if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "hash_table_size_bit must be between 8 and 58, not %zd", 
+            hash_table_size_bits
+        );
+        return NULL;
+    }
+    size_t hash_table_size = 1ULL << hash_table_size_bits;
+}
+
 /********************
  * NANOSTATS MODULE *
 *********************/
