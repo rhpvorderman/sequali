@@ -3923,6 +3923,24 @@ DedupEstimator_duplication_counts(DedupEstimator *self, PyObject *Py_UNUSED(igno
     return result;
 } 
 
+static PyMethodDef DedupEstimator_methods[] = {
+    {"add_record_array", (PyCFunction)DedupEstimator_add_record_array, 
+     DedupEstimator_add_record_array_method, DedupEstimator_add_record_array__doc__},
+    {"add_sequence", (PyCFunction)DedupEstimator_add_sequence, 
+     DedupEstimator_add_sequence_method, DedupEstimator_add_sequence__doc__},
+    {"duplication_counts", (PyCFunction)DedupEstimator_duplication_counts, 
+     DedupEstimator_duplication_counts_method, DedupEstimator_duplication_counts__doc__},
+    {NULL},
+};
+
+static PyTypeObject DedupEstimator_Type = {
+    .tp_name = "_qc.DedupEstimator",
+    .tp_basicsize = sizeof(DedupEstimator),
+    .tp_dealloc = (destructor)(DedupEstimator_dealloc),
+    .tp_new = (newfunc)DedupEstimator__new__,
+    .tp_methods = DedupEstimator_methods,
+};
+
 
 /********************
  * NANOSTATS MODULE *
@@ -4396,6 +4414,9 @@ PyInit__qc(void)
         return NULL;
     }
     if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
+        return NULL;
+    }
+    if (python_module_add_type(m, &DedupEstimator_Type) != 0) {
         return NULL;
     }
     if (python_module_add_type(m, &NanoporeReadInfo_Type) != 0) {
