@@ -3782,7 +3782,7 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
 }
 
 static int 
-DedupEstimator_insert_sequence(DedupEstimator *self, 
+DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
                                uint8_t *sequence, size_t sequence_length) 
 {
     uint64_t hash = MurmurHash3_x64_64(
@@ -3818,6 +3818,74 @@ DedupEstimator_insert_sequence(DedupEstimator *self,
         index &= index_mask;
     }
     return 0;
+}
+
+PyDoc_STRVAR(DedupEstimator_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the deduplication estimator. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define DedupEstimator_add_record_array_method METH_O
+
+static PyObject *
+DedupEstimator_add_record_array(DedupEstimator *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta = records + i;
+        uint8_t *sequence = meta->record_start + meta->sequence_offset;
+        size_t sequence_length = meta->sequence_length;
+        if (DedupEstimator_add_sequence_ptr(self, sequence, sequence_length) != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(DedupEstimator_add_sequence__doc__,
+"add_sequence($self, sequence, /)\n"
+"--\n"
+"\n"
+"Add a sequence to the deduplication estimator. \n"
+"\n"
+"  sequence\n"
+"    An ASCII string.\n"
+);
+
+#define DedupEstimator_add_sequence_method METH_O
+
+static PyObject *
+DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence) 
+{
+    if (!PyUnicode_CheckExact(sequence)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "sequence should be a str object, got %s", 
+                     Py_TYPE(sequence)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    if (DedupEstimator_add_sequence_ptr(
+            self, PyUnicode_DATA(sequence), PyUnicode_GET_LENGTH(sequence)) != 0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
 }
 
 
