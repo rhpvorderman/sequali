@@ -3742,7 +3742,6 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
 static int 
 DedupEstimator_increment_modulo(DedupEstimator *self) 
 {
-    size_t current_modulo_bits = self->modulo_bits;
     size_t next_modulo_bits = self->modulo_bits + 1;
     size_t next_ignore_mask = (1ULL << next_modulo_bits) - 1;
     struct EstimatorEntry *hash_table = self->hash_table;
