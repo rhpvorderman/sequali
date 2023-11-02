@@ -3889,6 +3889,40 @@ DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence)
 }
 
 
+PyDoc_STRVAR(DedupEstimator_duplication_counts__doc__,
+"duplication_counts($self)\n"
+"--\n"
+"\n"
+"Return a array.array with only the counts. \n"
+);
+
+#define DedupEstimator_duplication_counts_method METH_NOARGS
+
+static PyObject *
+DedupEstimator_duplication_counts(DedupEstimator *self, PyObject *Py_UNUSED(ignore)) 
+{
+    size_t tracked_sequences = self->stored_entries;
+    uint64_t *counts = PyMem_Calloc(tracked_sequences, sizeof(uint64_t));
+    if (counts == NULL) {
+        return PyErr_NoMemory();
+    }
+    struct EstimatorEntry *hash_table = self->hash_table;
+    size_t hash_table_size = self->hash_table_size;
+    size_t count_index = 0;
+    for (size_t i=0; i < hash_table_size; i++) {
+        struct EstimatorEntry *entry = hash_table + i;
+        uint64_t count = entry->count;
+        if (count == 0) {
+            continue;
+        }
+        counts[count_index] = count;
+        count_index += 1;
+    }
+    PyObject *result = PythonArray_FromBuffer('Q', counts, tracked_sequences * sizeof(uint64_t));
+    PyMem_Free(counts);
+    return result;
+} 
+
 
 /********************
  * NANOSTATS MODULE *
