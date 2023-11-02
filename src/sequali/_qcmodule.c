@@ -3762,7 +3762,7 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
         }
         size_t new_index = (hash >> next_modulo_bits) & index_mask;
         while (true) {
-            struct EstimatorEntry *current_entry = hash_table + new_index;
+            struct EstimatorEntry *current_entry = new_hash_table + new_index;
             if (current_entry->count == 0) {
                 current_entry->hash = hash;
                 current_entry->count = entry.count;
