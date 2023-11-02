@@ -3684,30 +3684,6 @@ struct EstimatorEntry {
     uint64_t count;
 };
 
-static inline void insert_estimator_hash(
-    struct EstimatorEntry *hash_table, 
-    uint64_t hash, 
-    size_t index, 
-    size_t count,
-    size_t index_mask
-)
-{
-    while (true) {
-        struct EstimatorEntry *current_entry = hash_table + index;
-        if (current_entry->count == 0) {
-            current_entry->hash = hash;
-            current_entry->count = count;
-            return;
-        }
-        else if (current_entry->hash == hash) {
-            current_entry->count += count;
-            return;
-        }
-        index += 1; 
-        index &= index_mask;
-    }
-} 
-
 typedef struct _DedupEstimatorStruct {
     PyObject_HEAD 
     size_t modulo_bits;
@@ -3779,7 +3755,16 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
             continue;
         }
         size_t new_index = (hash >> next_modulo_bits) & index_mask;
-        insert_estimator_hash(new_hash_table, hash, new_index, entry.count, index_mask);
+        while (true) {
+            struct EstimatorEntry *current_entry = hash_table + new_index;
+            if (current_entry->count == 0) {
+                current_entry->hash = hash;
+                current_entry->count = entry.count;
+                break;
+            }
+            new_index += 1; 
+            new_index &= index_mask;
+        }
         new_stored_entries += 1;
     }
     struct EstimatorEntry *tmp = self->hash_table;
@@ -3810,8 +3795,22 @@ DedupEstimator_insert_sequence(DedupEstimator *self,
     }
     size_t index_mask = hash_table_size - 1;
     size_t index = (hash >> modulo_bits) & index_mask;
-    insert_estimator_hash(self->hash_table, hash, index, 1, index_mask);
-    self->stored_entries += 1;
+    struct EstimatorEntry *hash_table = self->hash_table;
+    while (true) {
+        struct EstimatorEntry *current_entry = hash_table + index;
+        if (current_entry->count == 0) {
+            current_entry->hash = hash;
+            current_entry->count = 1;
+            self->stored_entries += 1;
+            break;
+        }
+        else if (current_entry->hash == hash) {
+            current_entry->count += 1;
+            break;
+        }
+        index += 1; 
+        index &= index_mask;
+    }
     return 0;
 }
 
