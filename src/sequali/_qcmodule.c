@@ -3717,7 +3717,7 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
         PyErr_Format(
             PyExc_ValueError, 
-            "hash_table_size_bit must be between 8 and 58, not %zd", 
+            "hash_table_size_bits must be between 8 and 58, not %zd",
             hash_table_size_bits
         );
         return NULL;
@@ -3933,12 +3933,23 @@ static PyMethodDef DedupEstimator_methods[] = {
     {NULL},
 };
 
+static PyMemberDef DedupEstimator_members[] = {
+    {"_modulo_bits", T_ULONGLONG, offsetof(DedupEstimator, modulo_bits), 
+     READONLY, NULL},
+    {"_hash_table_size", T_ULONGLONG, offsetof(DedupEstimator, hash_table_size), 
+     READONLY, NULL},
+    {"tracked_sequences", T_ULONGLONG, offsetof(DedupEstimator, stored_entries), 
+     READONLY, NULL},
+    {NULL},
+};
+
 static PyTypeObject DedupEstimator_Type = {
     .tp_name = "_qc.DedupEstimator",
     .tp_basicsize = sizeof(DedupEstimator),
     .tp_dealloc = (destructor)(DedupEstimator_dealloc),
     .tp_new = (newfunc)DedupEstimator__new__,
     .tp_methods = DedupEstimator_methods,
+    .tp_members = DedupEstimator_members,
 };
 
 
