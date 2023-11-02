@@ -3678,17 +3678,40 @@ static PyTypeObject SequenceDuplication_Type = {
  * DEDUP ESTIMATOR *
  *******************/
 
-#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 20
+#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
 struct EstimatorEntry {
     uint64_t hash; 
     uint64_t count;
 };
+
+static inline void insert_estimator_hash(struct EstimatorEntry *hash_table, 
+                                    uint64_t hash, 
+                                    size_t index, 
+                                    size_t count,
+                                    size_t mod_mask)
+{
+    while (true) {
+        struct EstimatorEntry *current_entry = hash_table + index;
+        if (current_entry->count == 0) {
+            current_entry->hash = hash;
+            current_entry->count = count;
+            return;
+        }
+        else if (current_entry->hash == hash) {
+            current_entry->count += count;
+            return;
+        }
+        index += 1; 
+        index &= mod_mask;
+    }
+} 
 
 typedef struct _DedupEstimatorStruct {
     PyObject_HEAD 
     uint8_t hash_table_size_bits;
     uint8_t modulo_bits;
     struct EstimatorEntry *hash_table;
+    size_t stored_entries;
 } DedupEstimator;
 
 static void 
@@ -3715,7 +3738,52 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         return NULL;
     }
     size_t hash_table_size = 1ULL << hash_table_size_bits;
+    struct EstimatorEntry *hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
+    if (hash_table == NULL) {
+        return PyErr_NoMemory();
+    }
+    DedupEstimator *self = PyObject_New(DedupEstimator, type);
+    if (self == NULL) {
+        PyMem_Free(hash_table);
+        return PyErr_NoMemory();
+    }
+    self->hash_table_size_bits = hash_table_size_bits;
+    self->hash_table = hash_table;
+    self->modulo_bits = 1;
+    return (PyObject *)self;
 }
+
+static int 
+DedupEstimator_increment_modulo(DedupEstimator *self) 
+{
+    size_t current_modulo_bits = self->modulo_bits;
+    size_t next_modulo_bits = self->modulo_bits + 1;
+    struct EstimatorEntry *hash_table = self->hash_table;
+    size_t hash_table_size = 1ULL << self->hash_table_size_bits;
+    size_t mod_mask = hash_table_size -1;
+    struct EstimatorEntry *new_hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
+    if (new_hash_table == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    } 
+
+    for (size_t i=0; i < hash_table_size; i++) {
+        struct EstimatorEntry entry = hash_table[i];
+        if (entry.count == 0) {
+            continue;
+        }
+        uint64_t hash = entry.hash; 
+        size_t new_index = (entry.hash >> next_modulo_bits) & mod_mask;
+        insert_estimator_hash(new_hash_table, hash, new_index, entry.count, mod_mask);
+    }
+    struct EstimatorEntry *tmp = self->hash_table;
+    self->hash_table = new_hash_table;
+    self->modulo_bits = next_modulo_bits;
+    PyMem_Free(tmp);
+    return 0;
+}
+
+
 
 /********************
  * NANOSTATS MODULE *
