@@ -3677,6 +3677,12 @@ static PyTypeObject SequenceDuplication_Type = {
 /*******************
  * DEDUP ESTIMATOR *
  *******************/
+/*
+Based on the following paper:
+Estimating Duplication by Content-based Sampling
+Fei Xie, Michael Condict, Sandip Shete
+https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
+*/
 
 #define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
 struct EstimatorEntry {
