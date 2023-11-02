@@ -15,8 +15,8 @@ import pygal  # type: ignore
 import pygal.style  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import AdapterCounter, NanoStats, PerTileQuality, QCMetrics, \
-    SequenceDuplication
+from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
+                  QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence
@@ -855,22 +855,6 @@ class DuplicationCounts(ReportModule):
         """
 
     @staticmethod
-    def estimate_duplication_counts(
-            duplication_counts: Sequence[Tuple[int, int]],
-            total_sequences: int,
-            gathered_sequences: int) -> Dict[int, int]:
-        estimated_counts = {}
-        for duplicates, number_of_occurences in duplication_counts:
-            chance_of_random_draw = duplicates / total_sequences
-            chance_of_random_not_draw = 1 - chance_of_random_draw
-            chance_of_not_draw_at_gathering = (chance_of_random_not_draw **
-                                               gathered_sequences)
-            chance_of_draw_at_gathering = 1 - chance_of_not_draw_at_gathering
-            estimated_counts[duplicates] = round(
-                number_of_occurences / chance_of_draw_at_gathering)
-        return estimated_counts
-
-    @staticmethod
     def estimated_counts_to_fractions(
             estimated_counts: Iterable[Tuple[int, int]]):
         named_slices = {
@@ -912,28 +896,25 @@ class DuplicationCounts(ReportModule):
         return unique_sequences / total_sequences
 
     @classmethod
-    def from_sequence_duplication(cls, seqdup: SequenceDuplication):
-        duplication_counts: List[Tuple[int, int]] = sorted(
-            collections.Counter(seqdup.duplication_counts()).items())
+    def from_sequence_duplication_and_dedup_estimator(
+            cls, seqdup: SequenceDuplication, dedup_est: DedupEstimator):
         if seqdup.collected_unique_sequences < seqdup.max_unique_sequences:
             # When all unique sequences have been collected there is no
             # need for estimation
-            estimated_duplication_counts = dict(duplication_counts)
+            duplication_counts = seqdup.duplication_counts()
         else:
-            estimated_duplication_counts = cls.estimate_duplication_counts(
-                duplication_counts,
-                seqdup.number_of_sequences,
-                seqdup.stopped_collecting_at)
+            duplication_counts = dedup_est.duplication_counts()
+        duplication_categories = collections.Counter(duplication_counts)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
-            estimated_duplication_counts.items())
+            duplication_categories.items())
         deduplicated_fraction = cls.deduplicated_fraction(
-            estimated_duplication_counts)
+            duplication_categories)
         return cls(
             total_sequences=seqdup.number_of_sequences,
             counted_unique_sequences=seqdup.collected_unique_sequences,
             counted_sequences_at_unique_limit=seqdup.stopped_collecting_at,
             max_unique_sequences=seqdup.max_unique_sequences,
-            duplication_counts=duplication_counts,
+            duplication_counts=sorted(duplication_categories.items()),
             estimated_duplication_fractions=estimated_duplication_fractions,
             remaining_fraction=deduplicated_fraction,
         )
@@ -1370,6 +1351,7 @@ def calculate_stats(
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
         sequence_duplication: SequenceDuplication,
+        dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
         adapter_names: List[str],
         graph_resolution: int = 200,
@@ -1388,7 +1370,8 @@ def calculate_stats(
             adapter_counter, adapter_names, data_ranges),
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality, data_ranges),
-        DuplicationCounts.from_sequence_duplication(sequence_duplication),
+        DuplicationCounts.from_sequence_duplication_and_dedup_estimator(
+            sequence_duplication, dedup_estimator),
         OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication,
             fraction_threshold=fraction_threshold,

@@ -20,10 +20,9 @@ import sys
 
 import xopen
 
-from ._qc import (AdapterCounter, BamParser, DedupEstimator,
-                  DEFAULT_MAX_UNIQUE_SEQUENCES,
-                  FastqParser, NanoStats, PerTileQuality, QCMetrics,
-                  SequenceDuplication)
+from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
+                  DedupEstimator, FastqParser, NanoStats, PerTileQuality,
+                  QCMetrics, SequenceDuplication)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
@@ -108,6 +107,7 @@ def main() -> None:
         adapter_counter,
         per_tile_quality,
         sequence_duplication,
+        dedup_estimator,
         nanostats,
         adapter_names=list(adapter.name for adapter in adapters),
         fraction_threshold=fraction_threshold,
