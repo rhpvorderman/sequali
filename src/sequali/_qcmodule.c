@@ -3684,11 +3684,13 @@ struct EstimatorEntry {
     uint64_t count;
 };
 
-static inline void insert_estimator_hash(struct EstimatorEntry *hash_table, 
-                                    uint64_t hash, 
-                                    size_t index, 
-                                    size_t count,
-                                    size_t mod_mask)
+static inline void insert_estimator_hash(
+    struct EstimatorEntry *hash_table, 
+    uint64_t hash, 
+    size_t index, 
+    size_t count,
+    size_t index_mask
+)
 {
     while (true) {
         struct EstimatorEntry *current_entry = hash_table + index;
@@ -3702,16 +3704,16 @@ static inline void insert_estimator_hash(struct EstimatorEntry *hash_table,
             return;
         }
         index += 1; 
-        index &= mod_mask;
+        index &= index_mask;
     }
 } 
 
 typedef struct _DedupEstimatorStruct {
     PyObject_HEAD 
-    uint8_t hash_table_size_bits;
-    uint8_t modulo_bits;
-    struct EstimatorEntry *hash_table;
+    size_t modulo_bits;
+    size_t hash_table_size;
     size_t stored_entries;
+    struct EstimatorEntry *hash_table;
 } DedupEstimator;
 
 static void 
@@ -3747,9 +3749,10 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         PyMem_Free(hash_table);
         return PyErr_NoMemory();
     }
-    self->hash_table_size_bits = hash_table_size_bits;
+    self->hash_table_size = hash_table_size;
     self->hash_table = hash_table;
     self->modulo_bits = 1;
+    self->stored_entries = 0;
     return (PyObject *)self;
 }
 
@@ -3758,9 +3761,11 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
 {
     size_t current_modulo_bits = self->modulo_bits;
     size_t next_modulo_bits = self->modulo_bits + 1;
+    size_t next_ignore_mask = (1ULL << next_modulo_bits) - 1;
     struct EstimatorEntry *hash_table = self->hash_table;
-    size_t hash_table_size = 1ULL << self->hash_table_size_bits;
-    size_t mod_mask = hash_table_size -1;
+    size_t hash_table_size = self->hash_table_size;
+    size_t index_mask = hash_table_size - 1;
+    size_t new_stored_entries = 0;
     struct EstimatorEntry *new_hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
     if (new_hash_table == NULL) {
         PyErr_NoMemory();
@@ -3769,17 +3774,44 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
 
     for (size_t i=0; i < hash_table_size; i++) {
         struct EstimatorEntry entry = hash_table[i];
-        if (entry.count == 0) {
+        uint64_t hash = entry.hash; 
+        if (entry.count == 0 || hash & next_ignore_mask) {
             continue;
         }
-        uint64_t hash = entry.hash; 
-        size_t new_index = (entry.hash >> next_modulo_bits) & mod_mask;
-        insert_estimator_hash(new_hash_table, hash, new_index, entry.count, mod_mask);
+        size_t new_index = (hash >> next_modulo_bits) & index_mask;
+        insert_estimator_hash(new_hash_table, hash, new_index, entry.count, index_mask);
+        new_stored_entries += 1;
     }
     struct EstimatorEntry *tmp = self->hash_table;
     self->hash_table = new_hash_table;
     self->modulo_bits = next_modulo_bits;
+    self->stored_entries = new_stored_entries;
     PyMem_Free(tmp);
+    return 0;
+}
+
+static int 
+DedupEstimator_insert_sequence(DedupEstimator *self, 
+                               uint8_t *sequence, size_t sequence_length) 
+{
+    uint64_t hash = hashing_function_placehold(
+        sequence, Py_MIN(UNIQUE_SEQUENCE_LENGTH, sequence_length));
+    size_t modulo_bits = self->modulo_bits;
+    size_t ignore_mask = (1ULL << modulo_bits) - 1;
+    if (hash & ignore_mask) {
+        return 0;
+    }
+    size_t hash_table_size = self->hash_table_size;
+    size_t max_entries = hash_table_size >> 1;
+    if (self->stored_entries >= max_entries) {
+        if (DedupEstimator_increment_modulo(self) != 0) {
+            return - 1;
+        }
+    }
+    size_t index_mask = hash_table_size - 1;
+    size_t index = (hash >> modulo_bits) & index_mask;
+    insert_estimator_hash(self->hash_table, hash, index, 1, index_mask);
+    self->stored_entries += 1;
     return 0;
 }
 
