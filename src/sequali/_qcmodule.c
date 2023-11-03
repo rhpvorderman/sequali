@@ -3685,7 +3685,8 @@ Fei Xie, Michael Condict, Sandip Shete
 https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 */
 
-#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
+// 2 ** 19 * 12 is 6MB which balloons to 12MB when creating a new table.
+#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 19
 
 // Use packing at the 4-byte boundary to save 4 bytes of storage.
 #pragma pack(4)
