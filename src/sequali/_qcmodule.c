@@ -3686,9 +3686,13 @@ https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 */
 
 #define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
+
+// Use packing at the 4-byte boundary to save 4 bytes of storage.
+#pragma pack(4)
 struct EstimatorEntry {
     uint64_t hash; 
-    uint64_t count;
+    // 32 bits allows storing 4 billion counts. This should never overflow in practice.
+    uint32_t count;
 };
 
 typedef struct _DedupEstimatorStruct {
