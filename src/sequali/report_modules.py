@@ -818,10 +818,10 @@ class PerTileQualityReport(ReportModule):
 
 @dataclasses.dataclass
 class DuplicationCounts(ReportModule):
+    exact: bool
     total_sequences: int
-    counted_unique_sequences: int
-    counted_sequences_at_unique_limit: int
     max_unique_sequences: int
+    tracked_unique_sequences: int
     duplication_counts: Sequence[Tuple[int, int]]
     remaining_fraction: float
     estimated_duplication_fractions: Dict[str, float]
@@ -842,14 +842,24 @@ class DuplicationCounts(ReportModule):
         return plot.render(is_unicode=True)
 
     def to_html(self):
-        return f"""
-            <h2>Duplication percentages</h2>
-            This estimates the fraction of the duplication based on the first
-            {self.counted_unique_sequences:,} unique sequences in the first
-            {self.counted_sequences_at_unique_limit:,} sequences of
+        if self.exact:
+            first_part = f"""
+            All {self.tracked_unique_sequences:,} unique sequences where
+            tracked among {self.total_sequences:,} total sequences.
+            Sequences that would remain if duplicated:
+            {self.remaining_fraction:.2%}
+            """
+        else:
+            first_part = f"""
+            This estimates the fraction of the duplication based on
+            {self.tracked_unique_sequences:,} sampled unique sequences of
             {self.total_sequences:,} total sequences. <br>
             Estimated remaining sequences if deduplicated:
-                {self.remaining_fraction:.2%}
+            {self.remaining_fraction:.2%}
+            """
+        return f"""
+            <h2>Duplication percentages</h2>
+            {first_part}
             <br>
             {self.plot()}
         """
@@ -901,18 +911,22 @@ class DuplicationCounts(ReportModule):
         if seqdup.collected_unique_sequences < seqdup.max_unique_sequences:
             # When all unique sequences have been collected there is no
             # need for estimation
+            tracked_unique_sequences = seqdup.collected_unique_sequences
             duplication_counts = seqdup.duplication_counts()
+            exact = True
         else:
+            tracked_unique_sequences = dedup_est.tracked_sequences
             duplication_counts = dedup_est.duplication_counts()
+            exact = False
         duplication_categories = collections.Counter(duplication_counts)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             duplication_categories.items())
         deduplicated_fraction = cls.deduplicated_fraction(
             duplication_categories)
         return cls(
+            exact=exact,
             total_sequences=seqdup.number_of_sequences,
-            counted_unique_sequences=seqdup.collected_unique_sequences,
-            counted_sequences_at_unique_limit=seqdup.stopped_collecting_at,
+            tracked_unique_sequences=tracked_unique_sequences,
             max_unique_sequences=seqdup.max_unique_sequences,
             duplication_counts=sorted(duplication_categories.items()),
             estimated_duplication_fractions=estimated_duplication_fractions,
