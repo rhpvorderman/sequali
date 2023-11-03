@@ -28,4 +28,7 @@ def test_dedup_estimator_switches_modulo():
     for i, seq in zip(range(10000), infinite_seqs):
         dedup_est.add_sequence(seq)
     assert dedup_est._modulo_bits != 1
-    assert dedup_est._modulo_bits == 7
+    # 2 ** 8 * 7 // 10 = 179 seqs can be stored.
+    # 10_000 / 179 = 56 sequences per slot. That requires 6 bits modulo,
+    # selecting one in 64 sequences.
+    assert dedup_est._modulo_bits == 6
