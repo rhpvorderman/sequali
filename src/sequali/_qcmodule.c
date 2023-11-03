@@ -3695,6 +3695,7 @@ typedef struct _DedupEstimatorStruct {
     PyObject_HEAD 
     size_t modulo_bits;
     size_t hash_table_size;
+    size_t max_stored_entries;
     size_t stored_entries;
     struct EstimatorEntry *hash_table;
 } DedupEstimator;
@@ -3733,6 +3734,8 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         return PyErr_NoMemory();
     }
     self->hash_table_size = hash_table_size;
+    // Get about 70% occupancy max
+    self->max_stored_entries = (hash_table_size * 7) / 10;
     self->hash_table = hash_table;
     self->modulo_bits = 1;
     self->stored_entries = 0;
@@ -3793,8 +3796,7 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
         return 0;
     }
     size_t hash_table_size = self->hash_table_size;
-    size_t max_entries = hash_table_size >> 1;
-    if (self->stored_entries >= max_entries) {
+    if (self->stored_entries >= self->max_stored_entries) {
         if (DedupEstimator_increment_modulo(self) != 0) {
             return - 1;
         }
