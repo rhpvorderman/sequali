@@ -845,7 +845,7 @@ class DuplicationCounts(ReportModule):
         if self.exact:
             first_part = f"""
             All {self.tracked_unique_sequences:,} unique sequences where
-            tracked among {self.total_sequences:,} total sequences.
+            tracked among {self.total_sequences:,} total sequences. <br>
             Sequences that would remain if duplicated:
             {self.remaining_fraction:.2%}
             """
