@@ -21,6 +21,7 @@ import sys
 import xopen
 
 from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
+                  DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
                   DedupEstimator, FastqParser, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
@@ -61,11 +62,15 @@ def argument_parser() -> argparse.ArgumentParser:
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
                         help="The maximum amount of unique sequences to "
                              "gather. Larger amounts increase the sensitivity "
-                             "of finding overrepresented sequences and "
-                             "increase the accuracy of the duplication "
-                             "estimate, at the cost of increasing memory "
-                             "usage at about 50 bytes per sequence.")
-
+                             "of finding overrepresented sequences at the "
+                             "cost of increasing memory usage at about 50 "
+                             "bytes per sequence.")
+    parser.add_argument("--deduplication-estimate-bits", type=int,
+                        default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+                        help="Determines how many sequences are maximally "
+                             "stored to estimate the deduplication rate. "
+                             "Maximum stored sequences: 2 ** bits * 7 // 10. "
+                             "Memory required: 2 ** bits * 24")
     return parser
 
 
@@ -79,7 +84,8 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
-    dedup_estimator = DedupEstimator()
+    dedup_estimator = DedupEstimator(
+        hash_table_size_bits=args.deduplication_estimate_bits)
     nanostats = NanoStats()
     filename: str = args.input
     with xopen.xopen(filename, "rb", threads=1) as file:  # type: ignore

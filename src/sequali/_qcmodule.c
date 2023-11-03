@@ -955,7 +955,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *file_obj = NULL;
     size_t read_in_size = 48 * 1024; // Slightly smaller than BGZF block size
     static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
-    static char *format = "O|n:FastqParser";
+    static char *format = "O|n:BamParser";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
         &file_obj, &read_in_size)) {
         return NULL;
@@ -4457,5 +4457,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
+    PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
     return m;
 }

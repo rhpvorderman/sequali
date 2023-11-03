@@ -29,6 +29,7 @@ T: int
 N: int 
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_SEQUENCES: int
+DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
 
 class FastqRecordView:
     obj: bytes
