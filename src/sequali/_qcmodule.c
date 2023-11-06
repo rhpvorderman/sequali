@@ -3260,8 +3260,9 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t hash_table_size;
     uint64_t *hashes; 
     uint32_t *counts;
-    uint64_t max_unique_sequences;
-    uint64_t number_of_uniques;
+    uint64_t max_unique_fragments;
+    uint64_t number_of_unique_fragments;
+    uint64_t total_fragments;
 } SequenceDuplication;
 
 static void 
@@ -3317,9 +3318,10 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return PyErr_NoMemory();
     }
     self->number_of_sequences = 0;
-    self->number_of_uniques = 0;
-    self->max_unique_sequences = max_unique_sequences;
+    self->number_of_unique_fragments = 0;
+    self->max_unique_fragments = max_unique_sequences;
     self->hash_table_size = hash_table_size;
+    self->total_fragments = 0;
     self->k = k;
     self->hashes = hashes;
     self->counts = counts;
@@ -3337,10 +3339,10 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
     while (1) {
         uint64_t hash_entry = hashes[index];
         if (hash_entry == 0) {
-            if (self->number_of_uniques < self->max_unique_sequences) {
+            if (self->number_of_unique_fragments < self->max_unique_fragments) {
                 hashes[index] = hash;
                 counts[index] = 1;
-                self->number_of_uniques += 1;
+                self->number_of_unique_fragments += 1;
             }
             break;
         } else if (hash_entry == hash) {
@@ -3359,6 +3361,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     Py_ssize_t k = self->k;
+    size_t fragments = 0;
     if (sequence_length < k) {
         return 0;
     }
@@ -3375,6 +3378,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             }
             continue;
         }
+        fragments += 1;
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
@@ -3390,6 +3394,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             }
             continue;
         }
+        fragments += 1;
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
@@ -3401,6 +3406,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             PyUnicode_DecodeASCII((char *)sequence + i, k, NULL)
         );
     }
+    self->total_fragments += fragments;
     return 0;
 } 
 
@@ -3583,8 +3589,8 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         return NULL;
     }
 
-    uint64_t total_sequences = self->number_of_sequences;
-    Py_ssize_t hit_theshold = ceil(threshold * total_sequences);
+    uint64_t total_fragments = self->total_fragments;
+    Py_ssize_t hit_theshold = ceil(threshold * total_fragments);
     hit_theshold = Py_MAX(min_threshold, hit_theshold);
     hit_theshold = Py_MIN(max_threshold, hit_theshold);
     uint64_t minimum_hits = hit_theshold;
@@ -3605,7 +3611,7 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
             PyObject *entry_tuple = Py_BuildValue(
                 "(KdN)",
                 count,
-                (double)((double)count / (double)total_sequences),
+                (double)((double)count / (double)total_fragments),
                 sequence_obj);
             if (entry_tuple == NULL) {
                 goto error;
@@ -3642,7 +3648,7 @@ static PyObject *
 SequenceDuplication_duplication_counts(SequenceDuplication *self, 
 									   PyObject *Py_UNUSED(ignore))
 {
-    uint64_t number_of_uniques = self->number_of_uniques;
+    uint64_t number_of_uniques = self->number_of_unique_fragments;
 	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
     if (counts == NULL) {
         return PyErr_NoMemory();
@@ -3689,10 +3695,10 @@ static PyMemberDef SequenceDuplication_members[] = {
      offsetof(SequenceDuplication, number_of_sequences), READONLY,
      "The total number of sequences processed"},
     {"collected_unique_sequences", T_ULONGLONG,
-      offsetof(SequenceDuplication, number_of_uniques), READONLY,
-      "The number of unique sequences collected."},
+      offsetof(SequenceDuplication, number_of_unique_fragments), READONLY,
+      "The number of unique fragments collected."},
     {"max_unique_sequences", T_ULONGLONG, 
-      offsetof(SequenceDuplication, max_unique_sequences), READONLY,
+      offsetof(SequenceDuplication, max_unique_fragments), READONLY,
       "The maximum number of unique sequences stored in the object."
     },
     {NULL},
