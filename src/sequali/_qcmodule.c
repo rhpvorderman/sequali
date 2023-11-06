@@ -3130,16 +3130,32 @@ static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
 #define TWOBIT_N_CHAR -2 
 #define TWOBIT_SUCCESS 0
 
+static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
+    // Invert all the bits, with 0,1,2,3 == A,C,G,T this automatically is the
+    // complement. 
+    uint64_t comp = ~kmer; 
+    // Progressively swap all the twobits inplace.
+    uint64_t revcomp = (comp << 32) | (comp >> 32);
+    revcomp = ((revcomp & 0xFFFF0000FFFF0000ULL) >> 16) | 
+              ((revcomp & 0x0000FFFF0000FFFFULL) << 16);
+    revcomp = ((revcomp & 0xFF00FF00FF00FF00ULL) >> 8) | 
+              ((revcomp & 0x00FF00FF00FF00FFULL) << 8);
+    revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) | 
+              ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
+    revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) | 
+              ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
+    revcomp = ((revcomp & 0xCCCCCCCCCCCCCCCCULL) >> 2) | 
+              ((revcomp & 0x3333333333333333ULL) << 2);
+    // If k < 32, the empty twobit slots will have ended up at the least 
+    // significant bits. Use a shift to move them to the highest bits again.
+    return revcomp >> (64 - (k *2));
+}
 
 static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     uint64_t kmer = 0;
-    uint64_t revcomp_kmer = 0;
     size_t all_nucs = 0;
-    uint64_t nuc_shift = (k - 1) * 2;
-    uint64_t kmer_mask = (1ULL << (k*2)) -1;
     size_t i=0;
     size_t vector_end = k - 4;
-    uint64_t vector_nuc_shift = (k - 4) * 2;
     for (i=0; i<vector_end; i+=4) {
         size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
@@ -3149,19 +3165,12 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
         kmer <<= 8;
         kmer |= kchunk;
-        uint64_t revchunk = ((nuc3 << 6) | (nuc2 << 4) | (nuc1 << 2) | (nuc0));
-        uint64_t revcompchunk = ((~revchunk) << vector_nuc_shift) & kmer_mask;
-        revcomp_kmer >>=8;
-        revcomp_kmer |= revcompchunk;
     }
     for (i=i; i<k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
         kmer |= nuc;
-        size_t rev_nuc = ((~nuc) << nuc_shift) & kmer_mask;
-        revcomp_kmer >>= 2;
-        revcomp_kmer |= rev_nuc;
     }
     if (all_nucs > 3) {
         if (all_nucs & 4) {
@@ -3171,6 +3180,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
             return TWOBIT_N_CHAR;
         }
     }
+    uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
     // If k is uneven there can be no ambiguity
     if (revcomp_kmer > kmer) {
         return kmer;
