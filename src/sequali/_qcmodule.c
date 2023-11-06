@@ -3290,7 +3290,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             max_unique_sequences);
         return NULL;
     }
-    if ((k & 1) != 0 || k > 31 || k < 3) {
+    if ((k & 1) == 0 || k > 31 || k < 3) {
         PyErr_Format(
             PyExc_ValueError,
             "k must be between 3 and 31 and be an uneven number, got: %zd", 
