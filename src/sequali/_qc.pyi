@@ -29,6 +29,7 @@ T: int
 N: int 
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_SEQUENCES: int
+DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
 
 class FastqRecordView:
     obj: bytes
@@ -99,6 +100,16 @@ class SequenceDuplication:
                                   min_threshold: int = 1,
                                   max_threshold: int = sys.maxsize,
                                   ) -> List[Tuple[int, float, str]]: ...
+    def duplication_counts(self) -> array.ArrayType: ...
+
+class DedupEstimator:
+    _modulo_bits: int 
+    _hash_table_size: int 
+    tracked_sequences: int
+
+    def __init__(self, hash_table_size_bits: int = 21): ...
+    def add_sequence(self, __sequence: str) -> None: ...
+    def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def duplication_counts(self) -> array.ArrayType: ...
 
 class NanoporeReadInfo:

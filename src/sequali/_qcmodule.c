@@ -24,6 +24,7 @@ along with sequali.  If not, see <https://www.gnu.org/licenses/
 #include "math.h"
 #include "score_to_error_rate.h"
 #include "twobit_to_nucleotides.h"
+#include "murmur3.h"
 
 #ifdef __SSE2__
 #include "emmintrin.h"
@@ -954,7 +955,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *file_obj = NULL;
     size_t read_in_size = 48 * 1024; // Slightly smaller than BGZF block size
     static char *kwargnames[] = {"fileobj", "initial_buffersize", NULL};
-    static char *format = "O|n:FastqParser";
+    static char *format = "O|n:BamParser";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
         &file_obj, &read_in_size)) {
         return NULL;
@@ -3674,6 +3675,291 @@ static PyTypeObject SequenceDuplication_Type = {
     .tp_methods = SequenceDuplication_methods,
 };
 
+/*******************
+ * DEDUP ESTIMATOR *
+ *******************/
+/*
+Based on the following paper:
+Estimating Duplication by Content-based Sampling
+Fei Xie, Michael Condict, Sandip Shete
+https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
+*/
+
+// 2 ** 19 * 12 is 6MB which balloons to 12MB when creating a new table.
+#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 19
+
+// Use packing at the 4-byte boundary to save 4 bytes of storage.
+#pragma pack(4)
+struct EstimatorEntry {
+    uint64_t hash; 
+    // 32 bits allows storing 4 billion counts. This should never overflow in practice.
+    uint32_t count;
+};
+
+typedef struct _DedupEstimatorStruct {
+    PyObject_HEAD 
+    size_t modulo_bits;
+    size_t hash_table_size;
+    size_t max_stored_entries;
+    size_t stored_entries;
+    struct EstimatorEntry *hash_table;
+} DedupEstimator;
+
+static void 
+DedupEstimator_dealloc(DedupEstimator *self) {
+    PyMem_Free(self->hash_table);
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *
+DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
+    Py_ssize_t hash_table_size_bits = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS;
+    static char *kwargnames[] = {"hash_table_size_bits", NULL};
+    static char *format = "|n:DedupEstimator";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+            &hash_table_size_bits)) {
+        return NULL;
+    }
+    if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "hash_table_size_bits must be between 8 and 58, not %zd",
+            hash_table_size_bits
+        );
+        return NULL;
+    }
+    size_t hash_table_size = 1ULL << hash_table_size_bits;
+    struct EstimatorEntry *hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
+    if (hash_table == NULL) {
+        return PyErr_NoMemory();
+    }
+    DedupEstimator *self = PyObject_New(DedupEstimator, type);
+    if (self == NULL) {
+        PyMem_Free(hash_table);
+        return PyErr_NoMemory();
+    }
+    self->hash_table_size = hash_table_size;
+    // Get about 70% occupancy max
+    self->max_stored_entries = (hash_table_size * 7) / 10;
+    self->hash_table = hash_table;
+    self->modulo_bits = 1;
+    self->stored_entries = 0;
+    return (PyObject *)self;
+}
+
+static int 
+DedupEstimator_increment_modulo(DedupEstimator *self) 
+{
+    size_t next_modulo_bits = self->modulo_bits + 1;
+    size_t next_ignore_mask = (1ULL << next_modulo_bits) - 1;
+    struct EstimatorEntry *hash_table = self->hash_table;
+    size_t hash_table_size = self->hash_table_size;
+    size_t index_mask = hash_table_size - 1;
+    size_t new_stored_entries = 0;
+    struct EstimatorEntry *new_hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
+    if (new_hash_table == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    } 
+
+    for (size_t i=0; i < hash_table_size; i++) {
+        struct EstimatorEntry entry = hash_table[i];
+        uint64_t hash = entry.hash; 
+        if (entry.count == 0 || hash & next_ignore_mask) {
+            continue;
+        }
+        size_t new_index = (hash >> next_modulo_bits) & index_mask;
+        while (true) {
+            struct EstimatorEntry *current_entry = new_hash_table + new_index;
+            if (current_entry->count == 0) {
+                current_entry->hash = hash;
+                current_entry->count = entry.count;
+                break;
+            }
+            new_index += 1; 
+            new_index &= index_mask;
+        }
+        new_stored_entries += 1;
+    }
+    struct EstimatorEntry *tmp = self->hash_table;
+    self->hash_table = new_hash_table;
+    self->modulo_bits = next_modulo_bits;
+    self->stored_entries = new_stored_entries;
+    PyMem_Free(tmp);
+    return 0;
+}
+
+static int 
+DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
+                               uint8_t *sequence, size_t sequence_length) 
+{
+    uint64_t hash = MurmurHash3_x64_64(
+        sequence, Py_MIN(UNIQUE_SEQUENCE_LENGTH, sequence_length));
+    size_t modulo_bits = self->modulo_bits;
+    size_t ignore_mask = (1ULL << modulo_bits) - 1;
+    if (hash & ignore_mask) {
+        return 0;
+    }
+    size_t hash_table_size = self->hash_table_size;
+    if (self->stored_entries >= self->max_stored_entries) {
+        if (DedupEstimator_increment_modulo(self) != 0) {
+            return - 1;
+        }
+    }
+    size_t index_mask = hash_table_size - 1;
+    size_t index = (hash >> modulo_bits) & index_mask;
+    struct EstimatorEntry *hash_table = self->hash_table;
+    while (true) {
+        struct EstimatorEntry *current_entry = hash_table + index;
+        if (current_entry->count == 0) {
+            current_entry->hash = hash;
+            current_entry->count = 1;
+            self->stored_entries += 1;
+            break;
+        }
+        else if (current_entry->hash == hash) {
+            current_entry->count += 1;
+            break;
+        }
+        index += 1; 
+        index &= index_mask;
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(DedupEstimator_add_record_array__doc__,
+"add_record_array($self, record_array, /)\n"
+"--\n"
+"\n"
+"Add a record_array to the deduplication estimator. \n"
+"\n"
+"  record_array\n"
+"    A FastqRecordArrayView object.\n"
+);
+
+#define DedupEstimator_add_record_array_method METH_O
+
+static PyObject *
+DedupEstimator_add_record_array(DedupEstimator *self, FastqRecordArrayView *record_array) 
+{
+    if (!FastqRecordArrayView_CheckExact(record_array)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "record_array should be a FastqRecordArrayView object, got %s", 
+                     Py_TYPE(record_array)->tp_name);
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    struct FastqMeta *records = record_array->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta = records + i;
+        uint8_t *sequence = meta->record_start + meta->sequence_offset;
+        size_t sequence_length = meta->sequence_length;
+        if (DedupEstimator_add_sequence_ptr(self, sequence, sequence_length) != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(DedupEstimator_add_sequence__doc__,
+"add_sequence($self, sequence, /)\n"
+"--\n"
+"\n"
+"Add a sequence to the deduplication estimator. \n"
+"\n"
+"  sequence\n"
+"    An ASCII string.\n"
+);
+
+#define DedupEstimator_add_sequence_method METH_O
+
+static PyObject *
+DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence) 
+{
+    if (!PyUnicode_CheckExact(sequence)) {
+        PyErr_Format(PyExc_TypeError, 
+                     "sequence should be a str object, got %s", 
+                     Py_TYPE(sequence)->tp_name);
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    if (DedupEstimator_add_sequence_ptr(
+            self, PyUnicode_DATA(sequence), PyUnicode_GET_LENGTH(sequence)) != 0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(DedupEstimator_duplication_counts__doc__,
+"duplication_counts($self)\n"
+"--\n"
+"\n"
+"Return a array.array with only the counts. \n"
+);
+
+#define DedupEstimator_duplication_counts_method METH_NOARGS
+
+static PyObject *
+DedupEstimator_duplication_counts(DedupEstimator *self, PyObject *Py_UNUSED(ignore)) 
+{
+    size_t tracked_sequences = self->stored_entries;
+    uint64_t *counts = PyMem_Calloc(tracked_sequences, sizeof(uint64_t));
+    if (counts == NULL) {
+        return PyErr_NoMemory();
+    }
+    struct EstimatorEntry *hash_table = self->hash_table;
+    size_t hash_table_size = self->hash_table_size;
+    size_t count_index = 0;
+    for (size_t i=0; i < hash_table_size; i++) {
+        struct EstimatorEntry *entry = hash_table + i;
+        uint64_t count = entry->count;
+        if (count == 0) {
+            continue;
+        }
+        counts[count_index] = count;
+        count_index += 1;
+    }
+    PyObject *result = PythonArray_FromBuffer('Q', counts, tracked_sequences * sizeof(uint64_t));
+    PyMem_Free(counts);
+    return result;
+} 
+
+static PyMethodDef DedupEstimator_methods[] = {
+    {"add_record_array", (PyCFunction)DedupEstimator_add_record_array, 
+     DedupEstimator_add_record_array_method, DedupEstimator_add_record_array__doc__},
+    {"add_sequence", (PyCFunction)DedupEstimator_add_sequence, 
+     DedupEstimator_add_sequence_method, DedupEstimator_add_sequence__doc__},
+    {"duplication_counts", (PyCFunction)DedupEstimator_duplication_counts, 
+     DedupEstimator_duplication_counts_method, DedupEstimator_duplication_counts__doc__},
+    {NULL},
+};
+
+static PyMemberDef DedupEstimator_members[] = {
+    {"_modulo_bits", T_ULONGLONG, offsetof(DedupEstimator, modulo_bits), 
+     READONLY, NULL},
+    {"_hash_table_size", T_ULONGLONG, offsetof(DedupEstimator, hash_table_size), 
+     READONLY, NULL},
+    {"tracked_sequences", T_ULONGLONG, offsetof(DedupEstimator, stored_entries), 
+     READONLY, NULL},
+    {NULL},
+};
+
+static PyTypeObject DedupEstimator_Type = {
+    .tp_name = "_qc.DedupEstimator",
+    .tp_basicsize = sizeof(DedupEstimator),
+    .tp_dealloc = (destructor)(DedupEstimator_dealloc),
+    .tp_new = (newfunc)DedupEstimator__new__,
+    .tp_methods = DedupEstimator_methods,
+    .tp_members = DedupEstimator_members,
+};
+
+
 /********************
  * NANOSTATS MODULE *
 *********************/
@@ -4148,6 +4434,9 @@ PyInit__qc(void)
     if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
         return NULL;
     }
+    if (python_module_add_type(m, &DedupEstimator_Type) != 0) {
+        return NULL;
+    }
     if (python_module_add_type(m, &NanoporeReadInfo_Type) != 0) {
         return NULL;
     }
@@ -4169,5 +4458,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
+    PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
     return m;
 }

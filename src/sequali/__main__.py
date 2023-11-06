@@ -20,9 +20,11 @@ import sys
 
 import xopen
 
-from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
-                  FastqParser, NanoStats, PerTileQuality, QCMetrics,
-                  SequenceDuplication)
+from ._qc import (AdapterCounter, BamParser,
+                  DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+                  DEFAULT_MAX_UNIQUE_SEQUENCES,
+                  DedupEstimator, FastqParser, NanoStats, PerTileQuality,
+                  QCMetrics, SequenceDuplication)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
@@ -61,11 +63,15 @@ def argument_parser() -> argparse.ArgumentParser:
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
                         help="The maximum amount of unique sequences to "
                              "gather. Larger amounts increase the sensitivity "
-                             "of finding overrepresented sequences and "
-                             "increase the accuracy of the duplication "
-                             "estimate, at the cost of increasing memory "
-                             "usage at about 50 bytes per sequence.")
-
+                             "of finding overrepresented sequences at the "
+                             "cost of increasing memory usage at about 50 "
+                             "bytes per sequence.")
+    parser.add_argument("--deduplication-estimate-bits", type=int,
+                        default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+                        help="Determines how many sequences are maximally "
+                             "stored to estimate the deduplication rate. "
+                             "Maximum stored sequences: 2 ** bits * 7 // 10. "
+                             "Memory required: 2 ** bits * 24")
     return parser
 
 
@@ -79,6 +85,8 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(args.max_unique_sequences)
+    dedup_estimator = DedupEstimator(
+        hash_table_size_bits=args.deduplication_estimate_bits)
     nanostats = NanoStats()
     filename: str = args.input
     with xopen.xopen(filename, "rb", threads=1) as file:  # type: ignore
@@ -99,12 +107,14 @@ def main() -> None:
                 adapter_counter.add_record_array(record_array)
                 sequence_duplication.add_record_array(record_array)
                 nanostats.add_record_array(record_array)
+                dedup_estimator.add_record_array(record_array)
                 progress.update(record_array)
     report_modules = calculate_stats(
         metrics,
         adapter_counter,
         per_tile_quality,
         sequence_duplication,
+        dedup_estimator,
         nanostats,
         adapter_names=list(adapter.name for adapter in adapters),
         fraction_threshold=fraction_threshold,
