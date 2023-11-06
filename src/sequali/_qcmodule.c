@@ -3194,7 +3194,46 @@ twobit_to_sequence(const uint8_t *twobit, size_t sequence_length, uint8_t *seque
                remainder);
     }
 }
-                              
+
+static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
+    uint64_t kmer = 0;
+    uint64_t revcomp_kmer = 0;
+    size_t all_nucs = 0;
+    uint64_t nuc_shift = (k - 1) * 2;
+    uint64_t kmer_mask = (1ULL << (k*2)) -1;
+    for (size_t i=0; i<k; i++) {
+        size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
+        all_nucs |= nuc;
+        kmer <<= 2;
+        kmer |= nuc;
+        size_t rev_nuc = ((~nuc) << nuc_shift) & kmer_mask;
+        revcomp_kmer >>= 2;
+        revcomp_kmer |= rev_nuc;
+    }
+    if (all_nucs > 3) {
+        if (all_nucs & 4) {
+            return TWOBIT_UNKNOWN_CHAR;
+        }
+        if (all_nucs & 8) {
+            return TWOBIT_N_CHAR;
+        }
+    }
+    // If k is uneven there can be no ambiguity
+    if (revcomp_kmer > kmer) {
+        return kmer;
+    }
+    return revcomp_kmer;
+}
+
+static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
+    static uint8_t nucs[4] = {'A', 'C', 'G', 'T'};
+    for (size_t i=k; i>0; i-=1) {
+        size_t nuc = kmer & 0b11;
+        sequence[i - 1] = nucs[nuc];
+        kmer >>= 2;
+    }
+}
+
 /*************************
  * SEQUENCE DUPLICATION *
  *************************/
