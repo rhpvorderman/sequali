@@ -9,6 +9,9 @@ Changelog
 
 version 0.1.0-dev
 -----------------
++ Add fingerprint-based deduplication estimation based on `a technique used in
+  filesystem deduplication estimation
+  <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
 + Add a BAM parser to allow reading dorado produced unaligned BAM as well as
   already aligned BAM files.
 + Guess sequencing technology from the file header, so only appropriate
