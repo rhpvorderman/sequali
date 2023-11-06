@@ -3212,6 +3212,7 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
 #define DEFAULT_MAX_UNIQUE_SEQUENCES 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define DEFAULT_UNIQUE_K 31
+#define DEFAULT_UNIQUE_SAMPLE_EVERY 20
 
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
@@ -3223,6 +3224,7 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t max_unique_fragments;
     uint64_t number_of_unique_fragments;
     uint64_t total_fragments;
+    size_t sample_every;
 } SequenceDuplication;
 
 static void 
@@ -3238,10 +3240,11 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     Py_ssize_t max_unique_sequences = DEFAULT_MAX_UNIQUE_SEQUENCES;
     Py_ssize_t k = DEFAULT_UNIQUE_K;
-    static char *kwargnames[] = {"max_unique_sequences", "k", NULL};
-    static char *format = "|nn:SequenceDuplication";
+    Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
+    static char *kwargnames[] = {"max_unique_sequences", "k", "sample_every", NULL};
+    static char *format = "|nnn:SequenceDuplication";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &max_unique_sequences, &k)) {
+            &max_unique_sequences, &k, &sample_every)) {
         return NULL;
     }
     if (max_unique_sequences < 1) {
@@ -3256,6 +3259,14 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             PyExc_ValueError,
             "k must be between 3 and 31 and be an uneven number, got: %zd", 
             k
+        );
+        return NULL;
+    }
+    if (sample_every < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "sample_every must be 1 or greater. Got %zd", 
+            sample_every
         );
         return NULL;
     }
@@ -3285,6 +3296,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->k = k;
     self->hashes = hashes;
     self->counts = counts;
+    self->sample_every = sample_every;
     return (PyObject *)self;
 }
 
@@ -3318,6 +3330,12 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
 static int
 SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
 {
+    /* If the hash table is full only use limited samples */
+    if (self->number_of_unique_fragments == self->max_unique_fragments && 
+        self->number_of_sequences % self->sample_every != 0) {
+            self->number_of_sequences += 1;
+            return 0;
+    }
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     Py_ssize_t k = self->k;
