@@ -3137,7 +3137,24 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     size_t all_nucs = 0;
     uint64_t nuc_shift = (k - 1) * 2;
     uint64_t kmer_mask = (1ULL << (k*2)) -1;
-    for (size_t i=0; i<k; i++) {
+    size_t i=0;
+    size_t vector_end = k - 4;
+    uint64_t vector_nuc_shift = (k - 4) * 2;
+    for (i=0; i<vector_end; i+=4) {
+        size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
+        size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
+        size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[sequence[i+2]];
+        size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[sequence[i+3]];
+        all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3);
+        uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
+        kmer <<= 8;
+        kmer |= kchunk;
+        uint64_t revchunk = ((nuc3 << 6) | (nuc2 << 4) | (nuc1 << 2) | (nuc0));
+        uint64_t revcompchunk = ((~revchunk) << vector_nuc_shift) & kmer_mask;
+        revcomp_kmer >>=8;
+        revcomp_kmer |= revcompchunk;
+    }
+    for (i=i; i<k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
