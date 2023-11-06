@@ -20,8 +20,9 @@ import sys
 
 import xopen
 
-from ._qc import (AdapterCounter, BamParser, DEFAULT_MAX_UNIQUE_SEQUENCES,
+from ._qc import (AdapterCounter, BamParser,
                   DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+                  DEFAULT_MAX_UNIQUE_SEQUENCES,
                   DedupEstimator, FastqParser, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
