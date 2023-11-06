@@ -3142,8 +3142,6 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
               ((revcomp & 0x00FF00FF00FF00FFULL) << 8);
     revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) | 
               ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
-    revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) | 
-              ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
     revcomp = ((revcomp & 0xCCCCCCCCCCCCCCCCULL) >> 2) | 
               ((revcomp & 0x3333333333333333ULL) << 2);
     // If k < 32, the empty twobit slots will have ended up at the least 
