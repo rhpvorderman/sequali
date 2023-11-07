@@ -3200,9 +3200,8 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
  *************************/
 
 /* A module that cuts the sequence in bits of k size. The canonical (lowest) 
-   representation of the bit is used. 
-   In sequali this is increased to MAX_UNIQUE_SEQUENCES.
-   
+   representation of the bit is used.
+
    k should be an uneven number (so there is always a canonical kmer) and k 
    should be 31 or lower so it can fit into a 64-bit integer. Then Thomas 
    Wang's integer hash can be used to store the sequence in a hash table
