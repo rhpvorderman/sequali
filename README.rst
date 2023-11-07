@@ -3,19 +3,20 @@ sequali
 ========
 Sequence quality metrics
 
-Sequence quality control with the following goals:
+Features:
 
-+ Being the fastest, most versatile and most useful sequencing quality
-  check tool.
++ Low memory footprint, small install size and fast execution times.
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
-+ Correct interpretation of Phred quality scores. For nanopore QC programs this
-  is already quite common as the basecallers provide the correct average
-  quality as metadata. Unfortunately, not all programs do this correctly.
-  For more explanation check `this excellent blog post
-  <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_
-  from Wouter de Coster (nanoplot author).
-+ Low resource usage in terms of CPU, memory and install size.
++ Overrepresentation analysis using 31 bp sequence fragments. Overrepresented
+  sequences are checked against the NCBI univec database.
++ Estimate duplication rate using a `fingerprint subsampling technique which is
+  also used in filesystem duplication estimation
+  <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
++ Checks for 6 illumina adapter sequences and 15 nanopore adapter sequences.
++ Per tile quality plots for illumina reads.
++ Channel and other plots for nanopore reads.
++ FASTQ and unaligned BAM are supported. See "Supported formats".
 
 Supported formats
 =================
@@ -51,6 +52,7 @@ Usage
                    [--overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD]
                    [--overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD]
                    [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
+                   [--deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS]
                    input
 
     positional arguments:
@@ -76,10 +78,13 @@ Usage
       --max-unique-sequences MAX_UNIQUE_SEQUENCES
                             The maximum amount of unique sequences to gather.
                             Larger amounts increase the sensitivity of finding
-                            overrepresented sequences and increase the accuracy of
-                            the duplication estimate, at the cost of increasing
-                            memory usage at about 50 bytes per sequence.
-
+                            overrepresented sequences at the cost of increasing
+                            memory usage.
+      --deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS
+                            Determines how many sequences are maximally stored to
+                            estimate the deduplication rate. Maximum stored
+                            sequences: 2 ** bits * 7 // 10. Memory required: 2 **
+                            bits * 24
 
 Acknowledgements
 ================

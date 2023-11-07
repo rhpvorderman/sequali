@@ -818,9 +818,6 @@ class PerTileQualityReport(ReportModule):
 
 @dataclasses.dataclass
 class DuplicationCounts(ReportModule):
-    exact: bool
-    total_sequences: int
-    max_unique_sequences: int
     tracked_unique_sequences: int
     duplication_counts: Sequence[Tuple[int, int]]
     remaining_fraction: float
@@ -842,20 +839,11 @@ class DuplicationCounts(ReportModule):
         return plot.render(is_unicode=True)
 
     def to_html(self):
-        if self.exact:
-            first_part = f"""
-            All {self.tracked_unique_sequences:,} unique sequences where
-            tracked among {self.total_sequences:,} total sequences. <br>
-            Sequences that would remain if duplicated:
-            {self.remaining_fraction:.2%}
-            """
-        else:
-            first_part = f"""
-            This estimates the fraction of the duplication based on
-            {self.tracked_unique_sequences:,} sampled unique sequences of
-            {self.total_sequences:,} total sequences. <br>
-            Estimated remaining sequences if deduplicated:
-            {self.remaining_fraction:.2%}
+        first_part = f"""
+        This estimates the fraction of the duplication based on
+        {self.tracked_unique_sequences:,} sampled unique sequences. <br>
+        Estimated remaining sequences if deduplicated:
+        {self.remaining_fraction:.2%}
             """
         return f"""
             <h2>Duplication percentages</h2>
@@ -906,28 +894,17 @@ class DuplicationCounts(ReportModule):
         return unique_sequences / total_sequences
 
     @classmethod
-    def from_sequence_duplication_and_dedup_estimator(
-            cls, seqdup: SequenceDuplication, dedup_est: DedupEstimator):
-        if seqdup.collected_unique_sequences < seqdup.max_unique_sequences:
-            # When all unique sequences have been collected there is no
-            # need for estimation
-            tracked_unique_sequences = seqdup.collected_unique_sequences
-            duplication_counts = seqdup.duplication_counts()
-            exact = True
-        else:
-            tracked_unique_sequences = dedup_est.tracked_sequences
-            duplication_counts = dedup_est.duplication_counts()
-            exact = False
+    def from_dedup_estimator(cls, dedup_est: DedupEstimator):
+
+        tracked_unique_sequences = dedup_est.tracked_sequences
+        duplication_counts = dedup_est.duplication_counts()
         duplication_categories = collections.Counter(duplication_counts)
         estimated_duplication_fractions = cls.estimated_counts_to_fractions(
             duplication_categories.items())
         deduplicated_fraction = cls.deduplicated_fraction(
             duplication_categories)
         return cls(
-            exact=exact,
-            total_sequences=seqdup.number_of_sequences,
             tracked_unique_sequences=tracked_unique_sequences,
-            max_unique_sequences=seqdup.max_unique_sequences,
             duplication_counts=sorted(duplication_categories.items()),
             estimated_duplication_fractions=estimated_duplication_fractions,
             remaining_fraction=deduplicated_fraction,
@@ -947,17 +924,29 @@ class OverRepresentedSequence(typing.NamedTuple):
 class OverRepresentedSequences(ReportModule):
     overrepresented_sequences: List[OverRepresentedSequence]
     max_unique_sequences: int
+    collected_sequences: int
+    sample_every: int
+    sequence_length: int
+    total_fragments: int
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
                 [x._asdict() for x in self.overrepresented_sequences],
-                "max_unique_sequences": self.max_unique_sequences}
+                "max_unique_sequences": self.max_unique_sequences,
+                "sample_every": self.sample_every,
+                "collected_sequences": self.collected_sequences,
+                "sequence_length": self.sequence_length,
+                "total_fragments": self.total_fragments}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
         return cls([OverRepresentedSequence(**d)
                    for d in overrepresented_sequences],
-                   max_unique_sequences=d["max_unique_sequences"])  # type: ignore
+                   max_unique_sequences=d["max_unique_sequences"],
+                   collected_sequences=d["collected_sequences"],
+                   sample_every=d["sample_every"],
+                   sequence_length=d["sequence_length"],
+                   total_fragments=d["total_fragments"])  # type: ignore
 
     def to_html(self) -> str:
         header = "<h2>Overrepresented sequences</h2>"
@@ -966,14 +955,23 @@ class OverRepresentedSequences(ReportModule):
         content = io.StringIO()
         content.write(header)
         content.write(
-            f"The first {self.max_unique_sequences} unique sequences are "
-            f"tracked for duplicates. Sequences with high occurence are "
-            f"presented in the table. <br>")
+            f"The first sequences are cut into fragments of "
+            f"{self.sequence_length} bp. The fragments are stored and "
+            f"counted. This continues until the fragment store is full. After "
+            f"that every 1 in {self.sample_every} sequences is cut into "
+            f"fragments which are checked for occurences in the store and "
+            f"counted if this is the case. "
+            f"{self.collected_sequences:,} unique fragments were found (of "
+            f"the maximum {self.max_unique_sequences:,}). "
+            f"{self.total_fragments:,} fragments were counted.<br>"
+        )
         content.write(
-            "Identified sequences by matched kmers. The max match is "
-            "either the number of kmers in the overrepresented sequence "
-            "or the number of kmers of the database sequence, whichever "
-            "is fewer.")
+            "Sequences are stored in their canonical representation. That is "
+            "either the sequence or the reverse complement, whichever has "
+            "the lowest sort order. This means poly-A and poly-T sequences "
+            "show up as poly-A (both are overrepresented in genomes). And "
+            "illumina dark cycles (poly-G) show up as poly-C."
+            "<br>")
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>sequence</th><th>kmers (matched/max)</th>"
@@ -1019,7 +1017,11 @@ class OverRepresentedSequences(ReportModule):
             for count, fraction, sequence in overrepresented_sequences
         ]
         return cls(overrepresented_with_identification,
-                   seqdup.max_unique_sequences)
+                   seqdup.max_unique_sequences,
+                   seqdup.collected_unique_sequences,
+                   seqdup.sample_every,
+                   seqdup.sequence_length,
+                   seqdup.total_fragments)
 
 
 @dataclasses.dataclass
@@ -1384,8 +1386,7 @@ def calculate_stats(
             adapter_counter, adapter_names, data_ranges),
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality, data_ranges),
-        DuplicationCounts.from_sequence_duplication_and_dedup_estimator(
-            sequence_duplication, dedup_estimator),
+        DuplicationCounts.from_dedup_estimator(dedup_estimator),
         OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication,
             fraction_threshold=fraction_threshold,

@@ -30,6 +30,8 @@ N: int
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_SEQUENCES: int
 DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
+DEFAULT_UNIQUE_K: int 
+DEFAULT_UNIQUE_SAMPLE_EVERY: int 
 
 class FastqRecordView:
     obj: bytes
@@ -87,11 +89,16 @@ class PerTileQuality:
 
 class SequenceDuplication:
     number_of_sequences: int
-    stopped_collecting_at: int
     collected_unique_sequences: int
     max_unique_sequences: int
+    sequence_length: int
+    sample_every: int
+    total_fragments: int
 
-    def __init__(self, max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES): ...
+    def __init__(self,
+                 max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES,
+                 k: int = DEFAULT_UNIQUE_K,
+                 sample_every: int = DEFAULT_UNIQUE_SAMPLE_EVERY): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def sequence_counts(self) -> Dict[str, int]: ...

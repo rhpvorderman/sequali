@@ -17,13 +17,14 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
 
 def test_sequence_duplication():
     max_unique_sequences = 100_000
-    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences)
+    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences,
+                                 sample_every=1)
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
     number_of_letters = math.ceil(math.log(max_unique_sequences) / math.log(4))
     for combo in itertools.product(*(("ACGT",) * number_of_letters)):
-        sequence = "".join(combo) + 91 * "A"
+        sequence = "".join(combo) + (31 - number_of_letters) * "A"
         read = FastqRecordView("name", sequence, "H" * len(sequence))
         seqdup.add_read(read)
     assert seqdup.number_of_sequences == 4 ** number_of_letters
@@ -31,11 +32,12 @@ def test_sequence_duplication():
     assert len(sequence_counts) == max_unique_sequences
     assert seqdup.max_unique_sequences == max_unique_sequences
     for sequence, count in sequence_counts.items():
-        assert len(sequence) == 50
+        assert len(sequence) == seqdup.sequence_length
         assert count == 1
-    duplicated_read = FastqRecordView("name", 100 * "A", 100 * "A")
+    duplicated_read = FastqRecordView("name", 31 * "A",  31 * "A")
     seqdup.add_read(duplicated_read)
-    assert seqdup.sequence_counts()[50 * "A"] == 2
+    sequence_counts = seqdup.sequence_counts()
+    assert sequence_counts[31 * "A"] == 2
 
 
 def test_sequence_duplication_add_read_no_view():
@@ -58,75 +60,74 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
 
 
 def test_sequence_duplication_overrepresented_sequences():
-    seqdup = SequenceDuplication()
+    seqdup = SequenceDuplication(sample_every=1)
     for i in range(100):
-        seqdup.add_read(view_from_sequence("A"))
+        seqdup.add_read(view_from_sequence("A" * 31))
     for i in range(200):
-        seqdup.add_read(view_from_sequence("C"))
+        seqdup.add_read(view_from_sequence("C" * 31))
     for i in range(2000):
-        seqdup.add_read(view_from_sequence("G"))
+        seqdup.add_read(view_from_sequence("G" * 31))
     for i in range(10):
-        seqdup.add_read(view_from_sequence("T"))
-    seqdup.add_read(view_from_sequence("GATTACA"))
+        seqdup.add_read(view_from_sequence("T" * 31))
+    seqdup.add_read(view_from_sequence("C" * 30 + "A"))
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
-        seqdup.add_read(view_from_sequence("CAT"))
+        seqdup.add_read(view_from_sequence("A" * 30 + "C"))
     overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.001)
-    assert overrepresented[0][2] == "CAT"
-    assert overrepresented[1][2] == "G"
-    assert overrepresented[1][0] == 2000
-    assert overrepresented[2][2] == "C"
-    assert overrepresented[2][0] == 200
-    assert overrepresented[3][2] == "A"
-    assert overrepresented[3][1] == 100 / 100_000
+    assert overrepresented[0][2] == "A" * 30 + "C"
+    assert overrepresented[1][2] == "C" * 31
+    assert overrepresented[1][0] == 2200
+    assert overrepresented[2][2] == "A" * 31
+    assert overrepresented[2][1] == 110 / 100_000
     # Assert no other sequences recorded as overrepresented.
-    assert len(overrepresented) == 4
+    assert len(overrepresented) == 3
     overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.00001)
-    assert overrepresented[-1][2] == "GATTACA"
+    assert overrepresented[-1][2] == "C" * 30 + "A"
     overrepresented = seqdup.overrepresented_sequences(
         threshold_fraction=0.00001,
         min_threshold=2,
     )
-    assert overrepresented[-1][2] == "T"
+    assert overrepresented[-1][2] == "A" * 31
     overrepresented = seqdup.overrepresented_sequences(
         threshold_fraction=0.1,
         min_threshold=2,
         max_threshold=1000,
     )
     assert len(overrepresented) == 2
-    assert overrepresented[1][2] == "G"
+    assert overrepresented[1][2] == "C" * 31
 
 
 def test_sequence_duplication_duplication_counts():
     seqdup = SequenceDuplication()
     for i in range(100):
-        seqdup.add_read(view_from_sequence("A"))
+        seqdup.add_read(view_from_sequence("A" * 31))
     for i in range(200):
-        seqdup.add_read(view_from_sequence("C"))
+        seqdup.add_read(view_from_sequence("C" * 31))
     for i in range(2000):
-        seqdup.add_read(view_from_sequence("G"))
+        seqdup.add_read(view_from_sequence("G" * 31))
     for i in range(10):
-        seqdup.add_read(view_from_sequence("T"))
-    seqdup.add_read(view_from_sequence("GATTACA"))
-    seqdup.add_read(view_from_sequence("TACCAGA"))
+        seqdup.add_read(view_from_sequence("T" * 31))
+    seqdup.add_read(view_from_sequence("GATTACA" * 5))
+    seqdup.add_read(view_from_sequence("TACCAGA" * 5))
     for i in range(50_000):
-        seqdup.add_read(view_from_sequence("CAT"))
+        seqdup.add_read(view_from_sequence("CAT" * 11))
     dupcounts = collections.Counter(seqdup.duplication_counts())
     assert dupcounts[0] == 0
-    assert dupcounts[1] == 2
-    assert dupcounts[10] == 1
-    assert dupcounts[200] == 1
-    assert dupcounts[100] == 1
-    assert dupcounts[2000] == 1
-    assert dupcounts[50_000] == 1
-    assert sum(dupcounts.values()) == 7
+    assert dupcounts[1] == 4
+    assert dupcounts[2200] == 1
+    assert dupcounts[110] == 1
+    assert dupcounts[50_000] == 2
+    assert sum(dupcounts.values()) == 8
 
 
 def test_sequence_duplication_case_insensitive():
     seqdup = SequenceDuplication()
-    seqdup.add_read(view_from_sequence("gaTTaca"))
-    seqdup.add_read(view_from_sequence("GAttACA"))
+    seqdup.add_read(view_from_sequence("aaTTaca" * 5))
+    seqdup.add_read(view_from_sequence("AAttACA" * 5))
     seqcounts = seqdup.sequence_counts()
     assert seqdup.number_of_sequences == 2
-    assert len(seqcounts) == 1
-    assert seqcounts["GATTACA"] == 2
+    assert seqdup.total_fragments == 4
+    assert seqdup.collected_unique_sequences == 2
+    assert len(seqcounts) == 2
+    assert seqcounts[("AATTACA" * 5)[:31]] == 2
+    assert seqcounts[("AATTACA" * 5)[-31:]] == 2
