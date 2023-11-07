@@ -15,6 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import collections
 import os
+import typing
 from typing import Dict, Iterable, List, Tuple, Union
 
 DEFAULT_K = 13
@@ -97,7 +98,7 @@ def identify_sequence(
         sequence_index: Dict[str, Union[List[str], str]],
         k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
-    counted_seqs: collections.Counter[str] = collections.Counter()
+    counted_seqs: typing.Counter[str] = collections.Counter()
     for kmer in kmers:
         matched = sequence_index.get(kmer, [])
         if isinstance(matched, list):
