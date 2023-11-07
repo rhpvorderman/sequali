@@ -17,6 +17,7 @@ import collections
 import os
 import sys
 from typing import Dict, FrozenSet, Iterable, List, Set, Tuple, Union
+from sequali._qc import canonical_kmers
 
 DEFAULT_K = 13
 
@@ -47,34 +48,11 @@ def reverse_complement(sequence: str):
     return sequence.encode("ascii").translate(COMPLEMENT_TABLE)[::-1].decode("ascii")
 
 
-def canonical_kmers(sequence: str, k: int):
-    if k % 2 == 0:
-        raise ValueError(f"K must be uneven, got {k}")
-    canonical_set = set()
-    # Do all the translation upfront and not for each kmer individually as
-    # there will be a lot of overlapping work
-    # Encoding to bytes makes translating faster
-    seq_bytes = sequence.encode("ascii")
-    upper_seq_bytes = seq_bytes.translate(UPPER_TABLE)
-    revcomp_seq = upper_seq_bytes.translate(COMPLEMENT_TABLE)[::-1].decode('ascii')
-    upper_seq = upper_seq_bytes.decode('ascii')
-    seqlen = len(sequence)
-    for i in range(seqlen + 1 - k):
-        kmer = upper_seq[i:i+k]
-        revcomp_end = seqlen - i
-        revcomp = revcomp_seq[revcomp_end - k:revcomp_end]
-        if revcomp < kmer:
-            canonical_set.add(revcomp)
-        else:
-            canonical_set.add(kmer)
-    return canonical_set
-
-
 def create_sequence_index(
         names_and_sequences: Iterable[Tuple[str, str]],
         k: int = DEFAULT_K,
-        ) -> Dict[str, Union[List[str], str]]:
-    sequence_index: Dict[str, Union[List[str], str]] = {}
+        ) -> Dict[int, Union[List[str], str]]:
+    sequence_index: Dict[int, Union[List[str], str]] = {}
     for name, sequence in names_and_sequences:
         kmers = canonical_kmers(sequence, k)
         # Store one sequence identifier (most common) or alternatively a list
@@ -95,7 +73,7 @@ def create_sequence_index(
 
 def identify_sequence(
         sequence: str,
-        sequence_index: Dict[str, Union[List[str], str]],
+        sequence_index: Dict[int, Union[List[str], str]],
         k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
     counted_seqs = collections.Counter()
