@@ -8,7 +8,7 @@ from sequali.report_modules import DuplicationCounts
 
 if __name__ == "__main__":
     counter = collections.Counter()
-    with dnaio.open(sys.argv[1]) as reader:
+    with dnaio.open(sys.argv[1], open_threads=1) as reader:
         for read in reader:
             length = len(read)
             if length < 16:
