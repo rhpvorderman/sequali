@@ -927,6 +927,7 @@ class OverRepresentedSequences(ReportModule):
     collected_sequences: int
     sample_every: int
     sequence_length: int
+    total_fragments: int
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
@@ -934,7 +935,8 @@ class OverRepresentedSequences(ReportModule):
                 "max_unique_sequences": self.max_unique_sequences,
                 "sample_every": self.sample_every,
                 "collected_sequences": self.collected_sequences,
-                "sequence_length": self.sequence_length}
+                "sequence_length": self.sequence_length,
+                "total_fragments": self.total_fragments}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
@@ -943,7 +945,8 @@ class OverRepresentedSequences(ReportModule):
                    max_unique_sequences=d["max_unique_sequences"],
                    collected_sequences=d["collected_sequences"],
                    sample_every=d["sample_every"],
-                   sequence_length=d["sequence_length"])  # type: ignore
+                   sequence_length=d["sequence_length"],
+                   total_fragments=d["total_fragments"])  # type: ignore
 
     def to_html(self) -> str:
         header = "<h2>Overrepresented sequences</h2>"
@@ -959,7 +962,8 @@ class OverRepresentedSequences(ReportModule):
             f"fragments which are checked for occurences in the store and "
             f"counted if this is the case. "
             f"{self.collected_sequences:,} unique fragments were found (of "
-            f"the maximum {self.max_unique_sequences:,})<br>"
+            f"the maximum {self.max_unique_sequences:,}). "
+            f"{self.total_fragments:,} fragments were counted.<br>"
         )
         content.write(
             f"Sequences are stored in their canonical representation. That is "
@@ -1022,7 +1026,8 @@ class OverRepresentedSequences(ReportModule):
                    seqdup.max_unique_sequences,
                    seqdup.collected_unique_sequences,
                    seqdup.sample_every,
-                   seqdup.sequence_length)
+                   seqdup.sequence_length,
+                   seqdup.total_fragments)
 
 
 @dataclasses.dataclass

@@ -3682,6 +3682,8 @@ static PyMemberDef SequenceDuplication_members[] = {
      "The length of the sampled sequences"},
     {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every), 
      READONLY, "One in this many reads is sampled"},
+	 {"total_fragments", T_ULONGLONG, offsetof(SequenceDuplication, total_fragments),
+     READONLY, "Total number of fragments."},
     {NULL},
 };
 

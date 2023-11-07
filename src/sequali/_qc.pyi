@@ -91,6 +91,7 @@ class SequenceDuplication:
     max_unique_sequences: int
     sequence_length: int
     sample_every: int
+    total_fragments: int
 
     def __init__(self, max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
