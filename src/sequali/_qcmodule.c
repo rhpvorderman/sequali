@@ -3819,6 +3819,13 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
     if (sequence_length < 16) {
         hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
     } else {
+        /* Take 16 bytes from the beginning and the end. Some sequences may 
+           share the beginning, so taking the end properly distuingishes them. 
+           Also use the sequence length, but divide it by 64 so small 
+           differences due to indel sequencing errors in the middle do not 
+           affect the fingerprint. 
+           Another reason for taking 16bp is that this is exactly the murmur
+           hash block size which allows following the fastest code path. */
         uint64_t seed = sequence_length >> 6;
         uint64_t hash_front = MurmurHash3_x64_64(sequence, 16, seed);
         uint64_t hash_back = MurmurHash3_x64_64(sequence + sequence_length - 16, 16, seed);
