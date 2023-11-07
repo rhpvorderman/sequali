@@ -972,12 +972,6 @@ class OverRepresentedSequences(ReportModule):
             "show up as poly-A (both are overrepresented in genomes). And "
             "illumina dark cycles (poly-G) show up as poly-C."
             "<br>")
-        content.write(
-            "Identified sequences by matched kmers. The max match is "
-            "either the number of kmers in the overrepresented sequence "
-            "or the number of kmers of the database sequence, whichever "
-            "is fewer. <br>"
-        )
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>sequence</th><th>kmers (matched/max)</th>"
