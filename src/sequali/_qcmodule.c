@@ -4480,5 +4480,7 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
+    PyModule_AddIntMacro(m, DEFAULT_UNIQUE_K);
+    PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
     return m;
 }

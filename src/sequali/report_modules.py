@@ -966,12 +966,12 @@ class OverRepresentedSequences(ReportModule):
             f"{self.total_fragments:,} fragments were counted.<br>"
         )
         content.write(
-            f"Sequences are stored in their canonical representation. That is "
-            f"either the sequence or the reverse complement, whichever has "
-            f"the lowest sort order. This means poly-A and poly-T sequences "
-            f"show up as poly-A (both are overrepresented in genomes). And "
-            f"illumina dark cycles (poly-G) show up as poly-C."
-            f"<br>")
+            "Sequences are stored in their canonical representation. That is "
+            "either the sequence or the reverse complement, whichever has "
+            "the lowest sort order. This means poly-A and poly-T sequences "
+            "show up as poly-A (both are overrepresented in genomes). And "
+            "illumina dark cycles (poly-G) show up as poly-C."
+            "<br>")
         content.write(
             "Identified sequences by matched kmers. The max match is "
             "either the number of kmers in the overrepresented sequence "

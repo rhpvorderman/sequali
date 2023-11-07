@@ -17,7 +17,8 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
 
 def test_sequence_duplication():
     max_unique_sequences = 100_000
-    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences, sample_every=1)
+    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences,
+                                 sample_every=1)
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
