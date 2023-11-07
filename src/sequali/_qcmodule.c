@@ -3152,8 +3152,8 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
 static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     uint64_t kmer = 0;
     size_t all_nucs = 0;
-    size_t i=0;
-    size_t vector_end = k - 4;
+    Py_ssize_t i=0;
+    Py_ssize_t vector_end = k - 4;
     for (i=0; i<vector_end; i+=4) {
         size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
@@ -3164,7 +3164,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         kmer <<= 8;
         kmer |= kchunk;
     }
-    for (i=i; i<k; i++) {
+    for (i=i; i<(Py_ssize_t)k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
