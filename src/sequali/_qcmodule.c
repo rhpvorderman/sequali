@@ -3814,8 +3814,16 @@ static int
 DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
                                uint8_t *sequence, size_t sequence_length) 
 {
-    uint64_t hash = MurmurHash3_x64_64(
-        sequence, Py_MIN(UNIQUE_SEQUENCE_LENGTH, sequence_length));
+
+    uint64_t hash;
+    if (sequence_length < 16) {
+        hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
+    } else {
+        uint64_t seed = sequence_length >> 6;
+        uint64_t hash_front = MurmurHash3_x64_64(sequence, 16, seed);
+        uint64_t hash_back = MurmurHash3_x64_64(sequence + sequence_length - 16, 16, seed);
+        hash = hash_front ^ hash_back;
+    }
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
     if (hash & ignore_mask) {
