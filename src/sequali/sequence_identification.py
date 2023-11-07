@@ -15,8 +15,7 @@
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 import collections
 import os
-import sys
-from typing import Dict, FrozenSet, Iterable, List, Set, Tuple, Union
+from typing import Dict, Iterable, List, Tuple, Union
 
 DEFAULT_K = 13
 
@@ -77,8 +76,8 @@ def create_sequence_index(
     sequence_index: Dict[str, Union[List[str], str]] = {}
     for name, sequence in names_and_sequences:
         kmers = canonical_kmers(sequence, k)
-        # Store one sequence identifier (most common) or alternatively a list
-        # of multiple sequence identifiers. This is a bit convoluted, but it
+        # Store one sequence name (most common) or alternatively a list
+        # of multiple names. This is a bit convoluted, but it
         # saves a lot of time as memory does not need to be allocated for a
         # lot of one-item lists.
         for kmer in kmers:
@@ -98,7 +97,7 @@ def identify_sequence(
         sequence_index: Dict[str, Union[List[str], str]],
         k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
-    counted_seqs = collections.Counter()
+    counted_seqs: collections.Counter[str] = collections.Counter()
     for kmer in kmers:
         matched = sequence_index.get(kmer, [])
         if isinstance(matched, list):
