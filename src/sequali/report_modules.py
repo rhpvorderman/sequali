@@ -847,7 +847,10 @@ class DuplicationCounts(ReportModule):
         <br>
         A subsample of the fingerprints is stored to estimate the duplication
         rate. The subsample for this file consists of
-        {self.tracked_unique_sequences:,} fingerprints. <br>
+        {self.tracked_unique_sequences:,} fingerprints.
+        The paper describing the methodology can be found
+        <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
+        here</a>.<br>
         Estimated remaining sequences if deduplicated:
         {self.remaining_fraction:.2%}
             """
