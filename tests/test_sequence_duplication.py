@@ -17,13 +17,13 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
 
 def test_sequence_duplication():
     max_unique_sequences = 100_000
-    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences)
+    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences, sample_every=1)
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
     number_of_letters = math.ceil(math.log(max_unique_sequences) / math.log(4))
     for combo in itertools.product(*(("ACGT",) * number_of_letters)):
-        sequence = "".join(combo) + 91 * "A"
+        sequence = "".join(combo) + (31 - number_of_letters) * "A"
         read = FastqRecordView("name", sequence, "H" * len(sequence))
         seqdup.add_read(read)
     assert seqdup.number_of_sequences == 4 ** number_of_letters
@@ -31,11 +31,12 @@ def test_sequence_duplication():
     assert len(sequence_counts) == max_unique_sequences
     assert seqdup.max_unique_sequences == max_unique_sequences
     for sequence, count in sequence_counts.items():
-        assert len(sequence) == 50
+        assert len(sequence) == seqdup.sequence_length
         assert count == 1
-    duplicated_read = FastqRecordView("name", 100 * "A", 100 * "A")
+    duplicated_read = FastqRecordView("name", 31 * "A",  31 * "A")
     seqdup.add_read(duplicated_read)
-    assert seqdup.sequence_counts()[50 * "A"] == 2
+    sequence_counts = seqdup.sequence_counts()
+    assert sequence_counts[31 * "A"] == 2
 
 
 def test_sequence_duplication_add_read_no_view():
