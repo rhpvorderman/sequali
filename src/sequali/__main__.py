@@ -64,8 +64,7 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="The maximum amount of unique sequences to "
                              "gather. Larger amounts increase the sensitivity "
                              "of finding overrepresented sequences at the "
-                             "cost of increasing memory usage at about 50 "
-                             "bytes per sequence.")
+                             "cost of increasing memory usage.")
     parser.add_argument("--deduplication-estimate-bits", type=int,
                         default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
                         help="Determines how many sequences are maximally "

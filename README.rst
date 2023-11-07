@@ -52,6 +52,7 @@ Usage
                    [--overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD]
                    [--overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD]
                    [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
+                   [--deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS]
                    input
 
     positional arguments:
@@ -77,10 +78,13 @@ Usage
       --max-unique-sequences MAX_UNIQUE_SEQUENCES
                             The maximum amount of unique sequences to gather.
                             Larger amounts increase the sensitivity of finding
-                            overrepresented sequences and increase the accuracy of
-                            the duplication estimate, at the cost of increasing
-                            memory usage at about 50 bytes per sequence.
-
+                            overrepresented sequences at the cost of increasing
+                            memory usage.
+      --deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS
+                            Determines how many sequences are maximally stored to
+                            estimate the deduplication rate. Maximum stored
+                            sequences: 2 ** bits * 7 // 10. Memory required: 2 **
+                            bits * 24
 
 Acknowledgements
 ================
