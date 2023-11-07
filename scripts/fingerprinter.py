@@ -14,7 +14,7 @@ if __name__ == "__main__":
             if length < 16:
                 h = hash(read.sequence)
             else:
-                h = hash(read.sequence[:16]) ^ length ^ hash(read.sequence[-16:])
+                h = hash(read.sequence[:16]) ^ (length >> 6) ^ hash(read.sequence[-16:])
             counter.update((h,))
     dupcounter = collections.Counter()
     dupcounter.update(counter.values())
