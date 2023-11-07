@@ -3195,6 +3195,77 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
     }
 }
 
+PyDoc_STRVAR(canonical_kmers__doc__,
+"canonical_kmers($module, sequence, k)\n"
+"--\n"
+"\n"
+"Returns a frozenset of integers representing the canonical kmers.\n"
+"\n"
+"  sequence\n"
+"    A python unicode object containing only ASCII strings.\n"
+"  k\n"
+"    The value of k. Must be an uneven number between 3 and 31"
+);
+
+#define canonical_kmers_method METH_VARARGS | METH_KEYWORDS
+
+static PyObject *canonical_kmers(PyObject *module, PyObject *args, PyObject *kwargs)
+{
+    Py_ssize_t k;
+    PyObject *sequence_obj;
+    static char format[] = "Un|:canonical_kmers";
+    static char *keywords[] = {"sequence", "k", NULL};
+    if (PyArg_ParseTupleAndKeywords(args, kwargs, format, keywords, 
+        &sequence_obj, &k) < 0) {
+            return NULL;
+        }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "sequence must be an ASCII string, got %R",
+            sequence_obj
+        );
+        return NULL;
+    }
+    if (((k & 1) == 0) || (k < 3) || (k >31)) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "k must be uneven and between 3 and 31. Got %zd",
+            k
+        );
+        return NULL;
+    } 
+    Py_ssize_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
+    uint8_t *sequence = PyUnicode_DATA(sequence_obj);
+    Py_ssize_t number_of_kmers = sequence_length + 1 -k;
+    PyObject *kmer_set = PyFrozenSet_New(NULL);
+    /* This method is naive since it will reconvert most characters k times 
+       but allows code reuse. Furthermore speed is not 
+       as critical here. It is mostly about saving memory usage. */
+    for (Py_ssize_t i=0; i < number_of_kmers; i += 1) {
+        uint64_t kmer = sequence_to_canonical_kmer(sequence + i, k);  
+        if (kmer < 0) {
+            // Ambigiuous characters detected
+            continue;
+        }
+        /* Internally python does not hash ints, but takes the int value. Hash
+           instead to get better properties in the set */
+        uint64_t hash = wanghash64(kmer);
+        PyObject *hash_obj = PyLong_FromUnsignedLongLong(hash);
+        if (hash_obj == NULL) {
+            Py_DECREF(kmer_set);
+            return NULL;
+        }
+        int ret = PySet_Add(kmer_set, hash_obj);
+        Py_DECREF(hash_obj);
+        if (ret < 0) {
+            Py_DECREF(kmer_set);
+            return NULL;
+        }
+    }
+    return kmer_set;
+}
+
 /*************************
  * SEQUENCE DUPLICATION *
  *************************/
@@ -4366,13 +4437,18 @@ static PyTypeObject NanoStats_Type = {
  * MODULE INITIALIZATION *
  *************************/
 
+static PyMethodDef _qc_methods[] = {
+    {"canonical_kmers", (PyCFunction)canonical_kmers, canonical_kmers_method, 
+     canonical_kmers__doc__ },
+    {NULL},
+};
 
 static struct PyModuleDef _qc_module = {
     PyModuleDef_HEAD_INIT,
     "_qc",   /* name of module */
     NULL, /* module documentation, may be NULL */
     -1,
-    NULL,  /* module methods */
+    _qc_methods,  /* module methods */
     .m_slots = NULL,
 };
 

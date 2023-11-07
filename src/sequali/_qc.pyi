@@ -16,7 +16,8 @@
 
 import array
 import sys
-from typing import Dict, Iterable, Iterator, List, SupportsIndex, Optional, Tuple
+from typing import (Dict, FrozenSet, Iterable, Iterator, List, SupportsIndex,
+                    Optional, Tuple)
 
 TABLE_SIZE: int
 NUMBER_OF_PHREDS: int
@@ -32,6 +33,8 @@ DEFAULT_MAX_UNIQUE_SEQUENCES: int
 DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
 DEFAULT_UNIQUE_K: int 
 DEFAULT_UNIQUE_SAMPLE_EVERY: int 
+
+def canonical_kmers(sequence: str, k: int) -> FrozenSet[int]: ...
 
 class FastqRecordView:
     obj: bytes
