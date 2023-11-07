@@ -3678,7 +3678,11 @@ static PyMemberDef SequenceDuplication_members[] = {
     {"max_unique_sequences", T_ULONGLONG, 
       offsetof(SequenceDuplication, max_unique_fragments), READONLY,
       "The maximum number of unique sequences stored in the object."
-    },
+    }, 
+    {"sequence_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
+     "The length of the sampled sequences"},
+    {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every), 
+     READONLY, "One in this many reads is sampled"},
     {NULL},
 };
 

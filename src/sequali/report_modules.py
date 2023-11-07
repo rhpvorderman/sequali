@@ -924,17 +924,26 @@ class OverRepresentedSequence(typing.NamedTuple):
 class OverRepresentedSequences(ReportModule):
     overrepresented_sequences: List[OverRepresentedSequence]
     max_unique_sequences: int
+    collected_sequences: int
+    sample_every: int
+    sequence_length: int
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
                 [x._asdict() for x in self.overrepresented_sequences],
-                "max_unique_sequences": self.max_unique_sequences}
+                "max_unique_sequences": self.max_unique_sequences,
+                "sample_every": self.sample_every,
+                "collected_sequences": self.collected_sequences,
+                "sequence_length": self.sequence_length}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
         return cls([OverRepresentedSequence(**d)
                    for d in overrepresented_sequences],
-                   max_unique_sequences=d["max_unique_sequences"])  # type: ignore
+                   max_unique_sequences=d["max_unique_sequences"],
+                   collected_sequences=d["collected_sequences"],
+                   sample_every=d["sample_every"],
+                   sequence_length=d["sequence_length"])  # type: ignore
 
     def to_html(self) -> str:
         header = "<h2>Overrepresented sequences</h2>"
@@ -943,14 +952,28 @@ class OverRepresentedSequences(ReportModule):
         content = io.StringIO()
         content.write(header)
         content.write(
-            f"The first {self.max_unique_sequences} unique sequences are "
-            f"tracked for duplicates. Sequences with high occurence are "
-            f"presented in the table. <br>")
+            f"The first sequences are cut into fragments of "
+            f"{self.sequence_length} bp. The fragments are stored and "
+            f"counted. This continues until the fragment store is full. After "
+            f"that every 1 in {self.sample_every} sequences is cut into "
+            f"fragments which are checked for occurences in the store and "
+            f"counted if this is the case. "
+            f"{self.collected_sequences:,} unique fragments were found (of "
+            f"the maximum {self.max_unique_sequences:,})<br>"
+        )
+        content.write(
+            f"Sequences are stored in their canonical representation. That is "
+            f"either the sequence or the reverse complement, whichever has "
+            f"the lowest sort order. This means poly-A and poly-T sequences "
+            f"show up as poly-A (both are overrepresented in genomes). And "
+            f"illumina dark cycles (poly-G) show up as poly-C."
+            f"<br>")
         content.write(
             "Identified sequences by matched kmers. The max match is "
             "either the number of kmers in the overrepresented sequence "
             "or the number of kmers of the database sequence, whichever "
-            "is fewer.")
+            "is fewer. <br>"
+        )
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>sequence</th><th>kmers (matched/max)</th>"
@@ -996,7 +1019,10 @@ class OverRepresentedSequences(ReportModule):
             for count, fraction, sequence in overrepresented_sequences
         ]
         return cls(overrepresented_with_identification,
-                   seqdup.max_unique_sequences)
+                   seqdup.max_unique_sequences,
+                   seqdup.collected_unique_sequences,
+                   seqdup.sample_every,
+                   seqdup.sequence_length)
 
 
 @dataclasses.dataclass
