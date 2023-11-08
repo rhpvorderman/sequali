@@ -93,7 +93,7 @@ def logarithmic_ranges(length: int):
     while True:
         stop = round(scaling_factor ** i)
         i += 1
-        if stop > start:
+        if stop >= start + 5:
             yield start, stop
             start = stop
             if stop >= length:
