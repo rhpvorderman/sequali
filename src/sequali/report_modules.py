@@ -964,18 +964,17 @@ class OverRepresentedSequences(ReportModule):
         content = io.StringIO()
         content.write(header)
         content.write(
-            f"The first sequences are cut into fragments of "
+            f"Sequences are cut into fragments of "
             f"{self.sequence_length} bp. The fragments are stored and "
-            f"counted. This continues until the fragment store is full. After "
-            f"that every 1 in {self.sample_every} sequences is cut into "
-            f"fragments which are checked for occurences in the store and "
-            f"counted if this is the case. "
-            f"{self.collected_sequences:,} unique fragments were found (of "
-            f"the maximum {self.max_unique_sequences:,}). "
-            f"{self.total_fragments:,} fragments were counted.<br>"
+            f"counted. When the fragment store is full (max "
+            f"{self.max_unique_sequences:,} fragments), only sequences in the "
+            f"fragment store are counted. {self.collected_sequences:,} unique "
+            f"fragments were stored. <br>"
+            f"1 in {self.sample_every} sequences is processed this way. "
+            f"A total of {self.total_fragments:,} fragments was sampled.<br>"
         )
         content.write(
-            "Sequences are stored in their canonical representation. That is "
+            "Fragments are stored in their canonical representation. That is "
             "either the sequence or the reverse complement, whichever has "
             "the lowest sort order. This means poly-A and poly-T sequences "
             "show up as poly-A (both are overrepresented in genomes). And "
