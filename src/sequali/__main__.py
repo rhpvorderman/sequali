@@ -56,10 +56,10 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"smaller files. Default: {100}")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         default=sys.maxsize,
-                        help=f"The threshold above which a sequence is "
-                             f"considered overrepresented even if the "
-                             f"threshold fraction is not surpassed. Useful for "
-                             f"very large files. Default: {sys.maxsize:,}")
+                        help="The threshold above which a sequence is "
+                             "considered overrepresented even if the "
+                             "threshold fraction is not surpassed. Useful for "
+                             "very large files. Default: unlimited.")
     parser.add_argument("--max-unique-sequences", type=int,
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
                         help=f"The maximum amount of unique fragments to "

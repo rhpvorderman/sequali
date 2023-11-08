@@ -77,7 +77,7 @@ Usage
                             The threshold above which a sequence is considered
                             overrepresented even if the threshold fraction is not
                             surpassed. Useful for very large files. Default:
-                            9,223,372,036,854,775,807
+                            unlimited.
       --max-unique-sequences MAX_UNIQUE_SEQUENCES
                             The maximum amount of unique fragments to gather.
                             Larger amounts increase the sensitivity of finding
