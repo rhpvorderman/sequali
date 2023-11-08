@@ -11,7 +11,7 @@ version 0.1.0-dev
 -----------------
 + In order to get overrepresented sequences across the entire read, reads
   are cut into fragments of 31 bp which are stored and counted. If the fragment
-  store is full, one in every 20 reads is analysed.
+  store is full, one in every 8 reads is analysed.
 + Add fingerprint-based deduplication estimation based on `a technique used in
   filesystem deduplication estimation
   <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.

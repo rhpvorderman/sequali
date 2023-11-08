@@ -3211,7 +3211,7 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
 #define DEFAULT_MAX_UNIQUE_SEQUENCES 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define DEFAULT_UNIQUE_K 31
-#define DEFAULT_UNIQUE_SAMPLE_EVERY 20
+#define DEFAULT_UNIQUE_SAMPLE_EVERY 8
 
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
@@ -3329,9 +3329,7 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
 static int
 SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
 {
-    /* If the hash table is full only use limited samples */
-    if (self->number_of_unique_fragments == self->max_unique_fragments && 
-        self->number_of_sequences % self->sample_every != 0) {
+    if (self->number_of_sequences % self->sample_every != 0) {
             self->number_of_sequences += 1;
             return 0;
     }
