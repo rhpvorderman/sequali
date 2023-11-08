@@ -98,7 +98,7 @@ def test_sequence_duplication_overrepresented_sequences():
 
 
 def test_sequence_duplication_duplication_counts():
-    seqdup = SequenceDuplication()
+    seqdup = SequenceDuplication(sample_every=1)
     for i in range(100):
         seqdup.add_read(view_from_sequence("A" * 31))
     for i in range(200):
@@ -121,7 +121,7 @@ def test_sequence_duplication_duplication_counts():
 
 
 def test_sequence_duplication_case_insensitive():
-    seqdup = SequenceDuplication()
+    seqdup = SequenceDuplication(sample_every=1)
     seqdup.add_read(view_from_sequence("aaTTaca" * 5))
     seqdup.add_read(view_from_sequence("AAttACA" * 5))
     seqcounts = seqdup.sequence_counts()
