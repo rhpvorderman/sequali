@@ -472,9 +472,14 @@ class PerSequenceAverageQualityScores(ReportModule):
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
+        maximum_score = 0
+        for i, count in enumerate(self.average_quality_counts):
+            if count > 0:
+                maximum_score = i
+        maximum_score = max(maximum_score + 2, 40)
         plot = pygal.Bar(
             title="Per sequence quality scores",
-            x_labels=range(PHRED_MAX + 1),
+            x_labels=range(maximum_score + 1),
             x_labels_major_every=3,
             show_minor_x_labels=False,
             style=ONE_SERIE_STYLE,
@@ -485,7 +490,8 @@ class PerSequenceAverageQualityScores(ReportModule):
         total = sum(self.average_quality_counts)
         percentage_scores = [100 * score / total
                              for score in self.average_quality_counts]
-        plot.add("", percentage_scores)
+
+        plot.add("", percentage_scores[:maximum_score])
         return plot.render(is_unicode=True)
 
     def to_html(self) -> str:
