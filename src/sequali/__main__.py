@@ -20,11 +20,12 @@ import sys
 
 import xopen
 
-from ._qc import (AdapterCounter, BamParser,
-                  DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-                  DEFAULT_MAX_UNIQUE_SEQUENCES,
-                  DedupEstimator, FastqParser, NanoStats, PerTileQuality,
-                  QCMetrics, SequenceDuplication)
+from ._qc import (
+    AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+    DEFAULT_MAX_UNIQUE_SEQUENCES, DEFAULT_UNIQUE_K,
+    DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
+    PerTileQuality, QCMetrics, SequenceDuplication
+)
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
@@ -49,28 +50,43 @@ def argument_parser() -> argparse.ArgumentParser:
                         )
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         default=100,
-                        help="The minimum amount of sequences that need to be "
-                             "present to be considered overrepresented even if "
-                             "the threshold fraction is surpassed. Useful for "
-                             "smaller files.")
+                        help=f"The minimum amount of sequences that need to be "
+                             f"present to be considered overrepresented even if "
+                             f"the threshold fraction is surpassed. Useful for "
+                             f"smaller files. Default: {100}")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         default=sys.maxsize,
-                        help="The threshold above which a sequence is "
-                             "considered overrepresented even if the "
-                             "threshold fraction is not surpassed. Useful for "
-                             "very large files.")
+                        help=f"The threshold above which a sequence is "
+                             f"considered overrepresented even if the "
+                             f"threshold fraction is not surpassed. Useful for "
+                             f"very large files. Default: {sys.maxsize:,}")
     parser.add_argument("--max-unique-sequences", type=int,
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
-                        help="The maximum amount of unique sequences to "
-                             "gather. Larger amounts increase the sensitivity "
-                             "of finding overrepresented sequences at the "
-                             "cost of increasing memory usage.")
+                        help=f"The maximum amount of unique fragments to "
+                             f"gather. Larger amounts increase the sensitivity "
+                             f"of finding overrepresented sequences at the "
+                             f"cost of increasing memory usage. Default: "
+                             f"{DEFAULT_MAX_UNIQUE_SEQUENCES:,}")
+    parser.add_argument("--overrepresentation-fragment-length", type=int,
+                        default=DEFAULT_UNIQUE_K,
+                        help=f"The length of the fragments to sample. The "
+                             f"maximum is 31. Default: {DEFAULT_UNIQUE_K}.")
+    parser.add_argument("--overrepresentation-sample-every", type=int,
+                        default=DEFAULT_UNIQUE_SAMPLE_EVERY,
+                        help=f"How often a read should be sampled. "
+                             f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}. "
+                             f"More samples leads to better precision, "
+                             f"lower speed, and also towards more bias towards "
+                             f"the beginning of the file as the fragment store "
+                             f"gets filled up with more sequences from the "
+                             f"beginning.")
     parser.add_argument("--deduplication-estimate-bits", type=int,
                         default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-                        help="Determines how many sequences are maximally "
-                             "stored to estimate the deduplication rate. "
-                             "Maximum stored sequences: 2 ** bits * 7 // 10. "
-                             "Memory required: 2 ** bits * 24")
+                        help=f"Determines how many sequences are maximally "
+                             f"stored to estimate the deduplication rate. "
+                             f"Maximum stored sequences: 2 ** bits * 7 // 10. "
+                             f"Memory required: 2 ** bits * 24. "
+                             f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
     return parser
 
 

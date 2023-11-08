@@ -52,6 +52,8 @@ Usage
                    [--overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD]
                    [--overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD]
                    [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
+                   [--overrepresentation-fragment-length OVERREPRESENTATION_FRAGMENT_LENGTH]
+                   [--overrepresentation-sample-every OVERREPRESENTATION_SAMPLE_EVERY]
                    [--deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS]
                    input
 
@@ -70,21 +72,31 @@ Usage
                             The minimum amount of sequences that need to be
                             present to be considered overrepresented even if the
                             threshold fraction is surpassed. Useful for smaller
-                            files.
+                            files. Default: 100
       --overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD
                             The threshold above which a sequence is considered
                             overrepresented even if the threshold fraction is not
-                            surpassed. Useful for very large files.
+                            surpassed. Useful for very large files. Default:
+                            9,223,372,036,854,775,807
       --max-unique-sequences MAX_UNIQUE_SEQUENCES
-                            The maximum amount of unique sequences to gather.
+                            The maximum amount of unique fragments to gather.
                             Larger amounts increase the sensitivity of finding
                             overrepresented sequences at the cost of increasing
-                            memory usage.
+                            memory usage. Default: 5,000,000
+      --overrepresentation-fragment-length OVERREPRESENTATION_FRAGMENT_LENGTH
+                            The length of the fragments to sample. The maximum is
+                            31. Default: 31.
+      --overrepresentation-sample-every OVERREPRESENTATION_SAMPLE_EVERY
+                            How often a read should be sampled. Default: 1 in 8.
+                            More samples leads to better precision, lower speed,
+                            and also towards more bias towards the beginning of
+                            the file as the fragment store gets filled up with
+                            more sequences from the beginning.
       --deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS
                             Determines how many sequences are maximally stored to
                             estimate the deduplication rate. Maximum stored
                             sequences: 2 ** bits * 7 // 10. Memory required: 2 **
-                            bits * 24
+                            bits * 24. Default: 19.
 
 Acknowledgements
 ================
