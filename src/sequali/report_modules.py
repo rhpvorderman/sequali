@@ -82,18 +82,21 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def logarithmic_ranges(length: int):
-    # Use a scaling factor: this needs 300 units to reach the length of the
+def logarithmic_ranges(length: int, min_distance: int = 5):
+    """
+    Gives a squashed logarithmic range. It is not truly logarithmic as the
+    minimum distance ensures that the lower units are more tightly packed.
+    """
+    # Use a scaling factor: this needs 400 units to reach the length of the
     # largest human chromosome. This will still fit on a graph once we reach
-    # those sequencing sizes. By utilizing the same scaling factor, this
-    # program will have more comparable plots between FASTQ files.
-    scaling_factor = 250_000_000 ** (1 / 300)
+    # those sequencing sizes.
+    scaling_factor = 250_000_000 ** (1 / 400)
     i = 0
     start = 0
     while True:
         stop = round(scaling_factor ** i)
         i += 1
-        if stop >= start + 5:
+        if stop >= start + min_distance:
             yield start, stop
             start = stop
             if stop >= length:
