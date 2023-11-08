@@ -96,7 +96,7 @@ Usage
                             Determines how many sequences are maximally stored to
                             estimate the deduplication rate. Maximum stored
                             sequences: 2 ** bits * 7 // 10. Memory required: 2 **
-                            bits * 24. Default: 19.
+                            bits * 24. Default: 21.
 
 Acknowledgements
 ================

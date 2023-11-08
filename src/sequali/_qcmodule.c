@@ -3704,8 +3704,10 @@ Fei Xie, Michael Condict, Sandip Shete
 https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 */
 
-// 2 ** 19 * 12 is 6MB which balloons to 12MB when creating a new table.
-#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 19
+// 2 ** 21 * 12 is 24MB which balloons to 48MB when creating a new table.
+// This allows storing up to 1.46 million sequences which leads to quite
+// accurate results.
+#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
 
 // Use packing at the 4-byte boundary to save 4 bytes of storage.
 #pragma pack(4)
