@@ -99,7 +99,11 @@ def main() -> None:
 
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
-    sequence_duplication = SequenceDuplication(args.max_unique_sequences)
+    sequence_duplication = SequenceDuplication(
+        args.max_unique_sequences,
+        k=args.overrepresentation_fragment_length,
+        sample_every=args.overrepresentation_sample_every
+    )
     dedup_estimator = DedupEstimator(
         hash_table_size_bits=args.deduplication_estimate_bits)
     nanostats = NanoStats()
