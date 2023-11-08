@@ -3,7 +3,15 @@
 // Thomas Wang's integer hash functions and inverse
 // See https://naml.us/post/inverse-of-a-hash-function/ 
 
-static uint64_t wanghash64(uint64_t key) {
+/* MSVC version 2022 makes some critical inline errors for the inverse hash
+   function */
+#ifdef _MSC_VER
+#define noinline __declspec(noinline)
+#else
+#define noinline
+#endif
+
+static noinline uint64_t wanghash64(uint64_t key) {
 	key = (~key) + (key << 21); // key = (key << 21) - key - 1;
 	key = key ^ (key >> 24);
 	key = (key + (key << 3)) + (key << 8); // key * 265
@@ -15,7 +23,7 @@ static uint64_t wanghash64(uint64_t key) {
 }
 
 
-static uint64_t wanghash64_inverse(uint64_t key) {
+static noinline uint64_t wanghash64_inverse(uint64_t key) {
 	uint64_t tmp;
 
 	// Invert key = key + (key << 31)
