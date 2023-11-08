@@ -969,9 +969,9 @@ class OverRepresentedSequences(ReportModule):
             f"counted. When the fragment store is full (max "
             f"{self.max_unique_sequences:,} fragments), only sequences in the "
             f"fragment store are counted. {self.collected_sequences:,} unique "
-            f"fragments were stored. <br>"
+            f"fragments were stored."
             f"1 in {self.sample_every} sequences is processed this way. "
-            f"A total of {self.total_fragments:,} fragments was sampled.<br>"
+            f"A total of {self.total_fragments:,} fragments were sampled.<br>"
         )
         content.write(
             "Fragments are stored in their canonical representation. That is "
