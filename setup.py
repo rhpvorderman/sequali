@@ -14,24 +14,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-import os
-import platform
-import sys
 from pathlib import Path
 
 from setuptools import Extension, find_packages, setup
-
-
-def extra_compile_args():
-    if sys.platform.startswith("linux") and platform.machine() == "x86_64":
-        # SEQUALI_CPU_BASIC=1 pip install --no-binary sequali sequali
-        # Will work for linux users that do not have SSSE3 support.
-        if not os.getenv("SEQUALI_CPU_BASIC"):
-            return ["-mssse3"]
-    # Do not bother with Windows and MacOS as it is not given that they have
-    # a compiler installed. Simply use compatible wheels instead so no users
-    # run into trouble.
-    return None
 
 
 setup(
@@ -43,7 +28,7 @@ setup(
     long_description=Path("README.rst").read_text(),
     long_description_content_type="text/x-rst",
     license="AGPL-3.0-or-later",
-    keywords="FASTQ QC",
+    keywords="FASTQ sequencing quality uBAM QC nanopore illumina",
     zip_safe=False,
     packages=find_packages('src'),
     package_dir={'': 'src'},
@@ -69,8 +54,8 @@ setup(
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
                               'contaminants/*', 'adapters/*']},
     ext_modules=[
-        Extension("sequali._qc", ["src/sequali/_qcmodule.c"],
-                  extra_compile_args=extra_compile_args())],
+        Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
+    ],
     entry_points={"console_scripts": [
         'sequali=sequali.__main__:main',
         'sequali-report=sequali.__main__:sequali_report'
