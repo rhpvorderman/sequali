@@ -621,7 +621,9 @@ class PerPositionNContent(ReportModule):
 @dataclasses.dataclass
 class PerSequenceGCContent(ReportModule):
     gc_content_counts: Sequence[int]
+    smoothened_gc_content_counts: Sequence[int]
     x_labels: Sequence[str] = tuple(str(x) for x in range(101))
+    smoothened_x_labels: Sequence[str] = tuple(str(x) for x in range(0, 101, 2))
 
     def plot(self):
         plot = pygal.Bar(
@@ -637,15 +639,36 @@ class PerSequenceGCContent(ReportModule):
         plot.add("", self.gc_content_counts)
         return plot.render(is_unicode=True)
 
+    def smoothened_plot(self):
+        plot = pygal.Bar(
+            title="Per sequence GC content (smoothened)",
+            x_labels=self.smoothened_x_labels,
+            x_labels_major_every=3,
+            show_minor_x_labels=False,
+            x_title="GC %",
+            y_title="number of reads",
+            style=ONE_SERIE_STYLE,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("", self.smoothened_gc_content_counts)
+        return plot.render(is_unicode=True)
+
     def to_html(self) -> str:
         return f"""
-            <h2>Per sequence GC content</h2>
             {self.plot()}
+            {self.smoothened_plot()}
         """
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(list(metrics.gc_content()))
+        gc_content = list(metrics.gc_content())
+        smoothened_gc_content = []
+        gc_content_iter = iter(gc_content)
+        for i in range(50):
+            smoothened_gc_content.append(next(gc_content_iter) + next(gc_content_iter))
+        # Append the last 100% category.
+        smoothened_gc_content.append(next(gc_content_iter))
+        return cls(gc_content, smoothened_gc_content)
 
 
 @dataclasses.dataclass
