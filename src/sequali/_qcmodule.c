@@ -2705,7 +2705,7 @@ PerTileQuality_resize_tile_array(PerTileQuality *self, size_t highest_tile)
     self->tile_qualities = new_qualities;
     self->number_of_tiles = highest_tile;
     return 0;
-};
+}
 
 static int
 PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length) 
@@ -4069,7 +4069,7 @@ static void NanoStats_dealloc(NanoStats *self) {
     PyMem_Free(self->nano_infos);
     Py_XDECREF(self->skipped_reason);
     Py_TYPE(self)->tp_free((PyObject *)self);
-};
+}
 
 typedef struct {
     PyObject_HEAD
