@@ -7,6 +7,10 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.2.0-dev
+-----------------
++ Fix build errors on windows
+
 version 0.1.0
 -----------------
 + In order to get overrepresented sequences across the entire read, reads
