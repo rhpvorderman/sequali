@@ -28,7 +28,7 @@ setup(
     long_description=Path("README.rst").read_text(),
     long_description_content_type="text/x-rst",
     license="AGPL-3.0-or-later",
-    keywords="FASTQ QC",
+    keywords="FASTQ sequencing quality uBAM QC nanopore illumina",
     zip_safe=False,
     packages=find_packages('src'),
     package_dir={'': 'src'},
