@@ -655,6 +655,15 @@ class PerSequenceGCContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
+            <h2>Per sequence GC content</h2>
+            For short reads with fixed size (i.e. Illumina) the plot will 
+            look very spiky due to the GC content calculation: GC bases / all 
+            bases. For read lengths of 151, both 75 and 76 GC bases lead to a 
+            percentage of 50% (rounded) and 72 and 73 GC bases leads to 48% 
+            (rounded). Only 74 GC bases leads to 49%. As a result the 
+            even categories will be twice as high, which creates a spike. The
+            smoothened plot is provided to give a clearer picture in this case.
+            <br>
             {self.plot()}
             {self.smoothened_plot()}
         """
