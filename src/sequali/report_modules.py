@@ -82,18 +82,21 @@ def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
         start = stop
 
 
-def logarithmic_ranges(length: int):
-    # Use a scaling factor: this needs 300 units to reach the length of the
+def logarithmic_ranges(length: int, min_distance: int = 5):
+    """
+    Gives a squashed logarithmic range. It is not truly logarithmic as the
+    minimum distance ensures that the lower units are more tightly packed.
+    """
+    # Use a scaling factor: this needs 400 units to reach the length of the
     # largest human chromosome. This will still fit on a graph once we reach
-    # those sequencing sizes. By utilizing the same scaling factor, this
-    # program will have more comparable plots between FASTQ files.
-    scaling_factor = 250_000_000 ** (1 / 300)
+    # those sequencing sizes.
+    scaling_factor = 250_000_000 ** (1 / 400)
     i = 0
     start = 0
     while True:
         stop = round(scaling_factor ** i)
         i += 1
-        if stop > start:
+        if stop >= start + min_distance:
             yield start, stop
             start = stop
             if stop >= length:
@@ -469,9 +472,14 @@ class PerSequenceAverageQualityScores(ReportModule):
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
+        maximum_score = 0
+        for i, count in enumerate(self.average_quality_counts):
+            if count > 0:
+                maximum_score = i
+        maximum_score = max(maximum_score + 2, 40)
         plot = pygal.Bar(
             title="Per sequence quality scores",
-            x_labels=range(PHRED_MAX + 1),
+            x_labels=range(maximum_score + 1),
             x_labels_major_every=3,
             show_minor_x_labels=False,
             style=ONE_SERIE_STYLE,
@@ -482,7 +490,8 @@ class PerSequenceAverageQualityScores(ReportModule):
         total = sum(self.average_quality_counts)
         percentage_scores = [100 * score / total
                              for score in self.average_quality_counts]
-        plot.add("", percentage_scores)
+
+        plot.add("", percentage_scores[:maximum_score])
         return plot.render(is_unicode=True)
 
     def to_html(self) -> str:
@@ -612,7 +621,9 @@ class PerPositionNContent(ReportModule):
 @dataclasses.dataclass
 class PerSequenceGCContent(ReportModule):
     gc_content_counts: Sequence[int]
+    smoothened_gc_content_counts: Sequence[int]
     x_labels: Sequence[str] = tuple(str(x) for x in range(101))
+    smoothened_x_labels: Sequence[str] = tuple(str(x) for x in range(0, 101, 2))
 
     def plot(self):
         plot = pygal.Bar(
@@ -628,15 +639,46 @@ class PerSequenceGCContent(ReportModule):
         plot.add("", self.gc_content_counts)
         return plot.render(is_unicode=True)
 
+    def smoothened_plot(self):
+        plot = pygal.Line(
+            title="Per sequence GC content (smoothened)",
+            x_labels=self.smoothened_x_labels,
+            x_labels_major_every=3,
+            show_minor_x_labels=False,
+            x_title="GC %",
+            y_title="number of reads",
+            interpolate="cubic",
+            style=ONE_SERIE_STYLE,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("", self.smoothened_gc_content_counts)
+        return plot.render(is_unicode=True)
+
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence GC content</h2>
+            For short reads with fixed size (i.e. Illumina) the plot will
+            look very spiky due to the GC content calculation: GC bases / all
+            bases. For read lengths of 151, both 75 and 76 GC bases lead to a
+            percentage of 50% (rounded) and 72 and 73 GC bases leads to 48%
+            (rounded). Only 74 GC bases leads to 49%. As a result the
+            even categories will be twice as high, which creates a spike. The
+            smoothened plot is provided to give a clearer picture in this case.
+            <br>
             {self.plot()}
+            {self.smoothened_plot()}
         """
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(list(metrics.gc_content()))
+        gc_content = list(metrics.gc_content())
+        smoothened_gc_content = []
+        gc_content_iter = iter(gc_content)
+        for i in range(50):
+            smoothened_gc_content.append(next(gc_content_iter) + next(gc_content_iter))
+        # Append the last 100% category.
+        smoothened_gc_content.append(next(gc_content_iter))
+        return cls(gc_content, smoothened_gc_content)
 
 
 @dataclasses.dataclass
