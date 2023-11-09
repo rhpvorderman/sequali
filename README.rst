@@ -37,7 +37,7 @@ Supported formats
 Installation
 ============
 
-    pip install git+https://github.com/rhpvorderman/sequali.git
+    pip install sequali
 
 Usage
 =====
