@@ -640,13 +640,14 @@ class PerSequenceGCContent(ReportModule):
         return plot.render(is_unicode=True)
 
     def smoothened_plot(self):
-        plot = pygal.Bar(
+        plot = pygal.Line(
             title="Per sequence GC content (smoothened)",
             x_labels=self.smoothened_x_labels,
             x_labels_major_every=3,
             show_minor_x_labels=False,
             x_title="GC %",
             y_title="number of reads",
+            interpolate="cubic",
             style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS,
         )
