@@ -21,8 +21,8 @@ from setuptools import Extension, find_packages, setup
 
 setup(
     name="sequali",
-    version="0.1.0-dev",
-    description="Fast FASTQ quality metrics",
+    version="0.1.0",
+    description="Fast sequencing quality metrics",
     author="Leiden University Medical Center",
     author_email="r.h.p.vorderman@lumc.nl",
     long_description=Path("README.rst").read_text(),
@@ -40,7 +40,8 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
-        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python :: 3.12",
+        "Development Status :: 4 - Beta",
         "License :: OSI Approved :: "
         "GNU Affero General Public License v3 or later (AGPLv3+)",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
