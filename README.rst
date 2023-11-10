@@ -1,3 +1,19 @@
+.. image:: https://img.shields.io/pypi/v/sequali.svg
+  :target: https://pypi.org/project/sequali/
+  :alt:
+
+.. image:: https://img.shields.io/conda/v/bioconda/sequali.svg
+  :target: https://bioconda.github.io/recipes/sequali/README.html
+  :alt:
+
+.. image:: https://img.shields.io/pypi/pyversions/sequali.svg
+  :target: https://pypi.org/project/sequali/
+  :alt:
+
+.. image:: https://img.shields.io/pypi/l/sequali.svg
+  :target: https://github.com/LUMC/sequali/blob/main/LICENSE
+  :alt:
+
 ========
 sequali
 ========
