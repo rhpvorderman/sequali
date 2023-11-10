@@ -50,6 +50,7 @@ Usage
                    [--overrepresentation-fragment-length OVERREPRESENTATION_FRAGMENT_LENGTH]
                    [--overrepresentation-sample-every OVERREPRESENTATION_SAMPLE_EVERY]
                    [--deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS]
+                   [-t THREADS]
                    input
 
     positional arguments:
@@ -92,6 +93,9 @@ Usage
                             estimate the deduplication rate. Maximum stored
                             sequences: 2 ** bits * 7 // 10. Memory required: 2 **
                             bits * 24. Default: 21.
+      -t THREADS, --threads THREADS
+                            Number of threads to use. If greater than one sequali
+                            will use an additional thread for gzip decompression.
 
 Acknowledgements
 ================
