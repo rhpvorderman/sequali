@@ -9,6 +9,7 @@ Changelog
 
 version 0.2.0-dev
 -----------------
++ Make the number of threads configurable on the command line.
 + Fix build errors on windows
 
 version 0.1.0

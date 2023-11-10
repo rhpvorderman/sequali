@@ -87,6 +87,10 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"Maximum stored sequences: 2 ** bits * 7 // 10. "
                              f"Memory required: 2 ** bits * 24. "
                              f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
+    parser.add_argument("-t", "--threads", type=int, default=2,
+                        help="Number of threads to use. If greater than one "
+                             "sequali will use an additional thread for gzip "
+                             "decompression.")
     return parser
 
 
@@ -108,7 +112,10 @@ def main() -> None:
         hash_table_size_bits=args.deduplication_estimate_bits)
     nanostats = NanoStats()
     filename: str = args.input
-    with xopen.xopen(filename, "rb", threads=1) as file:  # type: ignore
+    threads = args.threads
+    if threads < 1:
+        raise ValueError(f"Threads must be greater than 1, got {threads}.")
+    with xopen.xopen(filename, "rb", threads=threads-1) as file:  # type: ignore
         progress = ProgressUpdater(filename, file)
         if filename.endswith(".bam") or (
                 hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
