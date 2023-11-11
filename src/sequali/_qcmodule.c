@@ -3202,15 +3202,16 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     __m128i upper_result = _mm_or_si128(
         _mm_or_si128(
             _mm_shuffle_epi8(upper_twobit, _mm_setr_epi8(12, 8, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), 
-            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(13, 9, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+            _mm_shuffle_epi8(upper_twobit, _mm_setr_epi8(13, 9, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
         ),
         _mm_or_si128(
-            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(14, 10, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
-            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(15, 11, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+            _mm_shuffle_epi8(upper_twobit, _mm_setr_epi8(14, 10, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+            _mm_shuffle_epi8(upper_twobit, _mm_setr_epi8(15, 11, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
         )
     );
     result = _mm_or_si128(upper_result, result);
     uint64_t kmer = _mm_cvtsi128_si64(result);
+    kmer >>= (64 - (2*k));
     if (all_nucs_int) {
         return TWOBIT_N_CHAR;
     }
