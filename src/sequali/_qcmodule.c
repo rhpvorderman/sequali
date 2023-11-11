@@ -3149,27 +3149,23 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
     return revcomp >> (64 - (k *2));
 }
 
-static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
+static int64_t sequence_to_canonical_kmer(const uint8_t *sequence, uint64_t k) {
     uint64_t kmer = 0;
     size_t all_nucs = 0;
-    Py_ssize_t i=0;
-    Py_ssize_t vector_end = k - 4;
-    for (i=0; i<vector_end; i+=4) {
-        size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
-        size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
-        size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[sequence[i+2]];
-        size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[sequence[i+3]];
+    uint8_t seq_store[32];
+    memset(seq_store, 'A', 32);
+    memcpy(seq_store, sequence, k);
+    for (size_t i=0; i<32; i+=4) {
+        size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[seq_store[i]];
+        size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+1]];
+        size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+2]];
+        size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+3]];
         all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3);
         uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
         kmer <<= 8;
         kmer |= kchunk;
     }
-    for (i=i; i<(Py_ssize_t)k; i++) {
-        size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
-        all_nucs |= nuc;
-        kmer <<= 2;
-        kmer |= nuc;
-    }
+    kmer >>= (64ULL - (2ULL * k));
     if (all_nucs > 3) {
         if (all_nucs & 4) {
             return TWOBIT_UNKNOWN_CHAR;
