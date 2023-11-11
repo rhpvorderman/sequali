@@ -3169,7 +3169,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         _mm_or_si128(lower_a, lower_c), 
         _mm_or_si128(lower_g, lower_t)
     );
-    int all_nucs_int = _mm_movemask_epi8((_mm_xor_si128(all_nucs, _mm_set1_epi8(1))));
+    int all_nucs_int = _mm_movemask_epi8((_mm_xor_si128(all_nucs, _mm_set1_epi8(255))));
     __m128i lower_twobit_c = _mm_and_si128(lower_c, twobit_c);
     __m128i lower_twobit_g = _mm_and_si128(lower_g, twobit_g);
     __m128i lower_twobit_t = _mm_and_si128(lower_t, twobit_t);
@@ -3185,7 +3185,8 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         )
     );
     __m128i upper = _mm_lddqu_si128((__m128i *)(seq_store + 16));
-    __m128i upper_a = _mm_cmpeq_epi8(lower, _mm_set1_epi8('A'));
+    upper = _mm_and_si128(upper, _mm_set1_epi8(223));
+    __m128i upper_a = _mm_cmpeq_epi8(upper, _mm_set1_epi8('A'));
     __m128i upper_c = _mm_cmpeq_epi8(upper, _mm_set1_epi8('C'));
     __m128i upper_g = _mm_cmpeq_epi8(upper, _mm_set1_epi8('G'));
     __m128i upper_t = _mm_cmpeq_epi8(upper, _mm_set1_epi8('T'));
@@ -3193,7 +3194,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         _mm_or_si128(upper_a, upper_c), 
         _mm_or_si128(upper_g, upper_t)
     );
-    all_nucs_int |= _mm_movemask_epi8((_mm_xor_si128(all_nucs_upper, _mm_set1_epi8(1))));
+    all_nucs_int |= _mm_movemask_epi8((_mm_xor_si128(all_nucs_upper, _mm_set1_epi8(255))));
     __m128i upper_twobit_c = _mm_and_si128(upper_c, twobit_c);
     __m128i upper_twobit_g = _mm_and_si128(upper_g, twobit_g);
     __m128i upper_twobit_t = _mm_and_si128(upper_t, twobit_t);
