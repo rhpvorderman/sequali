@@ -3152,8 +3152,11 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
 static int64_t sequence_to_canonical_kmer(const uint8_t *sequence, uint64_t k) {
     uint64_t kmer = 0;
     size_t all_nucs = 0;
-    uint8_t seq_store[32];
-    memset(seq_store, 'A', 32);
+    uint64_t seq_store_set[4] = {
+        0x4141414141414141ULL, 0x4141414141414141ULL, 
+        0x4141414141414141ULL, 0x4141414141414141ULL,
+    }; 
+    uint8_t *seq_store = seq_store_set;
     memcpy(seq_store, sequence, k);
     for (size_t i=0; i<32; i+=4) {
         size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[seq_store[i]];
