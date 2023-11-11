@@ -3150,6 +3150,70 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
 }
 
 static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
+    #ifdef __SSSE3__
+    uint64_t seq_store_set[4] = {0x4141414141414141ULL, 0x4141414141414141ULL,
+                              0x4141414141414141ULL, 0x4141414141414141ULL};
+    uint8_t *seq_store = (uint8_t *)seq_store_set;
+    memcpy(seq_store, sequence, k);
+    __m128i twobit_c = _mm_setr_epi8(0x40, 0x10, 0x4, 0x1, 0x40, 0x10, 0x4, 0x1, 0x40, 0x10, 0x4, 0x1, 0x40, 0x10, 0x4, 0x1);
+    __m128i twobit_g = _mm_setr_epi8(0x80, 0x20, 0x8, 0x2, 0x80, 0x20, 0x8, 0x2, 0x80, 0x20, 0x8, 0x2, 0x80, 0x20, 0x8, 0x2);
+    __m128i twobit_t = _mm_setr_epi8(0xc0, 0x30, 0xc, 0x3, 0xc0, 0x30, 0xc, 0x3, 0xc0, 0x30, 0xc, 0x3, 0xc0, 0x30, 0xc, 0x3);
+ 
+    __m128i lower = _mm_lddqu_si128((__m128i *)seq_store);
+    lower = _mm_and_si128(lower, _mm_set1_epi8(223));
+    __m128i lower_a = _mm_cmpeq_epi8(lower, _mm_set1_epi8('A'));
+    __m128i lower_c = _mm_cmpeq_epi8(lower, _mm_set1_epi8('C'));
+    __m128i lower_g = _mm_cmpeq_epi8(lower, _mm_set1_epi8('G'));
+    __m128i lower_t = _mm_cmpeq_epi8(lower, _mm_set1_epi8('T'));
+    __m128i all_nucs = _mm_or_si128(
+        _mm_or_si128(lower_a, lower_c), 
+        _mm_or_si128(lower_g, lower_t)
+    );
+    int all_nucs_int = _mm_movemask_epi8((_mm_xor_si128(all_nucs, _mm_set1_epi8(1))));
+    __m128i lower_twobit_c = _mm_and_si128(lower_c, twobit_c);
+    __m128i lower_twobit_g = _mm_and_si128(lower_g, twobit_g);
+    __m128i lower_twobit_t = _mm_and_si128(lower_t, twobit_t);
+    __m128i lower_twobit = _mm_or_si128(lower_twobit_c, _mm_or_si128(lower_twobit_g, lower_twobit_t));
+    __m128i result = _mm_or_si128(
+        _mm_or_si128(
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(0, 0, 0, 0, 12, 8, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0)), 
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(0, 0, 0, 0, 13, 9, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0))
+        ),
+        _mm_or_si128(
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(0, 0, 0, 0, 14, 10, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0)),
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(0, 0, 0, 0, 15, 11, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0))
+        )
+    );
+    __m128i upper = _mm_lddqu_si128((__m128i *)(seq_store + 16));
+    __m128i upper_a = _mm_cmpeq_epi8(lower, _mm_set1_epi8('A'));
+    __m128i upper_c = _mm_cmpeq_epi8(upper, _mm_set1_epi8('C'));
+    __m128i upper_g = _mm_cmpeq_epi8(upper, _mm_set1_epi8('G'));
+    __m128i upper_t = _mm_cmpeq_epi8(upper, _mm_set1_epi8('T'));
+    __m128i all_nucs_upper = _mm_or_si128(
+        _mm_or_si128(upper_a, upper_c), 
+        _mm_or_si128(upper_g, upper_t)
+    );
+    all_nucs_int |= _mm_movemask_epi8((_mm_xor_si128(all_nucs_upper, _mm_set1_epi8(1))));
+    __m128i upper_twobit_c = _mm_and_si128(upper_c, twobit_c);
+    __m128i upper_twobit_g = _mm_and_si128(upper_g, twobit_g);
+    __m128i upper_twobit_t = _mm_and_si128(upper_t, twobit_t);
+    __m128i upper_twobit = _mm_or_si128(upper_twobit_c, _mm_or_si128(upper_twobit_g, upper_twobit_t));
+    __m128i upper_result = _mm_or_si128(
+        _mm_or_si128(
+            _mm_shuffle_epi8(upper_twobit, _mm_setr_epi8(12, 8, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), 
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(13, 9, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        ),
+        _mm_or_si128(
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(14, 10, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)),
+            _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(15, 11, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        )
+    );
+    result = _mm_or_si128(upper_result, result);
+    uint64_t kmer = _mm_cvtsi128_si64(result);
+    if (all_nucs_int) {
+        return TWOBIT_N_CHAR;
+    }
+    #else
     uint64_t kmer = 0;
     size_t all_nucs = 0;
     Py_ssize_t i=0;
@@ -3178,6 +3242,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
             return TWOBIT_N_CHAR;
         }
     }
+    #endif
     uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
     // If k is uneven there can be no ambiguity
     if (revcomp_kmer > kmer) {
