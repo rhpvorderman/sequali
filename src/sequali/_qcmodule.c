@@ -3155,17 +3155,25 @@ static int64_t sequence_to_canonical_kmer(const uint8_t *sequence, uint64_t k) {
     uint64_t seq_store_set[4] = {
         0x4141414141414141ULL, 0x4141414141414141ULL, 
         0x4141414141414141ULL, 0x4141414141414141ULL,
-    }; 
+    };
     uint8_t *seq_store = seq_store_set;
     memcpy(seq_store, sequence, k);
-    for (size_t i=0; i<32; i+=4) {
+    for (size_t i=0; i<32; i+=8) {
         size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[seq_store[i]];
         size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+1]];
         size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+2]];
         size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+3]];
-        all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3);
-        uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
-        kmer <<= 8;
+        size_t nuc4 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+4]];
+        size_t nuc5 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+5]];
+        size_t nuc6 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+6]];
+        size_t nuc7 = NUCLEOTIDE_TO_TWOBIT[seq_store[i+7]];
+
+        all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3 | nuc4 | nuc5 | nuc6 | nuc7);
+        uint64_t kchunk = (
+            (nuc0 << 14) | (nuc1 << 12) | (nuc2 << 10) | (nuc3 << 8) |
+            (nuc4 << 6) | (nuc5 << 4) | (nuc6 << 2) | (nuc7)
+        );
+        kmer <<= 16;
         kmer |= kchunk;
     }
     kmer >>= (64ULL - (2ULL * k));
