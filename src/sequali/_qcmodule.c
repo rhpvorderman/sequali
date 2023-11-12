@@ -3167,17 +3167,15 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     __m128i lower = _mm_and_si128(_mm_lddqu_si128((__m128i *)seq_store), all_223);
     __m128i lower_a = _mm_cmpeq_epi8(lower, all_a);
     __m128i lower_c = _mm_cmpeq_epi8(lower, all_c);
+    register __m128i all_nucs_lower = _mm_or_si128(lower_a, lower_c);
+    register __m128i lower_twobit = _mm_and_si128(lower_c, twobit_c);
     __m128i lower_g = _mm_cmpeq_epi8(lower, all_g);
+    all_nucs_lower = _mm_or_si128(all_nucs_lower, lower_g);
+    lower_twobit = _mm_or_si128(lower_twobit, _mm_and_si128(lower_g, twobit_g));
     __m128i lower_t = _mm_cmpeq_epi8(lower, all_t);
-    __m128i all_nucs = _mm_or_si128(
-        _mm_or_si128(lower_a, lower_c), 
-        _mm_or_si128(lower_g, lower_t)
-    );
-    int all_nucs_int = _mm_movemask_epi8((_mm_xor_si128(all_nucs, all_255)));
-    __m128i lower_twobit_c = _mm_and_si128(lower_c, twobit_c);
-    __m128i lower_twobit_g = _mm_and_si128(lower_g, twobit_g);
-    __m128i lower_twobit_t = _mm_and_si128(lower_t, twobit_t);
-    __m128i lower_twobit = _mm_or_si128(lower_twobit_c, _mm_or_si128(lower_twobit_g, lower_twobit_t));
+    all_nucs_lower = _mm_or_si128(all_nucs_lower, lower_t);
+    lower_twobit = _mm_or_si128(lower_twobit, _mm_and_si128(lower_t, twobit_t));
+    int all_nucs_int_lower = _mm_movemask_epi8((_mm_xor_si128(all_nucs_lower, all_255)));
     __m128i result = _mm_or_si128(
         _mm_or_si128(
             _mm_shuffle_epi8(lower_twobit, _mm_setr_epi8(0, 0, 0, 0, 12, 8, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0)), 
@@ -3197,7 +3195,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         _mm_or_si128(upper_a, upper_c), 
         _mm_or_si128(upper_g, upper_t)
     );
-    all_nucs_int |= _mm_movemask_epi8((_mm_xor_si128(all_nucs_upper, all_255)));
+    int all_nucs_int_upper = _mm_movemask_epi8((_mm_xor_si128(all_nucs_upper, all_255)));
     __m128i upper_twobit_c = _mm_and_si128(upper_c, twobit_c);
     __m128i upper_twobit_g = _mm_and_si128(upper_g, twobit_g);
     __m128i upper_twobit_t = _mm_and_si128(upper_t, twobit_t);
@@ -3215,7 +3213,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     result = _mm_or_si128(upper_result, result);
     uint64_t kmer = _mm_cvtsi128_si64(result);
     kmer >>= (64 - (2*k));
-    if (all_nucs_int) {
+    if (all_nucs_int_lower | all_nucs_int_upper) {
         return TWOBIT_N_CHAR;
     }
     #else
