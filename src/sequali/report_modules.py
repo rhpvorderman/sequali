@@ -282,7 +282,6 @@ class SequenceLengthDistribution(ReportModule):
             </table>
         """
 
-
     def to_html(self):
         return f"""
             <h2>Sequence length distribution</h2>
@@ -914,7 +913,7 @@ class DuplicationCounts(ReportModule):
         and the length integer divided by 64. This means that for long
         read sequences, small indel sequencing errors will most likely not
         affect the fingerprint.</p>
-        
+
         <p>A subsample of the fingerprints is stored to estimate the duplication
         rate. The subsample for this file consists of
         {self.tracked_unique_sequences:,} fingerprints.
