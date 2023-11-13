@@ -1047,7 +1047,7 @@ class OverRepresentedSequences(ReportModule):
         for item in self.overrepresented_sequences:
             content.write(
                 f"""<tr><td style="text-align:right;">{item.count}</td>
-                    <td style="text-align:right;">{item.fraction * 100:.2f}</td>
+                    <td style="text-align:right;">{item.fraction:.2%}</td>
                     <td style="text-align:center;font-family:monospace;">
                         {item.sequence}</td>
                     <td style="text-align:center;font-family:monospace;">
