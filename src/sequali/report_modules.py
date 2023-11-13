@@ -264,9 +264,11 @@ class SequenceLengthDistribution(ReportModule):
         plot.add("Length", label_values(self.counts, self.length_ranges))
         return plot.render(is_unicode=True)
 
-    def to_html(self):
+    def distribution_table(self):
+        if len({self.q1, self.q5, self.q10, self.q25, self.q50,
+                self.q75, self.q90, self.q95, self.q99}) == 1:
+            return ""
         return f"""
-            <h2>Sequence length distribution</h2>
             <table>
                 <tr><td>N1</td><td style="text-align:right;">{self.q1:,}</td></tr>
                 <tr><td>N5</td><td style="text-align:right;">{self.q5:,}</td></tr>
@@ -278,9 +280,13 @@ class SequenceLengthDistribution(ReportModule):
                 <tr><td>N95</td><td style="text-align:right;">{self.q95:,}</td></tr>
                 <tr><td>N99</td><td style="text-align:right;">{self.q99:,}</td></tr>
             </table>
-            <figure>
-            {self.plot()}
-            </figure>
+        """
+
+
+    def to_html(self):
+        return f"""
+            <h2>Sequence length distribution</h2>
+            <figure>{self.plot()}</figure>
         """
 
     @classmethod
@@ -369,7 +375,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             highest percentiles to indicate the spread. Since the graph is
             based on the sampled categories, rather than exact phreds, it is
             an approximation.</p>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
     @classmethod
@@ -484,7 +490,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
     def to_html(self):
         return f"""
             <h2>Per position quality score distribution</h2>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
 
@@ -519,7 +525,7 @@ class PerSequenceAverageQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence average quality scores</h2>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
     @classmethod
@@ -565,7 +571,7 @@ class PerPositionBaseContent(ReportModule):
     def to_html(self) -> str:
         return f"""
              <h2>Per position base content</h2>
-             {self.plot()}
+             <figure>{self.plot()}</figure>
         """
 
     @classmethod
@@ -636,7 +642,7 @@ class PerPositionNContent(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per position N content</h2>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
 
@@ -688,8 +694,8 @@ class PerSequenceGCContent(ReportModule):
             even categories will be twice as high, which creates a spike. The
             smoothened plot is provided to give a clearer picture in this case.
             </p>
-            {self.plot()}
-            {self.smoothened_plot()}
+            <figure>{self.plot()}</figure>
+            <figure>{self.smoothened_plot()}</figure>
         """
 
     @classmethod
@@ -742,7 +748,7 @@ class AdapterContent(ReportModule):
             part II. If both are present, the bottom strand adapter is most
             likely from the ligation kit. If only part I is present, it is most
             likely from the adapter mix (AMX).</p>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
     @classmethod
@@ -877,7 +883,7 @@ class PerTileQualityReport(ReportModule):
             average.
             -3 is ~2 times more errors than the average. Only points that
             deviate more than 2 phred units from the average are shown. </p>
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
 
@@ -922,7 +928,7 @@ class DuplicationCounts(ReportModule):
         return f"""
             <h2>Duplication percentages</h2>
             {first_part}
-            {self.plot()}
+            <figure>{self.plot()}</figure>
         """
 
     @staticmethod
@@ -1303,7 +1309,7 @@ class NanoStatsReport(ReportModule):
         <p>Percentage of reads within accepted bounds: {within_bounds_frac:.2%}</p>
         <p>Percentage of reads that are too slow: {too_slow_frac:.2%}</p>
         <p>Percentage of reads that are too fast: {too_fast_frac:.2%}</p>
-        {plot.render(is_unicode=True)}
+        <figure>{plot.render(is_unicode=True)}</figure>
         """
 
     def to_html(self) -> str:
@@ -1315,15 +1321,15 @@ class NanoStatsReport(ReportModule):
         return f"""
         <h2>Nanopore time series</h2>
         <h3>Base counts over time</h3>
-        {self.time_bases_plot()}
+        <figure>{self.time_bases_plot()}</figure>
         <h3>Read counts over time</h3>
-        {self.time_reads_plot()}
+        <figure>{self.time_reads_plot()}</figure>
         <h3>Active channels over time</h3>
-        {self.time_active_channels_plot()}
+        <figure>{self.time_active_channels_plot()}</figure>
         <h3>Quality distribution over time</h3>
-        {self.time_quality_distribution_plot()}
+        <figure>{self.time_quality_distribution_plot()}</figure>
         <h2>Per channel base yield versus quality<h2>
-        {self.channel_plot()}
+        <figure>{self.channel_plot()}</figure>
         {self.translocation_section()}
         """
 
