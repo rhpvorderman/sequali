@@ -217,22 +217,26 @@ class Summary(ReportModule):
             <h2>Summary</h2>
             <table>
             <tr><td>Mean length</td><td style="text-align:right;">
-                {self.mean_length:,.2f}</td></tr>
+                {self.mean_length:,.2f}</td><td></td></tr>
             <tr><td>Length range (min-max)</td><td style="text-align:right;">
-                {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
+                {self.minimum_length:,}</td>
+                <td style="text-align:right;">{self.maximum_length:,}</td></tr>
             <tr><td>total reads</td><td style="text-align:right;">
-                {self.total_reads:,}</td></tr>
+                {self.total_reads:,}</td><td></td></tr>
             <tr><td>total bases</td><td style="text-align:right;">
-                {self.total_bases:,}</td></tr>
+                {self.total_bases:,}</td><td></td></tr>
             <tr>
                 <td>Q20 bases</td>
-                <td style="text-align:right;"">
-                    {self.q20_bases:,} ({self.q20_bases / self.total_bases:.2%})
+                <td style="text-align:right;">
+                    {self.q20_bases:,}
+                </td>
+                <td style="text-align:right;">
+                    {self.q20_bases / self.total_bases:.2%}
                 </td>
             </tr>
             <tr><td>GC content</td><td style="text-align:right;">
                 {self.total_gc_fraction:.2%}
-            </td></tr>
+            </td><td></td></tr>
             </table>
         """
 
