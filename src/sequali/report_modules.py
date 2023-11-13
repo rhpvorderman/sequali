@@ -1397,7 +1397,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
             <!DOCTYPE html>
-            <html>
+            <html lang="en">
             <head>
                 <script type="text/javascript"
                     src="https://{default_config.js[0]}"></script>
