@@ -221,9 +221,9 @@ class Summary(ReportModule):
             <tr><td>Length range (min-max)</td><td style="text-align:right;">
                 {self.minimum_length:,}</td>
                 <td style="text-align:right;">{self.maximum_length:,}</td></tr>
-            <tr><td>total reads</td><td style="text-align:right;">
+            <tr><td>Total reads</td><td style="text-align:right;">
                 {self.total_reads:,}</td><td></td></tr>
-            <tr><td>total bases</td><td style="text-align:right;">
+            <tr><td>Total bases</td><td style="text-align:right;">
                 {self.total_bases:,}</td><td></td></tr>
             <tr>
                 <td>Q20 bases</td>
@@ -1406,7 +1406,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <h1>sequali report</h1>
-            <p>filename: <code>{filename}</code></p>
+            <p>Filename: <code>{filename}</code></p>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
