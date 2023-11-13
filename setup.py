@@ -53,7 +53,7 @@ setup(
         "tqdm"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
-                              'contaminants/*', 'adapters/*']},
+                              'contaminants/*', 'adapters/*', 'style/*']},
     ext_modules=[
         Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
     ],

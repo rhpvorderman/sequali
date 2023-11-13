@@ -24,6 +24,7 @@ import sys
 import typing
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from pathlib import Path
 from typing import (Any, Dict, Iterable, Iterator, List, Optional, Sequence,
                     Set, Tuple, Type)
 
@@ -37,6 +38,9 @@ from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
+
+SEQUALI_REPORT_CSS = Path(__file__).parent / "style" / "sequali_report.css"
+SEQUALI_REPORT_CSS_CONTENT = SEQUALI_REPORT_CSS.read_text(encoding="utf-8")
 
 PHRED_INDEX_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -1367,6 +1371,9 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <head>
                 <script type="text/javascript"
                     src="https://{default_config.js[0]}"></script>
+                <style>
+                    {SEQUALI_REPORT_CSS_CONTENT}
+                </style>
                 <meta http-equiv="content-type"
                 content="text/html:charset=utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
