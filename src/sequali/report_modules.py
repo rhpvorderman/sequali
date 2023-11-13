@@ -35,7 +35,7 @@ from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
-    create_sequence_index, identify_sequence
+    create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
 
 PHRED_INDEX_TO_ERROR_RATE = [
@@ -982,6 +982,7 @@ class OverRepresentedSequence(typing.NamedTuple):
     count: int  # type: ignore
     fraction: float
     sequence: str
+    revcomp_sequence: str
     most_matches: int
     max_matches: int
     best_match: str
@@ -1034,23 +1035,23 @@ class OverRepresentedSequences(ReportModule):
         content.write(
             "Fragments are stored in their canonical representation. That is "
             "either the sequence or the reverse complement, whichever has "
-            "the lowest sort order. This means poly-A and poly-T sequences "
-            "show up as poly-A (both are overrepresented in genomes). And "
-            "illumina dark cycles (poly-G) show up as poly-C."
+            "the lowest sort order. Both representations are shown in the "
+            "table."
             "<br>")
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
-                      "<th>sequence</th><th>kmers (matched/max)</th>"
+                      "<th>canonical sequence</th>"
+                      "<th>reverse complemented sequence</th>"
+                      "<th>kmers (matched/max)</th>"
                       "<th>best match</th></tr>")
-        for count, fraction, sequence, most_matches, max_matches, best_match\
-                in \
-                self.overrepresented_sequences:
+        for item in self.overrepresented_sequences:
             content.write(
-                f"""<tr><td align="right">{count}</td>
-                    <td align="right">{fraction * 100:.2f}</td>
-                    <td>{sequence}</td>
-                    <td>({most_matches}/{max_matches})</td>
-                    <td>{best_match}</td></tr>""")
+                f"""<tr><td style="text-align:right">{item.count}</td>
+                    <td style="text-align:right">{item.fraction * 100:.2f}</td>
+                    <td>{item.sequence}</td>
+                    <td>{item.revcomp_sequence}</td>
+                    <td>({item.most_matches}/{item.max_matches})</td>
+                    <td>{item.best_match}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
 
@@ -1078,7 +1079,7 @@ class OverRepresentedSequences(ReportModule):
             sequence_index = {}
         overrepresented_with_identification = [
             OverRepresentedSequence(
-                count, fraction, sequence,
+                count, fraction, sequence, reverse_complement(sequence),
                 *identify_sequence(sequence, sequence_index))
             for count, fraction, sequence in overrepresented_sequences
         ]
