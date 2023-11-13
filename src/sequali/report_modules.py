@@ -1367,6 +1367,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
     default_config = pygal.Config()
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
+            <!DOCTYPE html>
             <html>
             <head>
                 <script type="text/javascript"
