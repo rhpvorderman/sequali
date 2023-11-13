@@ -1406,7 +1406,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <h1>sequali report</h1>
-            <p>file: {filename}</p>
+            <p>filename: <code>{filename}</code></p>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
