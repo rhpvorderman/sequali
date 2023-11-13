@@ -284,6 +284,7 @@ class SequenceLengthDistribution(ReportModule):
     def to_html(self):
         return f"""
             <h2>Sequence length distribution</h2>
+            <p>{self.distribution_table()}</p>
             <figure>{self.plot()}</figure>
         """
 
