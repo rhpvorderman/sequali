@@ -81,7 +81,6 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
-    height=500,
     width=1200,
     disable_xml_declaration=True,
     js=[],  # Script is globally downloaded once
