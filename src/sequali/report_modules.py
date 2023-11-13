@@ -81,8 +81,8 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
-    width=1500,
-    explicit_size=True,
+    height=400,
+    width=1200,
     disable_xml_declaration=True,
     js=[],  # Script is globally downloaded once
 )
@@ -724,7 +724,6 @@ class AdapterContent(ReportModule):
             legend_at_bottom=True,
             legend_at_bottom_columns=1,
             truncate_legend=-1,
-            height=800,
             style=MULTIPLE_SERIES_STYLE,
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,

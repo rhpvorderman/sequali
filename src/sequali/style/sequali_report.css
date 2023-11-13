@@ -1,9 +1,8 @@
 body {
-    font-family: sans
+    font-family: sans;
+    width: 85%;
+    margin: auto;
 }
 
 figure {
-    width: 90%
-    margin-left: 5%
-    margin-right: 5%
 }
