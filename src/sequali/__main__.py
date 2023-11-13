@@ -164,11 +164,11 @@ def main() -> None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
         args.html = os.path.basename(filename) + ".html"
-    os.makedirs(args.dir, exist_ok=True)
+    os.makedirs(args.outdir, exist_ok=True)
     if not os.path.isabs(args.json):
-        args.json = os.path.join(args.dir, args.json)
+        args.json = os.path.join(args.outdir, args.json)
     if not os.path.isabs(args.html):
-        args.html = os.path.join(args.dir, args.html)
+        args.html = os.path.join(args.outdir, args.html)
     with open(args.json, "wt") as json_file:
         json_dict = report_modules_to_dict(report_modules)
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
