@@ -213,20 +213,22 @@ class Summary(ReportModule):
         return f"""
             <h2>Summary</h2>
             <table>
-            <tr><td>Mean length</td><td align="right">
+            <tr><td>Mean length</td><td style="text-align:right;">
                 {self.mean_length:,.2f}</td></tr>
-            <tr><td>Length range (min-max)</td><td align="right">
+            <tr><td>Length range (min-max)</td><td style="text-align:right;">
                 {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
-            <tr><td>total reads</td><td align="right">{self.total_reads:,}</td></tr>
-            <tr><td>total bases</td><td align="right">{self.total_bases:,}</td></tr>
+            <tr><td>total reads</td><td style="text-align:right;">
+                {self.total_reads:,}</td></tr>
+            <tr><td>total bases</td><td style="text-align:right;">
+                {self.total_bases:,}</td></tr>
             <tr>
                 <td>Q20 bases</td>
-                <td align="right">
-                    {self.q20_bases:,} ({self.q20_bases * 100 / self.total_bases:.2f}%)
+                <td style="text-align:right;"">
+                    {self.q20_bases:,} ({self.q20_bases / self.total_bases:.2%})
                 </td>
             </tr>
-            <tr><td>GC content</td><td align="right">
-                {self.total_gc_fraction * 100:.2f}%
+            <tr><td>GC content</td><td style="text-align:right;">
+                {self.total_gc_fraction:.2%}
             </td></tr>
             </table>
         """
@@ -262,15 +264,15 @@ class SequenceLengthDistribution(ReportModule):
         return f"""
             <h2>Sequence length distribution</h2>
             <table>
-                <tr><td>N1</td><td align="right">{self.q1:,}</td></tr>
-                <tr><td>N5</td><td align="right">{self.q5:,}</td></tr>
-                <tr><td>N10</td><td align="right">{self.q10:,}</td></tr>
-                <tr><td>N25</td><td align="right">{self.q25:,}</td></tr>
-                <tr><td>N50</td><td align="right">{self.q50:,}</td></tr>
-                <tr><td>N75</td><td align="right">{self.q75:,}</td></tr>
-                <tr><td>N90</td><td align="right">{self.q90:,}</td></tr>
-                <tr><td>N95</td><td align="right">{self.q95:,}</td></tr>
-                <tr><td>N99</td><td align="right">{self.q99:,}</td></tr>
+                <tr><td>N1</td><td style="text-align:right;">{self.q1:,}</td></tr>
+                <tr><td>N5</td><td style="text-align:right;">{self.q5:,}</td></tr>
+                <tr><td>N10</td><td style="text-align:right;">{self.q10:,}</td></tr>
+                <tr><td>N25</td><td style="text-align:right;">{self.q25:,}</td></tr>
+                <tr><td>N50</td><td style="text-align:right;">{self.q50:,}</td></tr>
+                <tr><td>N75</td><td style="text-align:right;">{self.q75:,}</td></tr>
+                <tr><td>N90</td><td style="text-align:right;">{self.q90:,}</td></tr>
+                <tr><td>N95</td><td style="text-align:right;">{self.q95:,}</td></tr>
+                <tr><td>N99</td><td style="text-align:right;">{self.q99:,}</td></tr>
             </table>
             <figure>
             {self.plot()}
