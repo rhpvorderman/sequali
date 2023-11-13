@@ -924,7 +924,7 @@ class DuplicationCounts(ReportModule):
         estimate the duplication rate. See, 
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
         the paper describing the methodology</a>.</p>
-        <p> The subsample for this file consists of
+        <p>The subsample for this file consists of
         {self.tracked_unique_sequences:,} fingerprints.
         </p>
         <p>Estimated remaining sequences if deduplicated:
@@ -1051,7 +1051,6 @@ class OverRepresentedSequences(ReportModule):
             the lowest sort order. Both representations are shown in the
             table.
             </p>
-            <p>
             <table>
             <tr>
                 <td>Fragment store size</td>
@@ -1070,10 +1069,9 @@ class OverRepresentedSequences(ReportModule):
                 <td style="text-align:right;">{self.sequence_length}</td>
             </tr>
             </table> 
-            </p>
             """
         )
-        content.write("<p><table>")
+        content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
@@ -1089,7 +1087,7 @@ class OverRepresentedSequences(ReportModule):
                         {item.revcomp_sequence}</td>
                     <td>({item.most_matches}/{item.max_matches})</td>
                     <td>{item.best_match}</td></tr>""")
-        content.write("</table></p>")
+        content.write("</table>")
         return content.getvalue()
 
     @classmethod
@@ -1399,13 +1397,12 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <!DOCTYPE html>
             <html lang="en">
             <head>
-                <script type="text/javascript"
-                    src="https://{default_config.js[0]}"></script>
+                <script
+                    src="https://{default_config.js[0].lstrip('/')}"></script>
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}
                 </style>
-                <meta http-equiv="content-type"
-                content="text/html:charset=utf-8">
+                <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <h1>sequali report</h1>

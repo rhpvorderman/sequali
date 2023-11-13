@@ -11,6 +11,10 @@ body {
 figure {
 }
 
+table {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
 th, td {
     padding-left: 10px;
     padding-right: 10px;
