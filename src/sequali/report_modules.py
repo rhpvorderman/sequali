@@ -374,7 +374,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
     def to_html(self):
         return f"""
             <h2>Per position quality percentiles</h2>
-            <p class="explanation">Shows the mean for all bases and the means 
+            <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
             based on the sampled categories, rather than exact phreds, it is
@@ -741,11 +741,11 @@ class AdapterContent(ReportModule):
     def to_html(self):
         return f"""
             <h2>Adapter content</h2>
-            <p class="explanation">Only adapters that are present more than 0.1% 
+            <p class="explanation">Only adapters that are present more than 0.1%
             are shown. Given the 12bp
             length of the sequences used to estimate the content, values below this
             threshold are problably false positives.</p>
-            <p class="explanation">For nanopore the the adapter mix (AMX) and 
+            <p class="explanation">For nanopore the the adapter mix (AMX) and
             ligation kit have
             overlapping adapter sequences for the bottom strand adapter.
             The ligation kit bottom strand adapter is longer however. Therefore
@@ -916,12 +916,12 @@ class DuplicationCounts(ReportModule):
 
     def to_html(self):
         first_part = f"""
-        <p class="explanation">All sequences are fingerprinted based on the 
+        <p class="explanation">All sequences are fingerprinted based on the
         first 16bp, the last 16bp
         and the length integer divided by 64. This means that for long
         read sequences, small indel sequencing errors will most likely not
-        affect the fingerprint. A subsample of the fingerprints is stored to 
-        estimate the duplication rate. See, 
+        affect the fingerprint. A subsample of the fingerprints is stored to
+        estimate the duplication rate. See,
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
         the paper describing the methodology</a>.</p>
         <p>The subsample for this file consists of
@@ -1041,9 +1041,9 @@ class OverRepresentedSequences(ReportModule):
         content.write(header)
         content.write(
             f"""
-            <p class="explanation">A subsample of the sequences is analysed 
+            <p class="explanation">A subsample of the sequences is analysed
             Sequences are cut into fragments of up to 31&#8239;bp. Fragments
-            are stored and counted. When the fragment store is full, only 
+            are stored and counted. When the fragment store is full, only
             sequences that are already in the fragment store are counted. The
             rest of the sequences is ignored.
             Fragments are stored in their canonical representation. That is
@@ -1068,7 +1068,7 @@ class OverRepresentedSequences(ReportModule):
                 <td>Fragment size</td>
                 <td style="text-align:right;">{self.sequence_length}</td>
             </tr>
-            </table> 
+            </table>
             """
         )
         content.write("<table>")
