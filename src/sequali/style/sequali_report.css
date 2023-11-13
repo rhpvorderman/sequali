@@ -4,6 +4,10 @@ body {
     margin: auto;
 }
 
+.explanation {
+    font-size: 90%;
+    font-style: italic;
+}
 figure {
 }
 

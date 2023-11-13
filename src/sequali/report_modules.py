@@ -370,7 +370,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
     def to_html(self):
         return f"""
             <h2>Per position quality percentiles</h2>
-            <p>Shows the mean for all bases and the means of the lowest and
+            <p class="explanation">Shows the mean for all bases and the means 
+            of the lowest and
             highest percentiles to indicate the spread. Since the graph is
             based on the sampled categories, rather than exact phreds, it is
             an approximation.</p>
@@ -684,7 +685,7 @@ class PerSequenceGCContent(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence GC content</h2>
-            <p>
+            <p class="explanation">
             For short reads with fixed size (i.e. Illumina) the plot will
             look very spiky due to the GC content calculation: GC bases / all
             bases. For read lengths of 151, both 75 and 76 GC bases lead to a
@@ -736,10 +737,12 @@ class AdapterContent(ReportModule):
     def to_html(self):
         return f"""
             <h2>Adapter content</h2>
-            <p>Only adapters that are present more than 0.1% are shown. Given the 12bp
+            <p class="explanation">Only adapters that are present more than 0.1% 
+            are shown. Given the 12bp
             length of the sequences used to estimate the content, values below this
             threshold are problably false positives.</p>
-            <p>For nanopore the the adapter mix (AMX) and ligation kit have
+            <p class="explanation">For nanopore the the adapter mix (AMX) and 
+            ligation kit have
             overlapping adapter sequences for the bottom strand adapter.
             The ligation kit bottom strand adapter is longer however. Therefore
             the ligation kit bottom strand has two detection probes, part I and
@@ -870,17 +873,17 @@ class PerTileQualityReport(ReportModule):
             return header + (f"Per tile quality skipped. Reason: "
                              f"{self.skipped_reason}.")
         return header + f"""
-            <p>Tiles with more than 2 times the average error:
-                {", ".join(self.tiles_2x_errors)}</p>
-            <p>Tiles with more than 10 times the average error:
-                {", ".join(self.tiles_10x_errors)}</p>
-            <p>
+            <p class="explanation">
             This graph shows the deviation of each tile on each position from
             the geometric mean of all tiles at that position. The scale is
             expressed in phred units. -10 is 10 times more errors than the
             average.
             -3 is ~2 times more errors than the average. Only points that
             deviate more than 2 phred units from the average are shown. </p>
+            <p>Tiles with more than 2 times the average error:
+                {", ".join(self.tiles_2x_errors)}</p>
+            <p>Tiles with more than 10 times the average error:
+                {", ".join(self.tiles_10x_errors)}</p>
             <figure>{self.plot()}</figure>
         """
 
@@ -909,17 +912,17 @@ class DuplicationCounts(ReportModule):
 
     def to_html(self):
         first_part = f"""
-        <p>All sequences are fingerprinted based on the first 16bp, the last 16bp
+        <p class="explanation">All sequences are fingerprinted based on the 
+        first 16bp, the last 16bp
         and the length integer divided by 64. This means that for long
         read sequences, small indel sequencing errors will most likely not
-        affect the fingerprint.</p>
-
-        <p>A subsample of the fingerprints is stored to estimate the duplication
-        rate. The subsample for this file consists of
-        {self.tracked_unique_sequences:,} fingerprints.
-        The paper describing the methodology can be found
+        affect the fingerprint. A subsample of the fingerprints is stored to 
+        estimate the duplication rate. See, 
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
-        here</a>.</p>
+        the paper describing the methodology</a>.</p>
+        <p> The subsample for this file consists of
+        {self.tracked_unique_sequences:,} fingerprints.
+        </p>
         <p>Estimated remaining sequences if deduplicated:
         {self.remaining_fraction:.2%}</p>
             """
@@ -1033,22 +1036,40 @@ class OverRepresentedSequences(ReportModule):
         content = io.StringIO()
         content.write(header)
         content.write(
-            f"<p>Sequences are cut into fragments of "
-            f"{self.sequence_length} bp. The fragments are stored and "
-            f"counted. When the fragment store is full (max "
-            f"{self.max_unique_sequences:,} fragments), only sequences in the "
-            f"fragment store are counted. {self.collected_sequences:,} unique "
-            f"fragments were stored. "
-            f"1 in {self.sample_every} sequences is processed this way. "
-            f"A total of {self.total_fragments:,} fragments were sampled.</p>"
+            f"""
+            <p class="explanation">A subsample of the sequences is analysed 
+            Sequences are cut into fragments of up to 31&#8239;bp. Fragments
+            are stored and counted. When the fragment store is full, only 
+            sequences that are already in the fragment store are counted. The
+            rest of the sequences is ignored.
+            Fragments are stored in their canonical representation. That is
+            either the sequence or the reverse complement, whichever has
+            the lowest sort order. Both representations are shown in the
+            table.
+            </p>
+            <p>
+            <table>
+            <tr>
+                <td>Fragment store size</td>
+                <td style="text-align:right;">{self.max_unique_sequences:,}</td>
+            </tr>
+            <tr>
+                <td>Stored fragments</td>
+                <td style="text-align:right;">{self.collected_sequences:,}</td>
+            </tr>
+            <tr>
+                <td>Total fragments sampled</td>
+                <td style="text-align:right;">{self.total_fragments:,}</td>
+            </tr>
+            <tr>
+                <td>Fragment size</td>
+                <td style="text-align:right;">{self.sequence_length}</td>
+            </tr>
+            </table> 
+            </p>
+            """
         )
-        content.write(
-            "<p>Fragments are stored in their canonical representation. That is "
-            "either the sequence or the reverse complement, whichever has "
-            "the lowest sort order. Both representations are shown in the "
-            "table."
-            "</p>")
-        content.write("<table>")
+        content.write("<p><table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
@@ -1064,7 +1085,7 @@ class OverRepresentedSequences(ReportModule):
                         {item.revcomp_sequence}</td>
                     <td>({item.most_matches}/{item.max_matches})</td>
                     <td>{item.best_match}</td></tr>""")
-        content.write("</table>")
+        content.write("</table></p>")
         return content.getvalue()
 
     @classmethod
