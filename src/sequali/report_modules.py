@@ -1046,10 +1046,12 @@ class OverRepresentedSequences(ReportModule):
                       "<th>best match</th></tr>")
         for item in self.overrepresented_sequences:
             content.write(
-                f"""<tr><td style="text-align:right">{item.count}</td>
-                    <td style="text-align:right">{item.fraction * 100:.2f}</td>
-                    <td>{item.sequence}</td>
-                    <td>{item.revcomp_sequence}</td>
+                f"""<tr><td style="text-align:right;">{item.count}</td>
+                    <td style="text-align:right;">{item.fraction * 100:.2f}</td>
+                    <td style="text-align:center;font-family:monospace;">
+                        {item.sequence}</td>
+                    <td style="text-align:center;font-family:monospace;">
+                        {item.revcomp_sequence}</td>
                     <td>({item.most_matches}/{item.max_matches})</td>
                     <td>{item.best_match}</td></tr>""")
         content.write("</table>")
