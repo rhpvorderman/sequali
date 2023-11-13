@@ -35,7 +35,7 @@ from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
-    create_sequence_index, identify_sequence
+    create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
 
 PHRED_INDEX_TO_ERROR_RATE = [
@@ -213,20 +213,22 @@ class Summary(ReportModule):
         return f"""
             <h2>Summary</h2>
             <table>
-            <tr><td>Mean length</td><td align="right">
+            <tr><td>Mean length</td><td style="text-align:right;">
                 {self.mean_length:,.2f}</td></tr>
-            <tr><td>Length range (min-max)</td><td align="right">
+            <tr><td>Length range (min-max)</td><td style="text-align:right;">
                 {self.minimum_length:,} - {self.maximum_length:,}</td></tr>
-            <tr><td>total reads</td><td align="right">{self.total_reads:,}</td></tr>
-            <tr><td>total bases</td><td align="right">{self.total_bases:,}</td></tr>
+            <tr><td>total reads</td><td style="text-align:right;">
+                {self.total_reads:,}</td></tr>
+            <tr><td>total bases</td><td style="text-align:right;">
+                {self.total_bases:,}</td></tr>
             <tr>
                 <td>Q20 bases</td>
-                <td align="right">
-                    {self.q20_bases:,} ({self.q20_bases * 100 / self.total_bases:.2f}%)
+                <td style="text-align:right;"">
+                    {self.q20_bases:,} ({self.q20_bases / self.total_bases:.2%})
                 </td>
             </tr>
-            <tr><td>GC content</td><td align="right">
-                {self.total_gc_fraction * 100:.2f}%
+            <tr><td>GC content</td><td style="text-align:right;">
+                {self.total_gc_fraction:.2%}
             </td></tr>
             </table>
         """
@@ -262,15 +264,15 @@ class SequenceLengthDistribution(ReportModule):
         return f"""
             <h2>Sequence length distribution</h2>
             <table>
-                <tr><td>N1</td><td align="right">{self.q1:,}</td></tr>
-                <tr><td>N5</td><td align="right">{self.q5:,}</td></tr>
-                <tr><td>N10</td><td align="right">{self.q10:,}</td></tr>
-                <tr><td>N25</td><td align="right">{self.q25:,}</td></tr>
-                <tr><td>N50</td><td align="right">{self.q50:,}</td></tr>
-                <tr><td>N75</td><td align="right">{self.q75:,}</td></tr>
-                <tr><td>N90</td><td align="right">{self.q90:,}</td></tr>
-                <tr><td>N95</td><td align="right">{self.q95:,}</td></tr>
-                <tr><td>N99</td><td align="right">{self.q99:,}</td></tr>
+                <tr><td>N1</td><td style="text-align:right;">{self.q1:,}</td></tr>
+                <tr><td>N5</td><td style="text-align:right;">{self.q5:,}</td></tr>
+                <tr><td>N10</td><td style="text-align:right;">{self.q10:,}</td></tr>
+                <tr><td>N25</td><td style="text-align:right;">{self.q25:,}</td></tr>
+                <tr><td>N50</td><td style="text-align:right;">{self.q50:,}</td></tr>
+                <tr><td>N75</td><td style="text-align:right;">{self.q75:,}</td></tr>
+                <tr><td>N90</td><td style="text-align:right;">{self.q90:,}</td></tr>
+                <tr><td>N95</td><td style="text-align:right;">{self.q95:,}</td></tr>
+                <tr><td>N99</td><td style="text-align:right;">{self.q99:,}</td></tr>
             </table>
             <figure>
             {self.plot()}
@@ -982,6 +984,7 @@ class OverRepresentedSequence(typing.NamedTuple):
     count: int  # type: ignore
     fraction: float
     sequence: str
+    revcomp_sequence: str
     most_matches: int
     max_matches: int
     best_match: str
@@ -1034,23 +1037,25 @@ class OverRepresentedSequences(ReportModule):
         content.write(
             "Fragments are stored in their canonical representation. That is "
             "either the sequence or the reverse complement, whichever has "
-            "the lowest sort order. This means poly-A and poly-T sequences "
-            "show up as poly-A (both are overrepresented in genomes). And "
-            "illumina dark cycles (poly-G) show up as poly-C."
+            "the lowest sort order. Both representations are shown in the "
+            "table."
             "<br>")
         content.write("<table>")
         content.write("<tr><th>count</th><th>percentage</th>"
-                      "<th>sequence</th><th>kmers (matched/max)</th>"
+                      "<th>canonical sequence</th>"
+                      "<th>reverse complemented sequence</th>"
+                      "<th>kmers (matched/max)</th>"
                       "<th>best match</th></tr>")
-        for count, fraction, sequence, most_matches, max_matches, best_match\
-                in \
-                self.overrepresented_sequences:
+        for item in self.overrepresented_sequences:
             content.write(
-                f"""<tr><td align="right">{count}</td>
-                    <td align="right">{fraction * 100:.2f}</td>
-                    <td>{sequence}</td>
-                    <td>({most_matches}/{max_matches})</td>
-                    <td>{best_match}</td></tr>""")
+                f"""<tr><td style="text-align:right;">{item.count}</td>
+                    <td style="text-align:right;">{item.fraction:.2%}</td>
+                    <td style="text-align:center;font-family:monospace;">
+                        {item.sequence}</td>
+                    <td style="text-align:center;font-family:monospace;">
+                        {item.revcomp_sequence}</td>
+                    <td>({item.most_matches}/{item.max_matches})</td>
+                    <td>{item.best_match}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
 
@@ -1078,7 +1083,7 @@ class OverRepresentedSequences(ReportModule):
             sequence_index = {}
         overrepresented_with_identification = [
             OverRepresentedSequence(
-                count, fraction, sequence,
+                count, fraction, sequence, reverse_complement(sequence),
                 *identify_sequence(sequence, sequence_index))
             for count, fraction, sequence in overrepresented_sequences
         ]

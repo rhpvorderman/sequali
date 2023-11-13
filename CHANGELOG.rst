@@ -9,6 +9,8 @@ Changelog
 
 version 0.2.0-dev
 -----------------
++ The reverse complement of the canonical sequence is included in the
+  overrepresented sequences table.
 + Make the number of threads configurable on the command line.
 + Fix build errors on windows
 
