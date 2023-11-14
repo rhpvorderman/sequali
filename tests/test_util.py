@@ -29,6 +29,7 @@ SAM = DATA / ("project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa."
 @pytest.mark.parametrize(["header", "is_illumina"], (
     ("SIM:1:FCX:1:15:6329:1045 1:N:0:2", True),
     ("SIM:1:FCX:1:15:6329:1045 1:Y:0:2", True),
+    ("SIM:1:FCX:1:15:6329:1045", True),
 ))
 def test_fastq_header_is_illumina(header, is_illumina):
     assert fastq_header_is_illumina(header) == is_illumina

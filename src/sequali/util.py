@@ -127,17 +127,29 @@ def guess_sequencing_technology_from_file(fp: io.BufferedReader) -> Optional[str
     return None
 
 
-def fastq_header_is_illumina(header: str):
+def fastq_header_is_illumina(header: str) -> bool:
     # Illumina header format. two parts separated by a space
     # @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>
     # <read>:<is filtered>:<control number>:<sample number>
     # See also:
     # https://help.basespace.illumina.com/files-used-by-basespace/fastq-files
-    name, metadata = header.split(maxsplit=1)  # type: str, str
-    if name.count(':') == 6 and metadata.count(':') == 3:
+    header_parts = header.split(maxsplit=1)
+    if len(header_parts) == 1:
+        metadata = None
+    elif len(header_parts) == 2:
+        metadata = header_parts[1]
+    else:
+        return False
+    name = header_parts[0]
+    # Metadata part is not always present, but if it is, it should be tested.
+    if metadata:
+        if metadata.count(':') != 3:
+            return False
         _, is_filtered, _, _ = metadata.split(':')
-        if is_filtered in ("Y", "N"):
-            return True
+        if is_filtered not in ("Y", "N"):
+            return False
+    if name.count(':') == 6:
+        return True
     return False
 
 
