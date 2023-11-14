@@ -551,13 +551,13 @@ class PerPositionBaseContent(ReportModule):
 
     def plot(self):
         style_class = pygal.style.Style
-        red = "#DC143C"  # Crimson
-        dark_red = "#8B0000"  # DarkRed
+        green = COLOR_GREEN
+        dark_green = "#228B22"  # ForestGreen
         blue = "#00BFFF"  # DeepSkyBlue
         dark_blue = "#1E90FF"  # DodgerBlue
         black = "#000000"
         style = style_class(
-            colors=(red, dark_red, blue, dark_blue, black)
+            colors=(green, dark_green, blue, dark_blue, black)
         )
         plot = pygal.StackedLine(
             title="Base content",
