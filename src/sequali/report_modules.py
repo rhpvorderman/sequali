@@ -214,7 +214,7 @@ class Summary(ReportModule):
     total_reads: int
     total_bases: int
     q20_bases: int
-    total_gc_fraction: float
+    total_gc_bases: int
 
     def to_html(self) -> str:
         return f"""
@@ -230,6 +230,15 @@ class Summary(ReportModule):
             <tr><td>Total bases</td><td style="text-align:right;">
                 {self.total_bases:,}</td><td></td></tr>
             <tr>
+                <td>Total GC bases</td>
+                <td style="text-align:right;">
+                    {self.total_gc_bases:,}
+                </td>
+                <td text-align:right;>
+                    {self.total_gc_bases / self.total_bases:.2%}
+                </td>
+            </tr>
+            <tr>
                 <td>Q20 bases</td>
                 <td style="text-align:right;">
                     {self.q20_bases:,}
@@ -238,9 +247,6 @@ class Summary(ReportModule):
                     {self.q20_bases / self.total_bases:.2%}
                 </td>
             </tr>
-            <tr><td>GC content</td><td style="text-align:right;">
-                {self.total_gc_fraction:.2%}
-            </td><td></td></tr>
             </table>
         """
 
@@ -1447,11 +1453,7 @@ def qc_metrics_modules(metrics: QCMetrics,
         if sum(table) < total_reads:
             break
         minimum_length += 1
-    a_bases = summary_bases[A]
-    c_bases = summary_bases[C]
-    g_bases = summary_bases[G]
-    t_bases = summary_bases[T]
-    gc_content = (g_bases + c_bases) / (a_bases + c_bases + g_bases + t_bases)
+    total_gc_bases = summary_bases[C] + summary_bases[G]
     return [
         Summary(
             mean_length=total_bases / total_reads,
@@ -1460,7 +1462,7 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_reads=total_reads,
             total_bases=total_bases,
             q20_bases=sum(summary_phreds[5:]),
-            total_gc_fraction=gc_content),
+            total_gc_bases=total_gc_bases),
         SequenceLengthDistribution.from_base_count_tables(
             base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
