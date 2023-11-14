@@ -1320,7 +1320,8 @@ class NanoStatsReport(ReportModule):
             x_title="Translocation_speed",
             y_title="active channels",
             style=pygal.style.DefaultStyle(
-                colors=(COLOR_GREEN, COLOR_RED, COLOR_RED)),
+                # Use blue and red colors to accommodate colorblind people.
+                colors=(QUALITY_COLORS[-3], QUALITY_COLORS[1], QUALITY_COLORS[1])),
             x_labels=[str(i) for i in range(0, 800, 10)] + [">800"],
             x_labels_major_every=10,
             show_minor_x_labels=False,
