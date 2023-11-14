@@ -76,9 +76,11 @@ QUALITY_COLORS = [
 COLOR_GREEN = "#33cc33"
 COLOR_RED = "#ff0000"
 
-QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=QUALITY_COLORS)
-ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",))  # Green
-MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle()
+QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=QUALITY_COLORS,
+                                               font_family="sans-serif")
+ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",), # Green
+                                           font_family="sans-serif")
+MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle(font_family="sans-serif")
 
 DEFAULT_FRACTION_THRESHOLD = 0.0001
 DEFAULT_MIN_THRESHOLD = 100
@@ -574,7 +576,8 @@ class PerPositionBaseContent(ReportModule):
         dark_blue = "#1E90FF"  # DodgerBlue
         black = "#000000"
         style = style_class(
-            colors=(green, dark_green, blue, dark_blue, black)
+            colors=(green, dark_green, blue, dark_blue, black),
+            font_family="sans-serif"
         )
         plot = pygal.StackedLine(
             title="Base content",
@@ -857,11 +860,12 @@ class PerTileQualityReport(ReportModule):
         )
 
     def plot(self):
-        style_class = MULTIPLE_SERIES_STYLE.__class__
+        style_colors = MULTIPLE_SERIES_STYLE.colors
         red = "#FF0000"
         yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
-        style = style_class(
-            colors=(yellow, red) + style_class.colors
+        style = pygal.style.Style(
+            colors=(yellow, red) + style_colors,
+            font_family="sans-serif",
         )
         scatter_plot = pygal.Line(
             title="Deviation from geometric mean in phred units.",
