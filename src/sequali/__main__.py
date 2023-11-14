@@ -71,10 +71,12 @@ def argument_parser() -> argparse.ArgumentParser:
                              "considered overrepresented, regardless of the "
                              "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
-    parser.add_argument("--max-unique-sequences", type=int,
+    parser.add_argument("--overrepresentation-fragment-store-size",
+                        type=int,
+                        metavar="N",
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
                         help=f"The maximum amount of unique fragments to "
-                             f"gather. Larger amounts increase the sensitivity "
+                             f"store. Larger amounts increase the sensitivity "
                              f"of finding overrepresented sequences at the "
                              f"cost of increasing memory usage. Default: "
                              f"{DEFAULT_MAX_UNIQUE_SEQUENCES:,}.")

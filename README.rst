@@ -62,7 +62,7 @@ Usage
                    [--overrepresentation-threshold-fraction FRACTION]
                    [--overrepresentation-min-threshold THRESHOLD]
                    [--overrepresentation-max-threshold THRESHOLD]
-                   [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
+                   [--overrepresentation-fragment-store-size N]
                    [--overrepresentation-fragment-length LENGTH]
                    [--overrepresentation-sample-every DIVISOR]
                    [--deduplication-estimate-bits BITS] [-t THREADS]
@@ -96,8 +96,8 @@ Usage
                             beconsidered overrepresented, regardless of the bound
                             set by the threshold fraction. Useful for very large
                             files. Default: unlimited.
-      --max-unique-sequences MAX_UNIQUE_SEQUENCES
-                            The maximum amount of unique fragments to gather.
+      --overrepresentation-fragment-store-size N
+                            The maximum amount of unique fragments to store.
                             Larger amounts increase the sensitivity of finding
                             overrepresented sequences at the cost of increasing
                             memory usage. Default: 5,000,000.

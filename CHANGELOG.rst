@@ -9,6 +9,9 @@ Changelog
 
 version 0.2.0-dev
 -----------------
++ ``--max-unique-sequences`` flag replaced with
+  ``--overrepresentation-fragment-store-size`` to be consistent with the
+  report and other flags.
 + Lots of formatting improvements were made to the report:
 
   + The quality distribution plot now use Matplotlib's RdBu colormap. Like
