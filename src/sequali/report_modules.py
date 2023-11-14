@@ -247,7 +247,7 @@ class Summary(ReportModule):
                 <td style="text-align:right;">
                     {self.total_gc_bases:,}
                 </td>
-                <td text-align:right;>
+                <td style="text-align:right;">
                     {self.total_gc_bases / self.total_bases:.2%}
                 </td>
             </tr>
