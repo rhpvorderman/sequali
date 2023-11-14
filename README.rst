@@ -124,6 +124,11 @@ Acknowledgements
 + `FastQC <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>`_ for
   its excellent selection of relevant metrics. For this reason these metrics
   are also gathered by sequali.
++ The matplotlib team for their excellent work on colormaps. Their work was
+  an inspiration for how to present the data and their RdBu colormap is used
+  to represent quality score data. Check their `writings on colormaps
+  <https://matplotlib.org/stable/users/explain/colors/colormaps.html>`_ for
+  a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
 + Marcel Martin for providing extensive feedback on the program's report and
