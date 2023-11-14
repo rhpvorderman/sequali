@@ -951,7 +951,7 @@ class DuplicationCounts(ReportModule):
     def to_html(self):
         first_part = f"""
         <p class="explanation">All sequences are fingerprinted based on the
-        first 16&#8239;bp, the last 16#8239;bp
+        first 16&#8239;bp, the last 16&#8239;bp
         and the length integer divided by 64. This means that for long
         read sequences, small indel sequencing errors will most likely not
         affect the fingerprint. A subsample of the fingerprints is stored to
