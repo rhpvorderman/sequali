@@ -377,7 +377,10 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             x_title="position",
             y_title="phred score",
             y_labels=list(range(0, 51, 10)),
-            style=pygal.style.DefaultStyle(colors=["#000000"] * 12),
+            style=pygal.style.DefaultStyle(
+                colors=["#000000"] * 12,
+                font_family="sans-serif",
+            ),
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -1352,7 +1355,9 @@ class NanoStatsReport(ReportModule):
             y_title="active channels",
             style=pygal.style.DefaultStyle(
                 # Use blue and red colors to accommodate colorblind people.
-                colors=(QUALITY_COLORS[-3], QUALITY_COLORS[1], QUALITY_COLORS[1])),
+                colors=(QUALITY_COLORS[-3], QUALITY_COLORS[1], QUALITY_COLORS[1]),
+                font_family="sans-serif",
+            ),
             x_labels=[str(i) for i in range(0, 800, 10)] + [">800"],
             x_labels_major_every=10,
             show_minor_x_labels=False,
