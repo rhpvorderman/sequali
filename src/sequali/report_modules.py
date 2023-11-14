@@ -212,6 +212,7 @@ class Summary(ReportModule):
     minimum_length: int
     maximum_length: int
     total_reads: int
+    q20_reads: int
     total_bases: int
     q20_bases: int
     total_gc_bases: int
@@ -225,8 +226,17 @@ class Summary(ReportModule):
             <tr><td>Length range (min-max)</td><td style="text-align:right;">
                 {self.minimum_length:,}</td>
                 <td style="text-align:right;">{self.maximum_length:,}</td></tr>
-            <tr><td>Total reads</td><td style="text-align:right;">
-                {self.total_reads:,}</td><td></td></tr>
+            <tr>
+                <td>Total reads</td>
+                <td style="text-align:right;">{self.total_reads:,}</td>
+                <td></td></tr>
+            <tr>
+                <td> Q20 reads</td>
+                <td style="text-align:right;">{self.q20_reads:,}</td>
+                <td style="text-align:right;">
+                    {self.q20_reads / self.total_reads:.2%}
+                </td>
+            </tr>
             <tr><td>Total bases</td><td style="text-align:right;">
                 {self.total_bases:,}</td><td></td></tr>
             <tr>
@@ -1449,6 +1459,7 @@ def qc_metrics_modules(metrics: QCMetrics,
     total_bases = sum(summary_bases)
     minimum_length = 0
     total_reads = metrics.number_of_reads
+    q20_reads = sum(metrics.phred_scores()[20:])
     for table in table_iterator(base_count_tables, NUMBER_OF_NUCS):
         if sum(table) < total_reads:
             break
@@ -1462,6 +1473,7 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_reads=total_reads,
             total_bases=total_bases,
             q20_bases=sum(summary_phreds[5:]),
+            q20_reads=q20_reads,
             total_gc_bases=total_gc_bases),
         SequenceLengthDistribution.from_base_count_tables(
             base_count_tables, total_reads, data_ranges),
