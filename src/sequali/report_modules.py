@@ -1095,7 +1095,7 @@ class OverRepresentedSequences(ReportModule):
                 <td style="text-align:right;">{self.sequence_length}</td>
             </tr>
             <tr>
-                <td>Subsample rate</td>
+                <td>Subsampled sequences</td>
                 <td style="text-align:right;">1 in {self.sample_every}</td>
             </tr>
             </table>
