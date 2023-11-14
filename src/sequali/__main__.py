@@ -34,54 +34,70 @@ from .util import (ProgressUpdater, guess_sequencing_technology_from_bam_header,
 
 
 def argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input", help="Input FASTQ file")
+    parser = argparse.ArgumentParser(
+        description="Create a quality metrics report for sequencing data.")
+    parser.add_argument("input", metavar="INPUT",
+                        help="Input FASTQ or uBAM file. "
+                             "The format is autodetected and compressed "
+                             "formats are supported.")
     parser.add_argument("--json",
-                        help="JSON output file. default: '<input>.json'")
+                        help="JSON output file. default: '<input>.json'.")
     parser.add_argument("--html",
-                        help="HTML output file. default: '<input>.html'")
-    parser.add_argument("--dir", help="Output directory. default: "
-                                      "current working directory",
+                        help="HTML output file. default: '<input>.html'.")
+    parser.add_argument("--outdir", "--dir", metavar="OUTDIR",
+                        help="Output directory for the report files. default: "
+                             "current working directory.",
                         default=os.getcwd())
-    parser.add_argument("--overrepresentation-threshold-fraction", type=float,
+    parser.add_argument("--overrepresentation-threshold-fraction",
+                        metavar="FRACTION",
+                        type=float,
                         default=0.0001,
                         help="At what fraction a sequence is determined to be "
-                             "overrepresented. Default: 0.0001 (1 in 100 000)."
+                             "overrepresented. The threshold is calculated as "
+                             "fraction times the number of sampled sequences. "
+                             "Default: 0.0001 (1 in 100,000)."
                         )
     parser.add_argument("--overrepresentation-min-threshold", type=int,
+                        metavar="THRESHOLD",
                         default=100,
-                        help=f"The minimum amount of sequences that need to be "
-                             f"present to be considered overrepresented even if "
-                             f"the threshold fraction is surpassed. Useful for "
-                             f"smaller files. Default: {100}")
+                        help=f"The minimum amount of occurrences for a sequence "
+                             f"to be considered overrepresented, regardless of "
+                             f"the bound set by the threshold fraction. Useful for "
+                             f"smaller files. Default: {100}.")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
+                        metavar="THRESHOLD",
                         default=sys.maxsize,
-                        help="The threshold above which a sequence is "
-                             "considered overrepresented even if the "
-                             "threshold fraction is not surpassed. Useful for "
+                        help="The amount of occurrences for a sequence to be"
+                             "considered overrepresented, regardless of the "
+                             "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
-    parser.add_argument("--max-unique-sequences", type=int,
+    parser.add_argument("--overrepresentation-fragment-store-size",
+                        type=int,
+                        metavar="N",
                         default=DEFAULT_MAX_UNIQUE_SEQUENCES,
                         help=f"The maximum amount of unique fragments to "
-                             f"gather. Larger amounts increase the sensitivity "
+                             f"store. Larger amounts increase the sensitivity "
                              f"of finding overrepresented sequences at the "
                              f"cost of increasing memory usage. Default: "
-                             f"{DEFAULT_MAX_UNIQUE_SEQUENCES:,}")
+                             f"{DEFAULT_MAX_UNIQUE_SEQUENCES:,}.")
     parser.add_argument("--overrepresentation-fragment-length", type=int,
+                        metavar="LENGTH",
                         default=DEFAULT_UNIQUE_K,
                         help=f"The length of the fragments to sample. The "
                              f"maximum is 31. Default: {DEFAULT_UNIQUE_K}.")
     parser.add_argument("--overrepresentation-sample-every", type=int,
                         default=DEFAULT_UNIQUE_SAMPLE_EVERY,
+                        metavar="DIVISOR",
                         help=f"How often a read should be sampled. "
-                             f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}. "
                              f"More samples leads to better precision, "
                              f"lower speed, and also towards more bias towards "
                              f"the beginning of the file as the fragment store "
                              f"gets filled up with more sequences from the "
-                             f"beginning.")
+                             f"beginning. "
+                             f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}.")
     parser.add_argument("--deduplication-estimate-bits", type=int,
                         default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+                        metavar="BITS",
                         help=f"Determines how many sequences are maximally "
                              f"stored to estimate the deduplication rate. "
                              f"Maximum stored sequences: 2 ** bits * 7 // 10. "
@@ -150,11 +166,11 @@ def main() -> None:
         args.json = os.path.basename(filename) + ".json"
     if args.html is None:
         args.html = os.path.basename(filename) + ".html"
-    os.makedirs(args.dir, exist_ok=True)
+    os.makedirs(args.outdir, exist_ok=True)
     if not os.path.isabs(args.json):
-        args.json = os.path.join(args.dir, args.json)
+        args.json = os.path.join(args.outdir, args.json)
     if not os.path.isabs(args.html):
-        args.html = os.path.join(args.dir, args.html)
+        args.html = os.path.join(args.outdir, args.html)
     with open(args.json, "wt") as json_file:
         json_dict = report_modules_to_dict(report_modules)
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
@@ -179,5 +195,6 @@ def sequali_report():
         output = ".".join(in_json.split(".")[:-1]) + ".html"
     with open(in_json) as j:
         json_data = json.load(j)
+    timestamp = os.stat(in_json).st_mtime
     write_html_report(dict_to_report_modules(json_data), output,
-                      output.rstrip(".html"))
+                      output.rstrip(".html"), timestamp)

@@ -9,6 +9,26 @@ Changelog
 
 version 0.2.0-dev
 -----------------
++ ``--max-unique-sequences`` flag replaced with
+  ``--overrepresentation-fragment-store-size`` to be consistent with the
+  report and other flags.
++ Lots of formatting improvements were made to the report:
+
+  + The quality distribution plot now use Matplotlib's RdBu colormap. Like
+    the old colormap, it goes from red to blue via white, but is much
+    clearer visually.
+  + Tables now have zebra-style coloring and mouse-over coloring to clearly
+    distinguish rows.
+  + The base content plot now uses a green and blue color scheme for GC and
+    AT bases respectively. Previously it was red and blue.
+  + Sans-serif fonts used throughout the report.
+  + Explanation paragraphs are now in a smaller font and italic to visually
+    distuingish them from data generated specifically for the sequencing
+    file.
+  + Plots are now rendered in sans-serif rather than monospace fonts.
+  + Minor formatting, spelling and style issues were fixed.
++ The programs CLI help messages have been improved by clearer phrasing,
+  better metavar names and consistent punctuation.
 + The reverse complement of the canonical sequence is included in the
   overrepresented sequences table.
 + Make the number of threads configurable on the command line.
