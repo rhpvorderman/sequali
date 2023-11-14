@@ -78,7 +78,7 @@ COLOR_RED = "#ff0000"
 
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=QUALITY_COLORS,
                                                font_family="sans-serif")
-ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",), # Green
+ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",),  # Green
                                            font_family="sans-serif")
 MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle(font_family="sans-serif")
 
@@ -770,7 +770,7 @@ class AdapterContent(ReportModule):
             <p class="explanation">Only adapters that are present more than 0.1%
             are shown. Given the 12&#8239;bp
             length of the sequences used to estimate the content, values below this
-            threshold are problably false positives. The legend is sorted from 
+            threshold are problably false positives. The legend is sorted from
             most frequent to least frequent.</p>
             <p class="explanation">For nanopore the the adapter mix (AMX) and
             ligation kit have
@@ -780,9 +780,9 @@ class AdapterContent(ReportModule):
             part II. If both are present, the bottom strand adapter is most
             likely from the ligation kit. If only part I is present, it is most
             likely from the adapter mix (AMX).</p>
-            <p class="explanation">For illumina short reads, the last part of 
-            the graph will be flat as the 12&#8239;bp probes cannot be found in 
-            the last 11 base pairs. 
+            <p class="explanation">For illumina short reads, the last part of
+            the graph will be flat as the 12&#8239;bp probes cannot be found in
+            the last 11 base pairs.
             <figure>{self.plot()}</figure>
         """
 
@@ -1427,7 +1427,7 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 def write_html_report(report_modules: Iterable[ReportModule],
                       html: str,
                       filename: str,
-                      timestamp = time.time()):
+                      timestamp=time.time()):
     time_struct = time.localtime(timestamp)
     default_config = pygal.Config()
     with open(html, "wt", encoding="utf-8") as html_file:
