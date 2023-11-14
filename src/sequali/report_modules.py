@@ -764,7 +764,7 @@ class AdapterContent(ReportModule):
         return f"""
             <h2>Adapter content</h2>
             <p class="explanation">Only adapters that are present more than 0.1%
-            are shown. Given the 12bp
+            are shown. Given the 12&#8239;bp
             length of the sequences used to estimate the content, values below this
             threshold are problably false positives. The legend is sorted from 
             most frequent to least frequent.</p>
@@ -776,6 +776,9 @@ class AdapterContent(ReportModule):
             part II. If both are present, the bottom strand adapter is most
             likely from the ligation kit. If only part I is present, it is most
             likely from the adapter mix (AMX).</p>
+            <p class="explanation">For illumina short reads, the last part of 
+            the graph will be flat as the 12&#8239;bp probes cannot be found in 
+            the last 11 base pairs. 
             <figure>{self.plot()}</figure>
         """
 
