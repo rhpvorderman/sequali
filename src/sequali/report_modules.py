@@ -752,9 +752,11 @@ class AdapterContent(ReportModule):
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
-        for label, content in self.adapter_content:
-            if max(content) < 0.1:
-                continue
+        adapter_content = [(label, content) for label, content in
+                           self.adapter_content if max(content) >= 0.1]
+        adapter_content.sort(key=lambda x: max(x[1]),
+                             reverse=True)
+        for label, content in adapter_content:
             plot.add(label, label_values(content, self.x_labels))
         return plot.render(is_unicode=True)
 
@@ -764,7 +766,8 @@ class AdapterContent(ReportModule):
             <p class="explanation">Only adapters that are present more than 0.1%
             are shown. Given the 12bp
             length of the sequences used to estimate the content, values below this
-            threshold are problably false positives.</p>
+            threshold are problably false positives. The legend is sorted from 
+            most frequent to least frequent.</p>
             <p class="explanation">For nanopore the the adapter mix (AMX) and
             ligation kit have
             overlapping adapter sequences for the bottom strand adapter.
