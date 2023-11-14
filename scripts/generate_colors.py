@@ -31,5 +31,5 @@ if __name__ == "__main__":
     normalized_qualities = [normalizer(q) for q in qualities]
     colormap = matplotlib.colormaps.get_cmap("RdBu")
     color_tuples = [colormap(v) for v in normalized_qualities]
-    color_hexes = [matplotlib.colors.to_hex(c, keep_alpha=True) for c in color_tuples]
+    color_hexes = [matplotlib.colors.to_hex(c) for c in color_tuples]
     print(color_hexes)

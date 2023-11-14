@@ -58,18 +58,18 @@ QUALITY_SERIES_NAMES = (
 # setting the 12-15 category as center and the 0-3 and >=44 categories as
 # extremes.
 QUALITY_COLORS = [
-    '#67001fff',  # 0-3
-    '#c94741ff',  # 4-7
-    '#f7b799ff',  # 8-11
-    '#f6f7f7ff',  # 12-15
-    '#deebf2ff',  # 16-19
-    '#c0dcebff',  # 20-23
-    '#98c8e0ff',  # 24-27
-    '#68abd0ff',  # 28-31
-    '#3e8cbfff',  # 32-35
-    '#2870b1ff',  # 36-39
-    '#15508dff',  # 40-43
-    '#053061ff',  # >=44
+    '#67001f',  # 0-3
+    '#c94741',  # 4-7
+    '#f7b799',  # 8-11
+    '#f6f7f7',  # 12-15
+    '#deebf2',  # 16-19
+    '#c0dceb',  # 20-23
+    '#98c8e0',  # 24-27
+    '#68abd0',  # 28-31
+    '#3e8cbf',  # 32-35
+    '#2870b1',  # 36-39
+    '#15508d',  # 40-43
+    '#053061',  # >=44
 ]
 
 COLOR_GREEN = "#33cc33"
