@@ -21,6 +21,7 @@ import io
 import math
 import os
 import sys
+import time
 import typing
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -1421,7 +1422,9 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 
 def write_html_report(report_modules: Iterable[ReportModule],
                       html: str,
-                      filename: str):
+                      filename: str,
+                      timestamp = time.time()):
+    time_struct = time.localtime(timestamp)
     default_config = pygal.Config()
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
@@ -1438,6 +1441,8 @@ def write_html_report(report_modules: Iterable[ReportModule],
             </head>
             <h1>sequali report</h1>
             <p>Filename: <code>{filename}</code></p>
+            <p>Report generated on {time.strftime("%Y-%m-%d %H:%M:%S%z",
+                                                  time_struct)}</p>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:

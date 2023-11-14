@@ -193,5 +193,6 @@ def sequali_report():
         output = ".".join(in_json.split(".")[:-1]) + ".html"
     with open(in_json) as j:
         json_data = json.load(j)
+    timestamp = os.stat(in_json).st_mtime
     write_html_report(dict_to_report_modules(json_data), output,
-                      output.rstrip(".html"))
+                      output.rstrip(".html"), timestamp)
