@@ -22,6 +22,7 @@ version 0.2.0-dev
   + Explanation paragraphs are now in a smaller font and italic to visually
     distuingish them from data generated specifically for the sequencing
     file.
+  + Plots are now rendered in sans-serif rather than monospace fonts.
   + Minor formatting, spelling and style issues were fixed.
 + The programs CLI help messages have been improved by clearer phrasing,
   better metavar names and consistent punctuation.
