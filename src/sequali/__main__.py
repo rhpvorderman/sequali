@@ -120,7 +120,7 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(
-        args.max_unique_sequences,
+        args.overrepresentation_fragment_store_size,
         k=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
     )
