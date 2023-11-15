@@ -237,7 +237,7 @@ class Summary(ReportModule):
                 <td> Q20 reads</td>
                 <td style="text-align:right;">{self.q20_reads:,}</td>
                 <td style="text-align:right;">
-                    {self.q20_reads / self.total_reads:.2%}
+                    {self.q20_reads / max(self.total_reads, 1):.2%}
                 </td>
             </tr>
             <tr><td>Total bases</td><td style="text-align:right;">
@@ -248,7 +248,7 @@ class Summary(ReportModule):
                     {self.total_gc_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.total_gc_bases / self.total_bases:.2%}
+                    {self.total_gc_bases / max(self.total_bases, 1):.2%}
                 </td>
             </tr>
             <tr>
@@ -257,7 +257,7 @@ class Summary(ReportModule):
                     {self.q20_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.q20_bases / self.total_bases:.2%}
+                    {self.q20_bases / max(self.total_bases, 1):.2%}
                 </td>
             </tr>
             </table>
@@ -421,6 +421,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
         for cat_index, table in enumerate(
                 table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total = sum(table)
+            if total == 0:
+                continue
             total_error_rate = sum(
                 PHRED_INDEX_TO_ERROR_RATE[i] * x for i, x in enumerate(table))
             percentile_thresholds = [int(f * total) for f in percentile_fractions]
@@ -436,6 +438,9 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                         accumulated_errors += (remaining_threshold *
                                                PHRED_INDEX_TO_ERROR_RATE[phred_index])
                         accumulated_count += remaining_threshold
+                        if accumulated_count == 0 or total == accumulated_count:
+                            # Prevent divide by zero
+                            continue
                         percentile_tables[thresh_index][cat_index] = (
                             -10 * math.log10(
                                 accumulated_errors / accumulated_count))
@@ -492,6 +497,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
         for cat_index, table in enumerate(
                 table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total_nucs = sum(table)
+            if total_nucs == 0:
+                continue
             for offset, phred_count in enumerate(table):
                 if phred_count == 0:
                     continue
@@ -546,8 +553,11 @@ class PerSequenceAverageQualityScores(ReportModule):
             **COMMON_GRAPH_OPTIONS
         )
         total = sum(self.average_quality_counts)
-        percentage_scores = [100 * score / total
-                             for score in self.average_quality_counts]
+        if total == 0:
+            percentage_scores = [None for _ in self.average_quality_counts]
+        else:
+            percentage_scores = [100 * score / total
+                                 for score in self.average_quality_counts]
 
         plot.add("", percentage_scores[:maximum_score])
         return plot.render(is_unicode=True)
@@ -1255,6 +1265,8 @@ class NanoStatsReport(ReportModule):
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
+            if total_bases == 0:
+                continue
             phred_score = -10 * math.log10(error_rate / total_bases)
             per_channel_quality[channel] = phred_score
         qual_percentages_over_time: List[List[float]] = [[] for _ in
