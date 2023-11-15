@@ -58,6 +58,8 @@ Installation
 Usage
 =====
 
+.. code-block::
+
     usage: sequali [-h] [--json JSON] [--html HTML] [--outdir OUTDIR]
                    [--overrepresentation-threshold-fraction FRACTION]
                    [--overrepresentation-min-threshold THRESHOLD]
