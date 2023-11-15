@@ -3209,7 +3209,7 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
 */
 
 #define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
-#define DEFAULT_FRAGMENT_LENGTH 31
+#define DEFAULT_FRAGMENT_LENGTH 21
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
 
 typedef struct _SequenceDuplicationStruct {

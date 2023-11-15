@@ -22,7 +22,7 @@ import xopen
 
 from ._qc import (
     AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-    DEFAULT_MAX_UNIQUE_FRAGMENTS, DEFAULT_FRAGMENT_LENGTH,
+    DEFAULT_FRAGMENT_LENGTH, DEFAULT_MAX_UNIQUE_FRAGMENTS,
     DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
     PerTileQuality, QCMetrics, SequenceDuplication
 )
