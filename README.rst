@@ -53,7 +53,13 @@ Supported formats
 Installation
 ============
 
+Installation via pip is available with::
+
     pip install sequali
+
+Sequali is also distributed via bioconda. It can be installed with::
+
+    conda install -c conda-forge -c bioconda sequali
 
 Usage
 =====
