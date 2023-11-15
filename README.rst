@@ -11,7 +11,7 @@
   :alt:
 
 .. image:: https://img.shields.io/pypi/l/sequali.svg
-  :target: https://github.com/LUMC/sequali/blob/main/LICENSE
+  :target: https://github.com/rhpvorderman/sequali/blob/main/LICENSE
   :alt:
 
 ========
