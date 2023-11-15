@@ -554,7 +554,7 @@ class PerSequenceAverageQualityScores(ReportModule):
         )
         total = sum(self.average_quality_counts)
         if total == 0:
-            percentage_scores = [None for _ in self.average_quality_counts]
+            percentage_scores = [0.0 for _ in self.average_quality_counts]
         else:
             percentage_scores = [100 * score / total
                                  for score in self.average_quality_counts]
