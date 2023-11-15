@@ -111,7 +111,7 @@ Usage
                             memory usage. Default: 5,000,000.
       --overrepresentation-fragment-length LENGTH
                             The length of the fragments to sample. The maximum is
-                            31. Default: 31.
+                            31. Default: 21.
       --overrepresentation-sample-every DIVISOR
                             How often a read should be sampled. More samples leads
                             to better precision, lower speed, and also towards
