@@ -32,23 +32,23 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
 
 
 def test_sequence_duplication():
-    max_unique_sequences = 100_000
-    seqdup = SequenceDuplication(max_unique_sequences=max_unique_sequences,
+    max_unique_fragments = 100_000
+    seqdup = SequenceDuplication(max_unique_fragments=max_unique_fragments,
                                  sample_every=1)
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
-    number_of_letters = math.ceil(math.log(max_unique_sequences) / math.log(4))
+    number_of_letters = math.ceil(math.log(max_unique_fragments) / math.log(4))
     for combo in itertools.product(*(("ACGT",) * number_of_letters)):
         sequence = "".join(combo) + (31 - number_of_letters) * "A"
         read = FastqRecordView("name", sequence, "H" * len(sequence))
         seqdup.add_read(read)
     assert seqdup.number_of_sequences == 4 ** number_of_letters
     sequence_counts = seqdup.sequence_counts()
-    assert len(sequence_counts) == max_unique_sequences
-    assert seqdup.max_unique_sequences == max_unique_sequences
+    assert len(sequence_counts) == max_unique_fragments
+    assert (seqdup.max_unique_fragments == max_unique_fragments)
     for sequence, count in sequence_counts.items():
-        assert len(sequence) == seqdup.sequence_length
+        assert len(sequence) == seqdup.fragment_length
         assert count == 1
     duplicated_read = FastqRecordView("name", 31 * "A",  31 * "A")
     seqdup.add_read(duplicated_read)
@@ -143,7 +143,18 @@ def test_sequence_duplication_case_insensitive():
     seqcounts = seqdup.sequence_counts()
     assert seqdup.number_of_sequences == 2
     assert seqdup.total_fragments == 4
-    assert seqdup.collected_unique_sequences == 2
+    assert seqdup.collected_unique_fragments == 2
     assert len(seqcounts) == 2
     assert seqcounts[("AATTACA" * 5)[:31]] == 2
     assert seqcounts[("AATTACA" * 5)[-31:]] == 2
+
+
+@pytest.mark.parametrize("divisor", list(range(1, 21)))
+def test_sequence_duplication_sampling_rate(divisor):
+    seqdup = SequenceDuplication(sample_every=divisor)
+    read = view_from_sequence("AAAA")
+    number_of_sequences = 10_000
+    for i in range(number_of_sequences):
+        seqdup.add_read(read)
+    assert seqdup.number_of_sequences == number_of_sequences
+    assert seqdup.sampled_sequences == (number_of_sequences + divisor - 1) // divisor

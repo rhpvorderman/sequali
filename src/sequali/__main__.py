@@ -22,7 +22,7 @@ import xopen
 
 from ._qc import (
     AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-    DEFAULT_MAX_UNIQUE_SEQUENCES, DEFAULT_UNIQUE_K,
+    DEFAULT_MAX_UNIQUE_FRAGMENTS, DEFAULT_UNIQUE_K,
     DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
     PerTileQuality, QCMetrics, SequenceDuplication
 )
@@ -71,15 +71,15 @@ def argument_parser() -> argparse.ArgumentParser:
                              "considered overrepresented, regardless of the "
                              "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
-    parser.add_argument("--overrepresentation-fragment-store-size",
+    parser.add_argument("--overrepresentation-max-unique-fragments",
                         type=int,
                         metavar="N",
-                        default=DEFAULT_MAX_UNIQUE_SEQUENCES,
+                        default=DEFAULT_MAX_UNIQUE_FRAGMENTS,
                         help=f"The maximum amount of unique fragments to "
                              f"store. Larger amounts increase the sensitivity "
                              f"of finding overrepresented sequences at the "
                              f"cost of increasing memory usage. Default: "
-                             f"{DEFAULT_MAX_UNIQUE_SEQUENCES:,}.")
+                             f"{DEFAULT_MAX_UNIQUE_FRAGMENTS:,}.")
     parser.add_argument("--overrepresentation-fragment-length", type=int,
                         metavar="LENGTH",
                         default=DEFAULT_UNIQUE_K,
@@ -120,7 +120,7 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(
-        args.overrepresentation_fragment_store_size,
+        args.overrepresentation_max_unique_fragments,
         k=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
     )

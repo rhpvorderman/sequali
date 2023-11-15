@@ -1042,30 +1042,36 @@ class OverRepresentedSequence(typing.NamedTuple):
 @dataclasses.dataclass
 class OverRepresentedSequences(ReportModule):
     overrepresented_sequences: List[OverRepresentedSequence]
-    max_unique_sequences: int
-    collected_sequences: int
+    max_unique_fragments: int
+    collected_fragments: int
     sample_every: int
     sequence_length: int
     total_fragments: int
+    total_sequences: int
+    sampled_sequences: int
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
                 [x._asdict() for x in self.overrepresented_sequences],
-                "max_unique_sequences": self.max_unique_sequences,
+                "max_unique_fragments": self.max_unique_fragments,
                 "sample_every": self.sample_every,
-                "collected_sequences": self.collected_sequences,
+                "collected_fragments": self.collected_fragments,
                 "sequence_length": self.sequence_length,
-                "total_fragments": self.total_fragments}
+                "total_fragments": self.total_fragments,
+                "total_sequences": self.total_sequences,
+                "sampled_sequences": self.sampled_sequences}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
         return cls([OverRepresentedSequence(**d)
                    for d in overrepresented_sequences],
-                   max_unique_sequences=d["max_unique_sequences"],
-                   collected_sequences=d["collected_sequences"],
+                   max_unique_fragments=d["max_unique_fragments"],
+                   collected_fragments=d["collected_fragments"],
                    sample_every=d["sample_every"],
                    sequence_length=d["sequence_length"],
-                   total_fragments=d["total_fragments"])  # type: ignore
+                   total_fragments=d["total_fragments"],
+                   total_sequences=d["total_sequences"],
+                   sampled_sequences=d["sampled_sequences"])  # type: ignore
 
     def to_html(self) -> str:
         header = "<h2>Overrepresented sequences</h2>"
@@ -1077,8 +1083,8 @@ class OverRepresentedSequences(ReportModule):
             f"""
             <p class="explanation">A subsample of the sequences is analysed
             Sequences are cut into fragments of up to 31&#8239;bp. Fragments
-            are stored and counted. When the fragment store is full, only
-            sequences that are already in the fragment store are counted. The
+            are stored and counted. When the maximum amount of unique fragments
+            is reached, only sequences that are already stored are counted. The
             rest of the sequences is ignored.
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
@@ -1087,24 +1093,32 @@ class OverRepresentedSequences(ReportModule):
             </p>
             <table>
             <tr>
-                <td>Fragment store size</td>
-                <td style="text-align:right;">{self.max_unique_sequences:,}</td>
+                <td>Total sequences in file</td>
+                <td style="text-align:right;">{self.total_sequences:,}</td>
             </tr>
             <tr>
-                <td>Stored fragments</td>
-                <td style="text-align:right;">{self.collected_sequences:,}</td>
+                <td>Sampled sequences</td>
+                <td style="text-align:right;">{self.sampled_sequences:,}</td>
+            </tr>
+            <tr>
+                <td>Sampling rate</td>
+                <td style="text-align:right;">1 in {self.sample_every}</td>
             </tr>
             <tr>
                 <td>Total fragments sampled</td>
                 <td style="text-align:right;">{self.total_fragments:,}</td>
             </tr>
             <tr>
-                <td>Fragment size</td>
-                <td style="text-align:right;">{self.sequence_length}</td>
+                <td>Stored unique fragments</td>
+                <td style="text-align:right;">{self.collected_fragments:,}</td>
             </tr>
             <tr>
-                <td>Subsampled sequences</td>
-                <td style="text-align:right;">1 in {self.sample_every}</td>
+                <td>Maximum unique fragments</td>
+                <td style="text-align:right;">{self.max_unique_fragments:,}</td>
+            </tr>
+            <tr>
+                <td>Fragment size</td>
+                <td style="text-align:right;">{self.sequence_length}</td>
             </tr>
             </table>
             """
@@ -1157,11 +1171,13 @@ class OverRepresentedSequences(ReportModule):
             for count, fraction, sequence in overrepresented_sequences
         ]
         return cls(overrepresented_with_identification,
-                   seqdup.max_unique_sequences,
-                   seqdup.collected_unique_sequences,
+                   seqdup.max_unique_fragments,
+                   seqdup.collected_unique_fragments,
                    seqdup.sample_every,
-                   seqdup.sequence_length,
-                   seqdup.total_fragments)
+                   seqdup.fragment_length,
+                   seqdup.total_fragments,
+                   seqdup.number_of_sequences,
+                   seqdup.sampled_sequences)
 
 
 @dataclasses.dataclass
