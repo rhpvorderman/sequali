@@ -1,3 +1,19 @@
+.. image:: https://img.shields.io/pypi/v/sequali.svg
+  :target: https://pypi.org/project/sequali/
+  :alt:
+
+.. image:: https://img.shields.io/conda/v/bioconda/sequali.svg
+  :target: https://bioconda.github.io/recipes/sequali/README.html
+  :alt:
+
+.. image:: https://img.shields.io/pypi/pyversions/sequali.svg
+  :target: https://pypi.org/project/sequali/
+  :alt:
+
+.. image:: https://img.shields.io/pypi/l/sequali.svg
+  :target: https://github.com/LUMC/sequali/blob/main/LICENSE
+  :alt:
+
 ========
 sequali
 ========
@@ -37,69 +53,94 @@ Supported formats
 Installation
 ============
 
-    pip install git+https://github.com/rhpvorderman/sequali.git
+Installation via pip is available with::
+
+    pip install sequali
+
+Sequali is also distributed via bioconda. It can be installed with::
+
+    conda install -c conda-forge -c bioconda sequali
 
 Usage
 =====
 
-    usage: sequali [-h] [--json JSON] [--html HTML] [--dir DIR]
-                   [--overrepresentation-threshold-fraction OVERREPRESENTATION_THRESHOLD_FRACTION]
-                   [--overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD]
-                   [--overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD]
-                   [--max-unique-sequences MAX_UNIQUE_SEQUENCES]
-                   [--overrepresentation-fragment-length OVERREPRESENTATION_FRAGMENT_LENGTH]
-                   [--overrepresentation-sample-every OVERREPRESENTATION_SAMPLE_EVERY]
-                   [--deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS]
-                   input
+.. code-block::
+
+    usage: sequali [-h] [--json JSON] [--html HTML] [--outdir OUTDIR]
+                   [--overrepresentation-threshold-fraction FRACTION]
+                   [--overrepresentation-min-threshold THRESHOLD]
+                   [--overrepresentation-max-threshold THRESHOLD]
+                   [--overrepresentation-max-unique-fragments N]
+                   [--overrepresentation-fragment-length LENGTH]
+                   [--overrepresentation-sample-every DIVISOR]
+                   [--deduplication-estimate-bits BITS] [-t THREADS]
+                   INPUT
+
+    Create a quality metrics report for sequencing data.
 
     positional arguments:
-      input                 Input FASTQ file
+      INPUT                 Input FASTQ or uBAM file. The format is autodetected
+                            and compressed formats are supported.
 
     options:
       -h, --help            show this help message and exit
-      --json JSON           JSON output file. default: '<input>.json'
-      --html HTML           HTML output file. default: '<input>.html'
-      --dir DIR             Output directory. default: current working directory
-      --overrepresentation-threshold-fraction OVERREPRESENTATION_THRESHOLD_FRACTION
+      --json JSON           JSON output file. default: '<input>.json'.
+      --html HTML           HTML output file. default: '<input>.html'.
+      --outdir OUTDIR, --dir OUTDIR
+                            Output directory for the report files. default:
+                            current working directory.
+      --overrepresentation-threshold-fraction FRACTION
                             At what fraction a sequence is determined to be
-                            overrepresented. Default: 0.0001 (1 in 100 000).
-      --overrepresentation-min-threshold OVERREPRESENTATION_MIN_THRESHOLD
-                            The minimum amount of sequences that need to be
-                            present to be considered overrepresented even if the
-                            threshold fraction is surpassed. Useful for smaller
-                            files. Default: 100
-      --overrepresentation-max-threshold OVERREPRESENTATION_MAX_THRESHOLD
-                            The threshold above which a sequence is considered
-                            overrepresented even if the threshold fraction is not
-                            surpassed. Useful for very large files. Default:
-                            unlimited.
-      --max-unique-sequences MAX_UNIQUE_SEQUENCES
-                            The maximum amount of unique fragments to gather.
+                            overrepresented. The threshold is calculated as
+                            fraction times the number of sampled sequences.
+                            Default: 0.0001 (1 in 100,000).
+      --overrepresentation-min-threshold THRESHOLD
+                            The minimum amount of occurrences for a sequence to be
+                            considered overrepresented, regardless of the bound
+                            set by the threshold fraction. Useful for smaller
+                            files. Default: 100.
+      --overrepresentation-max-threshold THRESHOLD
+                            The amount of occurrences for a sequence to
+                            beconsidered overrepresented, regardless of the bound
+                            set by the threshold fraction. Useful for very large
+                            files. Default: unlimited.
+      --overrepresentation-max-unique-fragments N
+                            The maximum amount of unique fragments to store.
                             Larger amounts increase the sensitivity of finding
                             overrepresented sequences at the cost of increasing
-                            memory usage. Default: 5,000,000
-      --overrepresentation-fragment-length OVERREPRESENTATION_FRAGMENT_LENGTH
+                            memory usage. Default: 5,000,000.
+      --overrepresentation-fragment-length LENGTH
                             The length of the fragments to sample. The maximum is
                             31. Default: 31.
-      --overrepresentation-sample-every OVERREPRESENTATION_SAMPLE_EVERY
-                            How often a read should be sampled. Default: 1 in 8.
-                            More samples leads to better precision, lower speed,
-                            and also towards more bias towards the beginning of
-                            the file as the fragment store gets filled up with
-                            more sequences from the beginning.
-      --deduplication-estimate-bits DEDUPLICATION_ESTIMATE_BITS
+      --overrepresentation-sample-every DIVISOR
+                            How often a read should be sampled. More samples leads
+                            to better precision, lower speed, and also towards
+                            more bias towards the beginning of the file as the
+                            fragment store gets filled up with more sequences from
+                            the beginning. Default: 1 in 8.
+      --deduplication-estimate-bits BITS
                             Determines how many sequences are maximally stored to
                             estimate the deduplication rate. Maximum stored
                             sequences: 2 ** bits * 7 // 10. Memory required: 2 **
                             bits * 24. Default: 21.
+      -t THREADS, --threads THREADS
+                            Number of threads to use. If greater than one sequali
+                            will use an additional thread for gzip decompression.
 
 Acknowledgements
 ================
 + `FastQC <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>`_ for
   its excellent selection of relevant metrics. For this reason these metrics
   are also gathered by sequali.
++ The matplotlib team for their excellent work on colormaps. Their work was
+  an inspiration for how to present the data and their RdBu colormap is used
+  to represent quality score data. Check their `writings on colormaps
+  <https://matplotlib.org/stable/users/explain/colors/colormaps.html>`_ for
+  a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
++ Marcel Martin for providing extensive feedback on the program's report and
+  command line.
 
 License
 =======

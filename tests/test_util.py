@@ -1,3 +1,19 @@
+# Copyright (C) 2023 Leiden University Medical Center
+# This file is part of sequali
+#
+# sequali is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# sequali is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with sequali.  If not, see <https://www.gnu.org/licenses/
+
 from pathlib import Path
 
 import pytest
@@ -13,6 +29,7 @@ SAM = DATA / ("project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa."
 @pytest.mark.parametrize(["header", "is_illumina"], (
     ("SIM:1:FCX:1:15:6329:1045 1:N:0:2", True),
     ("SIM:1:FCX:1:15:6329:1045 1:Y:0:2", True),
+    ("SIM:1:FCX:1:15:6329:1045", True),
 ))
 def test_fastq_header_is_illumina(header, is_illumina):
     assert fastq_header_is_illumina(header) == is_illumina

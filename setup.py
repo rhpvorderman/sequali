@@ -21,7 +21,7 @@ from setuptools import Extension, find_packages, setup
 
 setup(
     name="sequali",
-    version="0.1.0",
+    version="0.2.0",
     description="Fast sequencing quality metrics",
     author="Leiden University Medical Center",
     author_email="r.h.p.vorderman@lumc.nl",
@@ -53,7 +53,7 @@ setup(
         "tqdm"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
-                              'contaminants/*', 'adapters/*']},
+                              'contaminants/*', 'adapters/*', 'style/*']},
     ext_modules=[
         Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
     ],

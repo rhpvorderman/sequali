@@ -82,9 +82,9 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
  * 
  * @param string The string pointing to an unsigned decimal number
  * @param length The length of the number string
- * @return ssize_t the answer, or -1 on error. 
+ * @return Py_ssize_t the answer, or -1 on error.
  */
-static inline ssize_t 
+static inline Py_ssize_t
 unsigned_decimal_integer_from_string(const uint8_t *string, size_t length) 
 {
     /* There should be at least one digit and larger than 18 digits can not 
@@ -187,12 +187,12 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
        Could be parsed with sscanf, but it is much quicker to completely inline
        the call by using an inlinable function. */
     const uint8_t *s = time_string;
-    ssize_t year = unsigned_decimal_integer_from_string(s, 4);
-    ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
-    ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
-    ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
-    ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
-    ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
+    Py_ssize_t year = unsigned_decimal_integer_from_string(s, 4);
+    Py_ssize_t month = unsigned_decimal_integer_from_string(s+5, 2);
+    Py_ssize_t day = unsigned_decimal_integer_from_string(s+8, 2);
+    Py_ssize_t hour = unsigned_decimal_integer_from_string(s+11, 2);
+    Py_ssize_t minute = unsigned_decimal_integer_from_string(s+14, 2);
+    Py_ssize_t second = unsigned_decimal_integer_from_string(s+17, 2);
     /* If one of year, month etc. is -1 the signed bit is set. Bitwise OR 
        allows checking them all at once for this. */
     if ((year | month | day | hour | minute | second) < 0 || 
@@ -206,8 +206,8 @@ static time_t time_string_to_timestamp(const uint8_t *time_string) {
         size_t decimal_size = strspn((char *)s + 20, "0123456789");
         tz_part += decimal_size + 1;
     }
-    ssize_t offset_hours;
-    ssize_t offset_minutes;
+    Py_ssize_t offset_hours;
+    Py_ssize_t offset_minutes;
     switch(tz_part[0]) {
         case 'Z':
             /* UTC No special code needed. */
@@ -2705,7 +2705,7 @@ PerTileQuality_resize_tile_array(PerTileQuality *self, size_t highest_tile)
     self->tile_qualities = new_qualities;
     self->number_of_tiles = highest_tile;
     return 0;
-};
+}
 
 static int
 PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length) 
@@ -2745,7 +2745,7 @@ PerTileQuality_resize_tiles(PerTileQuality *self, size_t new_length)
  * @return long the tile_id or -1 if there was a parse error.
  */
 static
-ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) {
+Py_ssize_t illumina_header_to_tile_id(const uint8_t *header, size_t header_length) {
 
     /* The following link contains the header format:
        https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
@@ -2791,7 +2791,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     size_t sequence_length = meta->sequence_length;
     uint8_t phred_offset = self->phred_offset;
 
-    ssize_t tile_id = illumina_header_to_tile_id(header, header_length);
+    Py_ssize_t tile_id = illumina_header_to_tile_id(header, header_length);
     if (tile_id == -1) {
         PyObject *header_obj = PyUnicode_DecodeASCII((const char *)header, header_length, NULL);
         if (header_obj == NULL) {
@@ -2982,7 +2982,7 @@ PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignor
            100 are length 150 and a 100 are length 120. This means we have 
            a 100 bases at each position 120-150 and 200 bases at 0-120. */
         uint64_t total_bases = 0;
-        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
+        for (Py_ssize_t j=tile_length - 1; j >= 0; j -= 1) {
             total_bases += length_counts[j];
             double error_count = total_errors[j];
             double average = error_count / (double)total_bases;
@@ -3045,7 +3045,7 @@ PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore)
            100 are length 150 and a 100 are length 120. This means we have 
            a 100 bases at each position 120-150 and 200 bases at 0-120. */
         uint64_t total_bases = 0;
-        for (ssize_t j=tile_length - 1; j >= 0; j -= 1) {
+        for (Py_ssize_t j=tile_length - 1; j >= 0; j -= 1) {
             total_bases += length_counts[j];
             PyObject *summed_error_obj = PyFloat_FromDouble(total_errors[j]);
             PyObject *count_obj = PyLong_FromUnsignedLongLong(total_bases);
@@ -3208,7 +3208,7 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
    having the hash function both as a hash and as the storage for the sequence.
 */
 
-#define DEFAULT_MAX_UNIQUE_SEQUENCES 5000000
+#define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define DEFAULT_UNIQUE_K 31
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
@@ -3217,6 +3217,7 @@ typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     uint8_t k;
     uint64_t number_of_sequences;
+    uint64_t sampled_sequences;
     uint64_t hash_table_size;
     uint64_t *hashes; 
     uint32_t *counts;
@@ -3237,20 +3238,20 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 static PyObject *
 SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    Py_ssize_t max_unique_sequences = DEFAULT_MAX_UNIQUE_SEQUENCES;
+    Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
     Py_ssize_t k = DEFAULT_UNIQUE_K;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
-    static char *kwargnames[] = {"max_unique_sequences", "k", "sample_every", NULL};
+    static char *kwargnames[] = {"max_unique_fragments", "k", "sample_every", NULL};
     static char *format = "|nnn:SequenceDuplication";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &max_unique_sequences, &k, &sample_every)) {
+            &max_unique_fragments, &k, &sample_every)) {
         return NULL;
     }
-    if (max_unique_sequences < 1) {
+    if (max_unique_fragments < 1) {
         PyErr_Format(
             PyExc_ValueError, 
-            "max_unique_sequences should be at least 1, got: %zd", 
-            max_unique_sequences);
+            "max_unique_fragments should be at least 1, got: %zd", 
+            max_unique_fragments);
         return NULL;
     }
     if ((k & 1) == 0 || k > 31 || k < 3) {
@@ -3272,7 +3273,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
        bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
        utilized for at most 2/3. (Increased business degrades performance.) */
-    uint64_t hash_table_bits = (uint64_t)(log2(max_unique_sequences * 1.5) + 1);
+    uint64_t hash_table_bits = (uint64_t)(log2(max_unique_fragments * 1.5) + 1);
     uint64_t hash_table_size = 1 << hash_table_bits;
     uint64_t *hashes = PyMem_Calloc(hash_table_size, sizeof(uint64_t));
     uint32_t *counts = PyMem_Calloc(hash_table_size, sizeof(uint32_t));
@@ -3288,8 +3289,9 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return PyErr_NoMemory();
     }
     self->number_of_sequences = 0;
+    self->sampled_sequences = 0;
     self->number_of_unique_fragments = 0;
-    self->max_unique_fragments = max_unique_sequences;
+    self->max_unique_fragments = max_unique_fragments;
     self->hash_table_size = hash_table_size;
     self->total_fragments = 0;
     self->k = k;
@@ -3333,6 +3335,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             self->number_of_sequences += 1;
             return 0;
     }
+    self->sampled_sequences += 1;
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     Py_ssize_t k = self->k;
@@ -3668,15 +3671,18 @@ static PyMethodDef SequenceDuplication_methods[] = {
 static PyMemberDef SequenceDuplication_members[] = {
     {"number_of_sequences", T_ULONGLONG, 
      offsetof(SequenceDuplication, number_of_sequences), READONLY,
-     "The total number of sequences processed"},
-    {"collected_unique_sequences", T_ULONGLONG,
+     "The total number of sequences submitted."},
+    {"sampled_sequences", T_ULONGLONG,
+     offsetof(SequenceDuplication, sampled_sequences), READONLY,
+     "The total number of sequences that were analysed."},
+    {"collected_unique_fragments", T_ULONGLONG,
       offsetof(SequenceDuplication, number_of_unique_fragments), READONLY,
       "The number of unique fragments collected."},
-    {"max_unique_sequences", T_ULONGLONG, 
+    {"max_unique_fragments", T_ULONGLONG,
       offsetof(SequenceDuplication, max_unique_fragments), READONLY,
       "The maximum number of unique sequences stored in the object."
     }, 
-    {"sequence_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
+    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
      "The length of the sampled sequences"},
     {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every), 
      READONLY, "One in this many reads is sampled"},
@@ -4069,7 +4075,7 @@ static void NanoStats_dealloc(NanoStats *self) {
     PyMem_Free(self->nano_infos);
     Py_XDECREF(self->skipped_reason);
     Py_TYPE(self)->tp_free((PyObject *)self);
-};
+}
 
 typedef struct {
     PyObject_HEAD
@@ -4493,7 +4499,7 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
-    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
+    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_K);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);

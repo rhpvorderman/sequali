@@ -28,7 +28,7 @@ G: int
 T: int 
 N: int 
 MAX_SEQUENCE_SIZE: int
-DEFAULT_MAX_UNIQUE_SEQUENCES: int
+DEFAULT_MAX_UNIQUE_FRAGMENTS: int
 DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
 DEFAULT_UNIQUE_K: int 
 DEFAULT_UNIQUE_SAMPLE_EVERY: int 
@@ -89,14 +89,15 @@ class PerTileQuality:
 
 class SequenceDuplication:
     number_of_sequences: int
-    collected_unique_sequences: int
-    max_unique_sequences: int
-    sequence_length: int
+    sampled_sequences: int
+    collected_unique_fragments: int
+    max_unique_fragments: int
+    fragment_length: int
     sample_every: int
     total_fragments: int
 
     def __init__(self,
-                 max_unique_sequences: int = DEFAULT_MAX_UNIQUE_SEQUENCES,
+                 max_unique_fragments: int = DEFAULT_MAX_UNIQUE_FRAGMENTS,
                  k: int = DEFAULT_UNIQUE_K,
                  sample_every: int = DEFAULT_UNIQUE_SAMPLE_EVERY): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
