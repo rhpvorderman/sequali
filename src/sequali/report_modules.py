@@ -1513,7 +1513,7 @@ def qc_metrics_modules(metrics: QCMetrics,
     total_gc_bases = summary_bases[C] + summary_bases[G]
     return [
         Summary(
-            mean_length=total_bases / total_reads,
+            mean_length=total_bases / max(total_reads, 1),
             minimum_length=minimum_length,
             maximum_length=metrics.max_length,
             total_reads=total_reads,
