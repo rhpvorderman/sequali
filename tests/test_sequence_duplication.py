@@ -48,7 +48,7 @@ def test_sequence_duplication():
     assert len(sequence_counts) == max_unique_sequences
     assert seqdup.max_unique_sequences == max_unique_sequences
     for sequence, count in sequence_counts.items():
-        assert len(sequence) == seqdup.sequence_length
+        assert len(sequence) == seqdup.fragment_length
         assert count == 1
     duplicated_read = FastqRecordView("name", 31 * "A",  31 * "A")
     seqdup.add_read(duplicated_read)

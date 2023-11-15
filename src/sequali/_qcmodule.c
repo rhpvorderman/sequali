@@ -3208,7 +3208,7 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
    having the hash function both as a hash and as the storage for the sequence.
 */
 
-#define DEFAULT_MAX_UNIQUE_SEQUENCES 5000000
+#define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
 #define UNIQUE_SEQUENCE_LENGTH 50
 #define DEFAULT_UNIQUE_K 31
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
@@ -3217,6 +3217,7 @@ typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
     uint8_t k;
     uint64_t number_of_sequences;
+    uint64_t sampled_sequences;
     uint64_t hash_table_size;
     uint64_t *hashes; 
     uint32_t *counts;
@@ -3237,20 +3238,20 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 static PyObject *
 SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    Py_ssize_t max_unique_sequences = DEFAULT_MAX_UNIQUE_SEQUENCES;
+    Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
     Py_ssize_t k = DEFAULT_UNIQUE_K;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
-    static char *kwargnames[] = {"max_unique_sequences", "k", "sample_every", NULL};
+    static char *kwargnames[] = {"max_unique_fragments", "k", "sample_every", NULL};
     static char *format = "|nnn:SequenceDuplication";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &max_unique_sequences, &k, &sample_every)) {
+            &max_unique_fragments, &k, &sample_every)) {
         return NULL;
     }
-    if (max_unique_sequences < 1) {
+    if (max_unique_fragments < 1) {
         PyErr_Format(
             PyExc_ValueError, 
-            "max_unique_sequences should be at least 1, got: %zd", 
-            max_unique_sequences);
+            "max_unique_fragments should be at least 1, got: %zd", 
+            max_unique_fragments);
         return NULL;
     }
     if ((k & 1) == 0 || k > 31 || k < 3) {
@@ -3272,7 +3273,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to a
        bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
        utilized for at most 2/3. (Increased business degrades performance.) */
-    uint64_t hash_table_bits = (uint64_t)(log2(max_unique_sequences * 1.5) + 1);
+    uint64_t hash_table_bits = (uint64_t)(log2(max_unique_fragments * 1.5) + 1);
     uint64_t hash_table_size = 1 << hash_table_bits;
     uint64_t *hashes = PyMem_Calloc(hash_table_size, sizeof(uint64_t));
     uint32_t *counts = PyMem_Calloc(hash_table_size, sizeof(uint32_t));
@@ -3288,8 +3289,9 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return PyErr_NoMemory();
     }
     self->number_of_sequences = 0;
+    self->sampled_sequences = 0;
     self->number_of_unique_fragments = 0;
-    self->max_unique_fragments = max_unique_sequences;
+    self->max_unique_fragments = max_unique_fragments;
     self->hash_table_size = hash_table_size;
     self->total_fragments = 0;
     self->k = k;
@@ -3333,6 +3335,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             self->number_of_sequences += 1;
             return 0;
     }
+    self->sampled_sequences += 1;
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
     Py_ssize_t k = self->k;
@@ -3668,15 +3671,18 @@ static PyMethodDef SequenceDuplication_methods[] = {
 static PyMemberDef SequenceDuplication_members[] = {
     {"number_of_sequences", T_ULONGLONG, 
      offsetof(SequenceDuplication, number_of_sequences), READONLY,
-     "The total number of sequences processed"},
-    {"collected_unique_sequences", T_ULONGLONG,
+     "The total number of sequences submitted."},
+    {"sampled_sequences", T_ULONGLONG,
+     offsetof(SequenceDuplication, sampled_sequences), READONLY,
+     "The total number of sequences that were analysed."},
+    {"collected_unique_fragments", T_ULONGLONG,
       offsetof(SequenceDuplication, number_of_unique_fragments), READONLY,
       "The number of unique fragments collected."},
-    {"max_unique_sequences", T_ULONGLONG, 
+    {"max_unique_fragments", T_ULONGLONG,
       offsetof(SequenceDuplication, max_unique_fragments), READONLY,
       "The maximum number of unique sequences stored in the object."
     }, 
-    {"sequence_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
+    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
      "The length of the sampled sequences"},
     {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every), 
      READONLY, "One in this many reads is sampled"},
@@ -4493,7 +4499,7 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, N);
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
-    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_SEQUENCES);
+    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_K);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
