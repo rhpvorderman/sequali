@@ -22,7 +22,7 @@ import xopen
 
 from ._qc import (
     AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-    DEFAULT_MAX_UNIQUE_FRAGMENTS, DEFAULT_UNIQUE_K,
+    DEFAULT_MAX_UNIQUE_FRAGMENTS, DEFAULT_FRAGMENT_LENGTH,
     DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
     PerTileQuality, QCMetrics, SequenceDuplication
 )
@@ -82,9 +82,9 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"{DEFAULT_MAX_UNIQUE_FRAGMENTS:,}.")
     parser.add_argument("--overrepresentation-fragment-length", type=int,
                         metavar="LENGTH",
-                        default=DEFAULT_UNIQUE_K,
+                        default=DEFAULT_FRAGMENT_LENGTH,
                         help=f"The length of the fragments to sample. The "
-                             f"maximum is 31. Default: {DEFAULT_UNIQUE_K}.")
+                             f"maximum is 31. Default: {DEFAULT_FRAGMENT_LENGTH}.")
     parser.add_argument("--overrepresentation-sample-every", type=int,
                         default=DEFAULT_UNIQUE_SAMPLE_EVERY,
                         metavar="DIVISOR",
@@ -120,8 +120,8 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(
-        args.overrepresentation_max_unique_fragments,
-        k=args.overrepresentation_fragment_length,
+        max_unique_fragments=args.overrepresentation_max_unique_fragments,
+        fragment_length=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
     )
     dedup_estimator = DedupEstimator(

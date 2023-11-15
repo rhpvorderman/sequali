@@ -3209,13 +3209,12 @@ static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
 */
 
 #define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
-#define UNIQUE_SEQUENCE_LENGTH 50
-#define DEFAULT_UNIQUE_K 31
+#define DEFAULT_FRAGMENT_LENGTH 31
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
 
 typedef struct _SequenceDuplicationStruct {
     PyObject_HEAD 
-    uint8_t k;
+    size_t fragment_length;
     uint64_t number_of_sequences;
     uint64_t sampled_sequences;
     uint64_t hash_table_size;
@@ -3239,12 +3238,13 @@ static PyObject *
 SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
-    Py_ssize_t k = DEFAULT_UNIQUE_K;
+    Py_ssize_t fragment_length = DEFAULT_FRAGMENT_LENGTH;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
-    static char *kwargnames[] = {"max_unique_fragments", "k", "sample_every", NULL};
+    static char *kwargnames[] = {"max_unique_fragments", "fragment_length", 
+                                 "sample_every", NULL};
     static char *format = "|nnn:SequenceDuplication";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &max_unique_fragments, &k, &sample_every)) {
+            &max_unique_fragments, &fragment_length, &sample_every)) {
         return NULL;
     }
     if (max_unique_fragments < 1) {
@@ -3254,11 +3254,11 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             max_unique_fragments);
         return NULL;
     }
-    if ((k & 1) == 0 || k > 31 || k < 3) {
+    if ((fragment_length & 1) == 0 || fragment_length > 31 || fragment_length < 3) {
         PyErr_Format(
             PyExc_ValueError,
-            "k must be between 3 and 31 and be an uneven number, got: %zd", 
-            k
+            "fragment_length must be between 3 and 31 and be an uneven number, got: %zd", 
+            fragment_length
         );
         return NULL;
     }
@@ -3294,7 +3294,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->max_unique_fragments = max_unique_fragments;
     self->hash_table_size = hash_table_size;
     self->total_fragments = 0;
-    self->k = k;
+    self->fragment_length = fragment_length;
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
@@ -3338,18 +3338,18 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     self->sampled_sequences += 1;
     self->number_of_sequences += 1;
     Py_ssize_t sequence_length = meta->sequence_length;
-    Py_ssize_t k = self->k;
+    Py_ssize_t fragment_length = self->fragment_length;
     size_t fragments = 0;
-    if (sequence_length < k) {
+    if (sequence_length < fragment_length) {
         return 0;
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t mid_point = (sequence_length + 1) / 2;
     bool warn_unknown = false;
     Py_ssize_t i;
-    // Save all subsequences of length k starting from 0 and up to the midpoint.
-    for (i = 0; i < mid_point; i += k) {
-        int64_t kmer = sequence_to_canonical_kmer(sequence + i, k);
+    // Save all fragments starting from 0 and up to the midpoint.
+    for (i = 0; i < mid_point; i += fragment_length) {
+        int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
                 warn_unknown = true;
@@ -3364,8 +3364,8 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     // Save all subsequences of length k starting from the end until the point 
     // where the previous loop has saved the sequences. There might be slight 
     // overlap in the middle..
-    for (i = sequence_length; i > saved_up_to; i -= k) {
-        int64_t kmer = sequence_to_canonical_kmer(sequence + sequence_length - k, k);
+    for (i = sequence_length; i > saved_up_to; i -= fragment_length) {
+        int64_t kmer = sequence_to_canonical_kmer(sequence + sequence_length - fragment_length, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
                 warn_unknown = true;
@@ -3381,7 +3381,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             PyExc_UserWarning, 
             1,
             "Sequence contains a chacter that is not A, C, G, T or N: %R", 
-            PyUnicode_DecodeASCII((char *)sequence + i, k, NULL)
+            PyUnicode_DecodeASCII((char *)sequence + i, fragment_length, NULL)
         );
     }
     self->total_fragments += fragments;
@@ -3466,7 +3466,7 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
     uint64_t *hashes = self->hashes;
     uint32_t *counts = self->counts;
     uint64_t hash_table_size = self->hash_table_size;
-    Py_ssize_t k = self->k;
+    Py_ssize_t fragment_length = self->fragment_length;
     for (size_t i=0; i < hash_table_size; i+=1) {
         uint64_t entry_hash = hashes[i];
         if  (entry_hash == 0) {
@@ -3476,12 +3476,12 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self, PyObject *Py_UNUS
         if (count_obj == NULL) {
             goto error;
         }
-        PyObject *key = PyUnicode_New(k, 127);
+        PyObject *key = PyUnicode_New(fragment_length, 127);
         if (key == NULL) {
             goto error;
         }
         uint64_t kmer = wanghash64_inverse(entry_hash);
-        kmer_to_sequence(kmer, k, PyUnicode_DATA(key));
+        kmer_to_sequence(kmer, fragment_length, PyUnicode_DATA(key));
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
@@ -3575,17 +3575,17 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     uint64_t *hashes = self->hashes;
     uint32_t *counts = self->counts;
     size_t hash_table_size = self->hash_table_size;
-    Py_ssize_t k = self->k;
+    Py_ssize_t fragment_length = self->fragment_length;
     for (size_t i=0; i < hash_table_size; i+=1) {
         uint32_t count = counts[i];
         if (count >= minimum_hits) {
             uint64_t entry_hash = hashes[i];
             uint64_t kmer = wanghash64_inverse(entry_hash);
-            PyObject *sequence_obj = PyUnicode_New(k, 127);
+            PyObject *sequence_obj = PyUnicode_New(fragment_length, 127);
             if (sequence_obj == NULL) {
                 goto error;
             }
-            kmer_to_sequence(kmer, k, PyUnicode_DATA(sequence_obj));
+            kmer_to_sequence(kmer, fragment_length, PyUnicode_DATA(sequence_obj));
             PyObject *entry_tuple = Py_BuildValue(
                 "(KdN)",
                 count,
@@ -3682,7 +3682,7 @@ static PyMemberDef SequenceDuplication_members[] = {
       offsetof(SequenceDuplication, max_unique_fragments), READONLY,
       "The maximum number of unique sequences stored in the object."
     }, 
-    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, k), READONLY,
+    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, fragment_length), READONLY,
      "The length of the sampled sequences"},
     {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every), 
      READONLY, "One in this many reads is sampled"},
@@ -4501,7 +4501,7 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
-    PyModule_AddIntMacro(m, DEFAULT_UNIQUE_K);
+    PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
     return m;
 }
