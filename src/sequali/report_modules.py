@@ -438,18 +438,16 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                         accumulated_errors += (remaining_threshold *
                                                PHRED_INDEX_TO_ERROR_RATE[phred_index])
                         accumulated_count += remaining_threshold
-                        if accumulated_count == 0 or total == accumulated_count:
-                            # Prevent divide by zero
-                            continue
-                        percentile_tables[thresh_index][cat_index] = (
-                            -10 * math.log10(
-                                accumulated_errors / accumulated_count))
-                        reversed_percentile_tables[thresh_index][cat_index] = (
-                            -10 * math.log10(
-                                (total_error_rate - accumulated_errors) /
-                                (total - accumulated_count)
+                        if accumulated_count > 0:
+                            percentile_tables[thresh_index][cat_index] = (
+                                -10 * math.log10(
+                                    accumulated_errors / accumulated_count))
+                            reversed_percentile_tables[thresh_index][cat_index] = (
+                                -10 * math.log10(
+                                    (total_error_rate - accumulated_errors) /
+                                    (total - accumulated_count)
+                                )
                             )
-                        )
                         count -= remaining_threshold
                         try:
                             thresh_index, current_threshold = next(threshold_iter)
