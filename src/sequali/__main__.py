@@ -71,7 +71,7 @@ def argument_parser() -> argparse.ArgumentParser:
                              "considered overrepresented, regardless of the "
                              "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
-    parser.add_argument("--overrepresentation-fragment-store-size",
+    parser.add_argument("--overrepresentation-max-unique-fragments",
                         type=int,
                         metavar="N",
                         default=DEFAULT_MAX_UNIQUE_FRAGMENTS,
@@ -120,7 +120,7 @@ def main() -> None:
     metrics = QCMetrics()
     per_tile_quality = PerTileQuality()
     sequence_duplication = SequenceDuplication(
-        args.overrepresentation_fragment_store_size,
+        args.overrepresentation_max_unique_fragments,
         k=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
     )

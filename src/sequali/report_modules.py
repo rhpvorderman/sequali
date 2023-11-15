@@ -1042,7 +1042,7 @@ class OverRepresentedSequence(typing.NamedTuple):
 @dataclasses.dataclass
 class OverRepresentedSequences(ReportModule):
     overrepresented_sequences: List[OverRepresentedSequence]
-    fragment_store_size: int
+    max_unique_fragments: int
     collected_fragments: int
     sample_every: int
     sequence_length: int
@@ -1053,7 +1053,7 @@ class OverRepresentedSequences(ReportModule):
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
                 [x._asdict() for x in self.overrepresented_sequences],
-                "fragment_store_size": self.fragment_store_size,
+                "max_unique_fragments": self.max_unique_fragments,
                 "sample_every": self.sample_every,
                 "collected_fragments": self.collected_fragments,
                 "sequence_length": self.sequence_length,
@@ -1065,7 +1065,7 @@ class OverRepresentedSequences(ReportModule):
         overrepresented_sequences = d["overrepresented_sequences"]
         return cls([OverRepresentedSequence(**d)
                    for d in overrepresented_sequences],
-                   fragment_store_size=d["fragment_store_size"],
+                   max_unique_fragments=d["max_unique_fragments"],
                    collected_fragments=d["collected_fragments"],
                    sample_every=d["sample_every"],
                    sequence_length=d["sequence_length"],
@@ -1083,8 +1083,8 @@ class OverRepresentedSequences(ReportModule):
             f"""
             <p class="explanation">A subsample of the sequences is analysed
             Sequences are cut into fragments of up to 31&#8239;bp. Fragments
-            are stored and counted. When the fragment store is full, only
-            sequences that are already in the fragment store are counted. The
+            are stored and counted. When the maximum amount of unique fragments
+            is reached, only sequences that are already stored are counted. The
             rest of the sequences is ignored.
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
@@ -1113,8 +1113,8 @@ class OverRepresentedSequences(ReportModule):
                 <td style="text-align:right;">{self.collected_fragments:,}</td>
             </tr>
             <tr>
-                <td>Fragment store size</td>
-                <td style="text-align:right;">{self.fragment_store_size:,}</td>
+                <td>Maximum unique fragments</td>
+                <td style="text-align:right;">{self.max_unique_fragments:,}</td>
             </tr>
             <tr>
                 <td>Fragment size</td>
