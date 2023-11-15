@@ -178,10 +178,14 @@ def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
     # labeling so only use the first number. The values will be labelled
     # separately.
     simple_x_labels = [label.split("-")[0] for label in x_labels]
+    if simple_x_labels and len(simple_x_labels[-1]) > 4:
+        rotation = 30
+    else:
+        rotation = 0
     return dict(
         x_labels=simple_x_labels,
         x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else 0,
+        x_label_rotation=rotation,
         show_minor_x_labels=False
     )
 
@@ -768,7 +772,7 @@ class AdapterContent(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         adapter_content = [(label, content) for label, content in
-                           self.adapter_content if max(content) >= 0.1]
+                           self.adapter_content if content and max(content) >= 0.1]
         adapter_content.sort(key=lambda x: max(x[1]),
                              reverse=True)
         for label, content in adapter_content:
@@ -1005,7 +1009,7 @@ class DuplicationCounts(ReportModule):
                 count_array[50_001] += count * duplication
             else:
                 count_array[duplication] = count * duplication
-        total = sum(count_array)
+        total = max(sum(count_array), 1)
         aggregated_fractions = [
             sum(count_array[slc]) / total for slc in named_slices.values()
         ]
@@ -1017,7 +1021,7 @@ class DuplicationCounts(ReportModule):
                               for duplicates, count in
                               duplication_counts.items())
         unique_sequences = sum(duplication_counts.values())
-        return unique_sequences / total_sequences
+        return unique_sequences / max(total_sequences, 1)
 
     @classmethod
     def from_dedup_estimator(cls, dedup_est: DedupEstimator):
@@ -1227,7 +1231,7 @@ class NanoStatsReport(ReportModule):
         time_slots = 200
         time_per_slot = duration / time_slots
         time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
-        time_interval = time_interval_minutes * 60
+        time_interval = max(time_interval_minutes * 60, 1)
         time_ranges = [(start, start + time_interval)
                        for start in range(0, duration, time_interval)]
         time_slots = len(time_ranges)
