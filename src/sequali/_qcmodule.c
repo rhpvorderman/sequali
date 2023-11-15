@@ -2576,10 +2576,6 @@ PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 static PyObject *
 AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 {
-    if (self->number_of_sequences < 1) {
-        PyErr_SetString(PyExc_ValueError, "No sequences were counted yet.");
-        return NULL;
-    }
     PyObject *counts_list = PyList_New(self->number_of_adapters);
     if (counts_list == NULL) {
         PyErr_NoMemory();
