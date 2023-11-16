@@ -9,6 +9,7 @@ Changelog
 
 version 0.3.0-dev
 -----------------
++ Fix several divide by 0 errors that occurred on empty reads and empty files.
 + Change default fragment length from 31 to 21 which increases the sensitivity
   of the overrepresented sequences module.
 
