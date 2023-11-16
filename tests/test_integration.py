@@ -96,3 +96,16 @@ def test_dorado_nanopore_bam(tmp_path):
     fastq_json = tmp_path / "dorado_nanopore_100reads.bam.json"
     result = json.loads(fastq_json.read_text())
     assert result["summary"]["total_reads"] == 100
+
+
+def test_single_nuc(tmp_path):
+    single_nuc_fastq = (TEST_DATA / "single_nuc.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(single_nuc_fastq)]
+    main()
+    single_nuc_fastq_json = tmp_path / "single_nuc.fastq.json"
+    assert single_nuc_fastq_json.exists()
+    result = json.loads(single_nuc_fastq_json.read_text())
+    assert result["summary"]["maximum_length"] == 1
+    assert result["summary"]["minimum_length"] == 1
+    assert result["summary"]["total_gc_bases"] == 0
+    assert result["summary"]["total_bases"] == 1
