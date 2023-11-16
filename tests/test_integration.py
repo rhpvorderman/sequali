@@ -74,3 +74,14 @@ def test_adapters_only(tmp_path):
         # Illumina adapter should be in the database. All kmers should match.
         assert d["most_matches"] == d["max_matches"]
         assert "Illumina" in d["best_match"]
+
+
+def test_nanopore_reads(tmp_path):
+    # Nanopore reads from GM24385_1.fastq.gz from GIAB data.
+    # https://github.com/genome-in-a-bottle/giab_data_indexes/blob/ade38024efc7f3db5be27ee270e4fb9537a97a1a/AshkenazimTrio/sequence.index.AJtrio_UCSC_ONT_UL_Promethion_03312019.HG002#L2
+    nanopore_fastq = TEST_DATA / "100_nanopore_reads.fastq.gz"
+    sys.argv = ["", "--dir", str(tmp_path), str(nanopore_fastq)]
+    main()
+    fastq_json = tmp_path / "100_nanopore_reads.fastq.gz.json"
+    result = json.loads(fastq_json.read_text())
+    assert result["summary"]["total_reads"] == 100
