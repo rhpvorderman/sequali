@@ -85,3 +85,14 @@ def test_nanopore_reads(tmp_path):
     fastq_json = tmp_path / "100_nanopore_reads.fastq.gz.json"
     result = json.loads(fastq_json.read_text())
     assert result["summary"]["total_reads"] == 100
+
+
+def test_dorado_nanopore_bam(tmp_path):
+    # Nanopore reads from GM24385_1.fastq.gz from GIAB data.
+    # https://github.com/genome-in-a-bottle/giab_data_indexes/blob/ade38024efc7f3db5be27ee270e4fb9537a97a1a/AshkenazimTrio/sequence.index.AJtrio_UCSC_ONT_UL_Promethion_03312019.HG002#L2
+    nanopore_bam = TEST_DATA / "dorado_nanopore_100reads.bam"
+    sys.argv = ["", "--threads", "1", "--dir", str(tmp_path), str(nanopore_bam)]
+    main()
+    fastq_json = tmp_path / "dorado_nanopore_100reads.bam.json"
+    result = json.loads(fastq_json.read_text())
+    assert result["summary"]["total_reads"] == 100
