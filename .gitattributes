@@ -1,1 +1,1 @@
-tests/data/simple.fastq eol=lf
+tests/data/*.fastq eol=lf
