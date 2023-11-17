@@ -381,6 +381,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             x_title="position",
             y_title="phred score",
             y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
             style=pygal.style.DefaultStyle(
                 colors=["#000000"] * 12,
                 font_family="sans-serif",
