@@ -11,15 +11,14 @@ import argparse
 import math
 
 
-def poisson(rate, length, events):
+def binominal(rate, length, events):
     """
     Calulate the probability of a given number of events occuring given the
     rate and an interval.
 
     See: https://en.wikipedia.org/wiki/Poisson_distribution
     """
-    return ((rate * length) ** events * math.exp(-rate * length)) / (
-        math.factorial(events))
+    return math.comb(length, events) * rate ** events * (1 - rate) ** (length - events)
 
 
 def chance_to_match(length, error_rate, allowed_errors):
@@ -31,7 +30,7 @@ def chance_to_match(length, error_rate, allowed_errors):
         raise ValueError(
             f"allowed_errors should be a positive number, got {allowed_errors}")
     return sum(
-        poisson(error_rate, length, n) for n in range(allowed_errors + 1)
+        binominal(error_rate, length, n) for n in range(allowed_errors + 1)
     )
 
 
