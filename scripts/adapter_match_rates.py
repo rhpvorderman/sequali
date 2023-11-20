@@ -65,23 +65,30 @@ def main():
         (32, 6),
         (32, 8),
         (32, 10),
+        (64, 10),
+        (64, 16),
+        (64, 20),
+        (64, 22),
+        (64, 23),
+        (63, 24),
     ]
     error_rates = (0.001, 0.01, 0.05, 0.1, 0.2, 0.4, 0.5)
     lengths = (151, 8000, 20_000)
-    print("length\terrors\t" + "\t".join(f"{e:>.4f}" for e in error_rates) +
+    print("probe\t\tProbe detection rate for amount of sequencing errors\tFalse positive rates for read length")
+    print("length\terrors\t" + "\t".join(f"{e:>7.2%}" for e in error_rates) +
           "\t" + "\t".join(f"{l:>7,}" for l in lengths))
 
     for probe_length, allowed_errors in lengths_and_errors:
-        false_negative_rates = "\t".join(
-            f"{1 - p:>.4f}"
+        detection_rates = "\t".join(
+            f"{p:>7.2%}"
             for p in
             match_probabilities(error_rates, probe_length, allowed_errors)
         )
         false_positive_rates = "\t".join(
-            f"{false_positive_rate(probe_length, l, allowed_errors):>.5f}"
+            f"{false_positive_rate(probe_length, l, allowed_errors):>7.3%}"
             for l in lengths
         )
-        print(f"{probe_length}\t{allowed_errors}\t{false_negative_rates}\t{false_positive_rates}")
+        print(f"{probe_length}\t{allowed_errors}\t{detection_rates}\t{false_positive_rates}")
 
 
 if __name__ == "__main__":
