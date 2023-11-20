@@ -59,11 +59,11 @@ def main():
     length = args.length
     allowed_errors = args.allowed_errors
     print(f"Length: {length}. Allowed errors: {allowed_errors}.")
-    error_rates = (0.001, 0.01, 0.1, 0.2, 0.4, 0.5)
-    print("\nChance of matching")
+    error_rates = (0.001, 0.01, 0.05, 0.1, 0.2, 0.4, 0.5)
+    print("\nFalse negative rate")
     print("Error rate:     \t" + "\t".join(f"{e:.4f}" for e in error_rates))
-    print("Chance of match:\t" + "\t".join(
-        f"{p:.4f}"
+    print("False negative rate:\t" + "\t".join(
+        f"{1-p:.4f}"
         for p in match_probabilities(error_rates, args.length, args.allowed_errors)))
     lengths = (151, 8000, 20_000)
     print("\nFalse positive rates")
