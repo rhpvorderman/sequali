@@ -52,25 +52,36 @@ def false_positive_rate(probe_length, sequence_length, allowed_errors):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("length", type=int)
-    parser.add_argument("allowed_errors", type=int)
-    args = parser.parse_args()
-    length = args.length
-    allowed_errors = args.allowed_errors
-    print(f"Length: {length}. Allowed errors: {allowed_errors}.")
+    lengths_and_errors = [
+        (12, 0),
+        (12, 1),
+        (16, 0),
+        (16, 1),
+        (21, 1),
+        (21, 2),
+        (21, 3),
+        (21, 4),
+        (32, 4),
+        (32, 6),
+        (32, 8),
+        (32, 10),
+    ]
     error_rates = (0.001, 0.01, 0.05, 0.1, 0.2, 0.4, 0.5)
-    print("\nFalse negative rate")
-    print("Error rate:     \t" + "\t".join(f"{e:.4f}" for e in error_rates))
-    print("False negative rate:\t" + "\t".join(
-        f"{1-p:.4f}"
-        for p in match_probabilities(error_rates, args.length, args.allowed_errors)))
     lengths = (151, 8000, 20_000)
-    print("\nFalse positive rates")
-    print("Length:              \t" + "\t".join(str(l) for l in lengths))
-    print("False positive rate:\t" + "\t".join(
-        f"{false_positive_rate(args.length, l, args.allowed_errors):.5f}"
-        for l in lengths))
+    print("length\terrors\t" + "\t".join(f"{e:.4f}" for e in error_rates) +
+          "\t" + "\t".join(str(l) for l in lengths))
+
+    for probe_length, allowed_errors in lengths_and_errors:
+        false_negative_rates = "\t".join(
+            f"{1 - p:.4f}"
+            for p in
+            match_probabilities(error_rates, probe_length, allowed_errors)
+        )
+        false_positive_rates = "\t".join(
+            f"{false_positive_rate(probe_length, l, allowed_errors):.5f}"
+            for l in lengths
+        )
+        print(f"{probe_length}\t{allowed_errors}\t{false_negative_rates}\t{false_positive_rates}")
 
 
 if __name__ == "__main__":
