@@ -68,17 +68,17 @@ def main():
     ]
     error_rates = (0.001, 0.01, 0.05, 0.1, 0.2, 0.4, 0.5)
     lengths = (151, 8000, 20_000)
-    print("length\terrors\t" + "\t".join(f"{e:.4f}" for e in error_rates) +
-          "\t" + "\t".join(str(l) for l in lengths))
+    print("length\terrors\t" + "\t".join(f"{e:>.4f}" for e in error_rates) +
+          "\t" + "\t".join(f"{l:>7,}" for l in lengths))
 
     for probe_length, allowed_errors in lengths_and_errors:
         false_negative_rates = "\t".join(
-            f"{1 - p:.4f}"
+            f"{1 - p:>.4f}"
             for p in
             match_probabilities(error_rates, probe_length, allowed_errors)
         )
         false_positive_rates = "\t".join(
-            f"{false_positive_rate(probe_length, l, allowed_errors):.5f}"
+            f"{false_positive_rate(probe_length, l, allowed_errors):>.5f}"
             for l in lengths
         )
         print(f"{probe_length}\t{allowed_errors}\t{false_negative_rates}\t{false_positive_rates}")
