@@ -49,7 +49,7 @@ setup(
     python_requires=">=3.8",  # SupportsIndex requires 3.8
     install_requires=[
         "xopen>=1.8.0",
-        "pygal>=3.0.0",
+        "pygal>=3.0.3",
         "tqdm"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
