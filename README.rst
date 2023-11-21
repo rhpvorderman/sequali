@@ -139,8 +139,8 @@ Acknowledgements
   a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
-+ Marcel Martin for providing extensive feedback on the program's report and
-  command line.
++ Marcel Martin for providing extensive feedback on every aspect of the
+  program.
 
 License
 =======
