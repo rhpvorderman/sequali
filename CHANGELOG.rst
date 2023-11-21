@@ -9,6 +9,11 @@ Changelog
 
 version 0.3.0-dev
 -----------------
++ Use different adapter probes for nanopore adapters, such that the probes
+  do occur at some distance from the strand extremities. The start and end
+  of nanopore sequences are prone to errors and this hindered adapter
+  detection.
++ Distinguish between top and bottom adapters for the adapter occurrence plot.
 + Update pygal to 3.0.3 and add add hidden importlib-metadata dependency for
   pygal in the dependencies.
 + Fix several divide by 0 errors that occurred on empty reads and empty files.
