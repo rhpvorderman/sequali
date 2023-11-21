@@ -9,6 +9,8 @@ Changelog
 
 version 0.3.0-dev
 -----------------
++ Update pygal to 3.0.3 and add add hidden importlib-metadata dependency for
+  pygal in the dependencies.
 + Fix several divide by 0 errors that occurred on empty reads and empty files.
 + Change default fragment length from 31 to 21 which increases the sensitivity
   of the overrepresented sequences module.
