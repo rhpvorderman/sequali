@@ -4,14 +4,15 @@
 # 64. For this reason length 12 is chosen, so we can fit 5 adapters in a
 # single word.
 
-Illumina Universal Adapter	illumina	AGATCGGAAGAG
-Illumina Small RNA 3' adapter	illumina	TGGAATTCTCGG
-Illumina Small RNA 5' adapter	illumina	GATCGTCGGACT
-Nextera Transposase Sequence	illumina	CTGTCTCTTATA
-PolyG	illumina	GGGGGGGGGGGG
+#Name	Sequencing Technology	Probe sequence	sequence position
+Illumina Universal Adapter	illumina	AGATCGGAAGAG	end
+Illumina Small RNA 3' adapter	illumina	TGGAATTCTCGG	end
+Illumina Small RNA 5' adapter	illumina	GATCGTCGGACT	end
+Nextera Transposase Sequence	illumina	CTGTCTCTTATA	end
+PolyG	illumina	GGGGGGGGGGGG	end
 # PolyA is a very common subsequence in the human genome and 
 # as such should only be used in short read sequencing.
-PolyA	illumina	AAAAAAAAAAAA
+PolyA	illumina	AAAAAAAAAAAA	end
 
 
 # Nanopore sequences can be found by reading through the documentation here:
@@ -32,23 +33,23 @@ PolyA	illumina	AAAAAAAAAAAA
 # expensive. See https://github.com/rhpvorderman/sequali/issues/69
 
 # Ligation kit and adapter mix are indistinguishable
-Oxford nanopore ligation kit or adapter mix, top strand	nanopore	TTACGTATTGCT
-Oxford nanopore Adapter Mix (AMX) and ligation kit, bottom strand 	nanopore	GCAATACGTAAC
+Oxford nanopore ligation kit or adapter mix, top strand	nanopore	TTACGTATTGCT	start
+Oxford nanopore Adapter Mix (AMX) and ligation kit, bottom strand 	nanopore	GCAATACGTAAC	end
 
-Oxford nanopore cDNA RT Adapter (CRT)	nanopore	GCGACAGGCAAG
-Oxford nanopore RT Adapter (RTA), top strand	nanopore	GGTAGTAGGTTC
+Oxford nanopore cDNA RT Adapter (CRT)	nanopore	GCGACAGGCAAG	start
+Oxford nanopore RT Adapter (RTA), top strand	nanopore	GGTAGTAGGTTC	start
 
-Oxford nanopore RT Adapter (RTA), and RNA Adapter Mix (RMX), bottom strand	nanopore	GAGGCGAGCGGT
-Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	CAAGATACGCAC
+Oxford nanopore RT Adapter (RTA), and RNA Adapter Mix (RMX), bottom strand	nanopore	GAGGCGAGCGGT	end
+Oxford nanopore RNA Adapter Mix (RMX); top strand	nanopore	CAAGATACGCAC	start
 
 # cDNA primer, forward sequence probe is not entirely at the end to not match
 # other sequences accidentally.
-Oxford nanpore cDNA primer, forward sequence	nanopore	GTGACTTGCCTG
+Oxford nanpore cDNA primer, forward sequence	nanopore	GTGACTTGCCTG	start
 # The first parts of forward and reverse sequence are the same.
-Oxford nanopore CDNA primer, forward and reverse sequence	nanopore	ATCGCCTACCGT
+Oxford nanopore CDNA primer, forward and reverse sequence	nanopore	ATCGCCTACCGT	end
 
-Oxford nanopore VN primer	nanopore	TCTATCTTCTTT
+Oxford nanopore VN primer	nanopore	TCTATCTTCTTT	end
 
-Oxford nanopore RT Primer (RTP)	nanopore	TCTTCAGAGGAG
-Oford nanopore Strand Switching Primer (SSP)	nanopore	GATATTGCTGGG
-Oxford nanopore Strand Switching Primer II (SSPII)	nanopore	TGATATTGCTTT
+Oxford nanopore RT Primer (RTP)	nanopore	TCTTCAGAGGAG	start
+Oford nanopore Strand Switching Primer (SSP)	nanopore	GATATTGCTGGG	start
+Oxford nanopore Strand Switching Primer II (SSPII)	nanopore	TGATATTGCTTT	start

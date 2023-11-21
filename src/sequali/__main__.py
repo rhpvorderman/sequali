@@ -158,7 +158,7 @@ def main() -> None:
         sequence_duplication,
         dedup_estimator,
         nanostats,
-        adapter_names=list(adapter.name for adapter in adapters),
+        adapters=adapters,
         fraction_threshold=fraction_threshold,
         min_threshold=min_threshold,
         max_threshold=max_threshold)

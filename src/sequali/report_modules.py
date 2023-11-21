@@ -36,6 +36,7 @@ from ._qc import A, C, G, N, T
 from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
+from .adapters import Adapter
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
@@ -803,19 +804,33 @@ class AdapterContent(ReportModule):
         """
 
     @classmethod
-    def from_adapter_counter_names_and_ranges(
-            cls, adapter_counter: AdapterCounter, adapter_names: Sequence[str],
+    def from_adapter_counter_adapters_and_ranges(
+            cls, adapter_counter: AdapterCounter, adapters: Sequence[Adapter],
             data_ranges: Sequence[Tuple[int, int]]):
-        all_adapters = []
-        total_sequences = adapter_counter.number_of_sequences
-        for adapter, countarray in adapter_counter.get_counts():
-            adapter_counts = [sum(countarray[start:stop])
-                              for start, stop in data_ranges]
+
+        def accumulate_counts(counts: Iterable[int]) -> List[int]:
             total = 0
             accumulated_counts = []
-            for count in adapter_counts:
+            for count in counts:
                 total += count
                 accumulated_counts.append(total)
+            return accumulated_counts
+
+        all_adapters = []
+        sequence_to_adapter = {adapter.sequence: adapter for adapter in adapters}
+        adapter_names = [adapter.name for adapter in adapters]
+        total_sequences = adapter_counter.number_of_sequences
+        for adapter_sequence, countarray in adapter_counter.get_counts():
+            adapter = sequence_to_adapter[adapter_sequence]
+            adapter_counts = [sum(countarray[start:stop])
+                              for start, stop in data_ranges]
+            if adapter.sequence_position == "end":
+                accumulated_counts = accumulate_counts(adapter_counts)
+            else:
+                # Reverse the counts, accumulate them and reverse again for
+                # adapters at the front.
+                accumulated_counts = list(reversed(
+                    accumulate_counts(reversed(adapter_counts))))
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
         return cls(stringify_ranges(data_ranges),
@@ -1548,7 +1563,7 @@ def calculate_stats(
         sequence_duplication: SequenceDuplication,
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
-        adapter_names: List[str],
+        adapters: List[Adapter],
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
@@ -1561,8 +1576,8 @@ def calculate_stats(
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
         *qc_metrics_modules(metrics, data_ranges),
-        AdapterContent.from_adapter_counter_names_and_ranges(
-            adapter_counter, adapter_names, data_ranges),
+        AdapterContent.from_adapter_counter_adapters_and_ranges(
+            adapter_counter, adapters, data_ranges),
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality, data_ranges),
         DuplicationCounts.from_dedup_estimator(dedup_estimator),

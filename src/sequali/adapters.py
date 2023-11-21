@@ -16,7 +16,7 @@
 
 import os
 import typing
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 
 DEFAULT_ADAPTER_FILE = os.path.join(os.path.dirname(__file__),
                                     "adapters", "adapter_list.tsv")
@@ -26,6 +26,7 @@ class Adapter(typing.NamedTuple):
     name: str
     sequencing_technology: str
     sequence: str
+    sequence_position: Literal["start", "end"]
 
 
 def adapters_from_file(adapter_file: str,
@@ -38,8 +39,10 @@ def adapters_from_file(adapter_file: str,
                 continue  # ignore empty lines
             if line.startswith("#"):
                 continue  # Use # as a comment character
-            name, seqtech, sequence = line.split("\t")
+            name, seqtech, sequence, position = line.split("\t")
+            if position not in ("start", "end"):
+                raise ValueError(f"position must be start or end, got '{position}'.")
             if (sequencing_technology is None or
                     (seqtech == sequencing_technology or
                      seqtech == "all")):
-                yield Adapter(name, seqtech, sequence)
+                yield Adapter(name, seqtech, sequence, position)  # type: ignore
