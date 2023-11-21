@@ -36,7 +36,7 @@ PolyA	illumina	AAAAAAAAAAAA	end
 Oxford nanopore ligation kit or adapter mix, top strand	nanopore	TTACGTATTGCT	start
 Oxford nanopore Adapter Mix (AMX) and ligation kit, bottom strand 	nanopore	GCAATACGTAAC	end
 
-Oxford nanopore cDNA RT Adapter (CRT)	nanopore	GCGACAGGCAAG	start
+Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC	end
 Oxford nanopore RT Adapter (RTA), top strand	nanopore	GGTAGTAGGTTC	start
 
 Oxford nanopore RT Adapter (RTA), and RNA Adapter Mix (RMX), bottom strand	nanopore	GAGGCGAGCGGT	end
