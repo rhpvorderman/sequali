@@ -50,6 +50,7 @@ setup(
     install_requires=[
         "xopen>=1.8.0",
         "pygal>=3.0.3",
+        "importlib-metadata",  # Hidden dependency for pygal.
         "tqdm"
     ],
     package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
