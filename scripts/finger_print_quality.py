@@ -15,7 +15,7 @@ def fingerprint_sequence_original(sequence: str):
 if __name__ == "__main__":
     expected_errors = [0 for _ in range(32 + 1)]
     fastq = sys.argv[1]
-    with dnaio.open(fastq, mode="r") as reader:
+    with dnaio.open(fastq, mode="r", open_threads=1) as reader:
         for read in reader:  # type: dnaio.SequenceRecord
             fingerprint_quals = fingerprint_sequence_original(read.qualities)
             prob = 0.0
