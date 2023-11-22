@@ -9,6 +9,14 @@ Changelog
 
 version 0.3.0-dev
 -----------------
++ Fingerprint using offsets of 64 bases from both ends of the sequence.
+  On nanopore sequencing this prevents taking into account adapter sequences
+  for the duplication estimate. It also prevents taking sequences from the
+  error-prone regions. The fingerprint consists of two 8 bp sequences rather
+  than the two 16 bp sequences that were used before. This made the fingerprint
+  less prone to sequencing errors, especially in long read sequencing
+  technologies. As a result the duplication estimate on nanopore reads
+  should be more accurate.
 + Added a small header with information on where to submit bug reports.
 + Use different adapter probes for nanopore adapters, such that the probes
   do occur at some distance from the strand extremities. The start and end
