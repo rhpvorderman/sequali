@@ -12,6 +12,17 @@ def fingerprint_sequence_original(sequence: str):
     return sequence[:16] + sequence[-16:]
 
 
+def new_fingerprint(sequence: str):
+    if len(sequence) < 32:
+        return sequence
+    elif len(sequence) >= 96:
+        return sequence[32:48] + sequence[-48:-32]
+    else:
+        remainder = len(sequence) - 32
+        offset = remainder // 2
+        return sequence[offset: offset + 16] + sequence[-(offset + 16):-offset]
+
+
 if __name__ == "__main__":
     expected_errors = [0 for _ in range(32 + 1)]
     fastq = sys.argv[1]
