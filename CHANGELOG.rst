@@ -14,8 +14,7 @@ version 0.3.0-dev
   of nanopore sequences are prone to errors and this hindered adapter
   detection.
 + Distinguish between top and bottom adapters for the adapter occurrence plot.
-+ Update pygal to 3.0.3 and add add hidden importlib-metadata dependency for
-  pygal in the dependencies.
++ Update pygal to 3.0.4 to prevent installation errors on Python 3.12.
 + Fix several divide by 0 errors that occurred on empty reads and empty files.
 + Change default fragment length from 31 to 21 which increases the sensitivity
   of the overrepresented sequences module.
