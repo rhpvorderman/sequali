@@ -1495,8 +1495,8 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <header><p>
-                Report created by sequali. Please visit the 
-                <a href="https://github.com/rhpvorderman/sequali">homepage</a> 
+                Report created by sequali. Please visit the
+                <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
             <h1>sequali report</h1>
