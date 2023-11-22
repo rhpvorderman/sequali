@@ -7,7 +7,7 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.3.0-dev
+version 0.3.0
 -----------------
 + Fingerprint using offsets of 64 bases from both ends of the sequence.
   On nanopore sequencing this prevents taking into account adapter sequences
