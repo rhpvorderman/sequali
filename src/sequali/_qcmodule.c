@@ -4259,11 +4259,16 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
         info->start_time = meta->start_time;
     }
     else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length, info) != 0) {
+        PyObject *header_obj = PyUnicode_DecodeASCII(
+            (const char *)meta->record_start + 1, meta->name_length, NULL);
+        if (header_obj == NULL) {
+            return -1;
+        }
         self->skipped = true;
         self->skipped_reason = PyUnicode_FromFormat(
             "Can not parse header: %R",
-            PyUnicode_DecodeASCII((const char *)meta->record_start + 1, 
-                meta->name_length, NULL));
+            header_obj);
+        Py_DECREF(header_obj);
         return 0;
     }
     info->cumulative_error_rate = meta->accumulated_error_rate;
