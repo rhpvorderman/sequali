@@ -978,11 +978,21 @@ class DuplicationCounts(ReportModule):
 
     def to_html(self):
         first_part = f"""
-        <p class="explanation">All sequences are fingerprinted based on the
-        first 16&#8239;bp, the last 16&#8239;bp
-        and the length integer divided by 64. This means that for long
-        read sequences, small indel sequencing errors will most likely not
-        affect the fingerprint. A subsample of the fingerprints is stored to
+        <p class="explanation">
+        Every sequence is fingerprinted by skipping the first 64 bases and
+        taking the first 8 bases after that, as well as getting the 
+        8 bases before the last 64 bases. This gives a small 16&#8239;bp 
+        sequence from two 8&#8239;bp stubs from the beginning and end. 
+        This sequence is hashed using the length divided by 64 as a seed, 
+        which results in the final fingerprint.
+        This ensures that sequences that have very different lengths get 
+        different fingerprints. The 64&#8239;bp offset ensures that sequencing adapters
+        at the beginning or end of the sequence are not taken into account. On
+        short sequences, the offsets are proportionally shrunk.
+        The 16&#8239;bp length of the sequence used as base for the hash limits
+        the effect of sequencing errors, especially on long-read sequencing 
+        technologies.
+        A subsample of the fingerprints is stored to
         estimate the duplication rate. See,
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
         the paper describing the methodology</a>.</p>
