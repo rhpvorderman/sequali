@@ -3835,7 +3835,7 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
         uint64_t seed = sequence_length >> 6;
         uint8_t fingerprint[FINGERPRINT_LENGTH];
         size_t remainder = sequence_length - FINGERPRINT_LENGTH;
-        size_t offset = Py_MAX(remainder / 2, FINGERPRINT_MAX_OFFSET);
+        size_t offset = Py_MIN(remainder / 2, FINGERPRINT_MAX_OFFSET);
         memcpy(fingerprint, sequence + offset, FINGERPRINT_LENGTH / 2);
         memcpy(fingerprint + (FINGERPRINT_LENGTH / 2), 
                sequence + sequence_length - (offset + (FINGERPRINT_LENGTH / 2)), 
