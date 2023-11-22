@@ -1494,6 +1494,11 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
+            <header><p>
+                Report created by sequali. Please visit the 
+                <a href="https://github.com/rhpvorderman/sequali">homepage</a> 
+                for bug reports and feature requests.
+            </p></header>
             <h1>sequali report</h1>
             <p>Filename: <code>{filename}</code></p>
             <p>Report generated on {time.strftime("%Y-%m-%d %H:%M:%S%z",
