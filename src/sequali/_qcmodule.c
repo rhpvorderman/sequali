@@ -3812,6 +3812,17 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
     return 0;
 }
 
+/* 
+Avoid the beginning and end of the sequence by at most 64 bp to avoid
+any adapters. Take the 8 bp after the start offset and the 8 bp before 
+the end offset. This creates a small 16 bp fingerprint. Hash it using 
+MurmurHash. 16 bp is small and therefore relatively insensitive to 
+sequencing errors while still offering 4^16 or 4 billion distinct 
+fingerprints. 
+*/
+#define FINGERPRINT_MAX_OFFSET 64
+#define FINGERPRINT_LENGTH 16
+
 static int 
 DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
                                uint8_t *sequence, size_t sequence_length) 
@@ -3821,19 +3832,15 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
     if (sequence_length < 16) {
         hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
     } else {
-        /* Avoid the beginning and end of the sequence by at most 64 bp to avoid
-           any adapters. Take the 8 bp after the start offset and the 8 bp before 
-           the end offset. This creates a small 16 bp fingerprint. Hash it using 
-           MurmurHash. 16 bp is small and therefore relatively insensitive to 
-           sequencing errors while still offering 4^16 or 4 billion distinct 
-           fingerprints. */
         uint64_t seed = sequence_length >> 6;
-        uint8_t fingerprint[16];
-        size_t remainder = sequence_length - 16;
-        size_t offset = Py_MAX(remainder / 2, 64);
-        memcpy(fingerprint, sequence + offset, 8);
-        memcpy(fingerprint + 8, sequence + sequence_length - (offset + 8), 8);
-        hash = MurmurHash3_x64_64(fingerprint, 16, seed);
+        uint8_t fingerprint[FINGERPRINT_LENGTH];
+        size_t remainder = sequence_length - FINGERPRINT_LENGTH;
+        size_t offset = Py_MAX(remainder / 2, FINGERPRINT_MAX_OFFSET);
+        memcpy(fingerprint, sequence + offset, FINGERPRINT_LENGTH / 2);
+        memcpy(fingerprint + (FINGERPRINT_LENGTH / 2), 
+               sequence + sequence_length - (offset + (FINGERPRINT_LENGTH / 2)), 
+               (FINGERPRINT_LENGTH / 2));
+        hash = MurmurHash3_x64_64(fingerprint, FINGERPRINT_LENGTH, seed);
     }
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
