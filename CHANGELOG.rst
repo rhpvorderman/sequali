@@ -7,6 +7,27 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.3.0
+-----------------
++ Fingerprint using offsets of 64 bases from both ends of the sequence.
+  On nanopore sequencing this prevents taking into account adapter sequences
+  for the duplication estimate. It also prevents taking sequences from the
+  error-prone regions. The fingerprint consists of two 8 bp sequences rather
+  than the two 16 bp sequences that were used before. This made the fingerprint
+  less prone to sequencing errors, especially in long read sequencing
+  technologies. As a result the duplication estimate on nanopore reads
+  should be more accurate.
++ Added a small header with information on where to submit bug reports.
++ Use different adapter probes for nanopore adapters, such that the probes
+  do occur at some distance from the strand extremities. The start and end
+  of nanopore sequences are prone to errors and this hindered adapter
+  detection.
++ Distinguish between top and bottom adapters for the adapter occurrence plot.
++ Update pygal to 3.0.4 to prevent installation errors on Python 3.12.
++ Fix several divide by 0 errors that occurred on empty reads and empty files.
++ Change default fragment length from 31 to 21 which increases the sensitivity
+  of the overrepresented sequences module.
+
 version 0.2.0
 -----------------
 + Fixed a crash that occurred in the illumina header checking code on

@@ -36,6 +36,7 @@ from ._qc import A, C, G, N, T
 from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
+from .adapters import Adapter
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
@@ -178,10 +179,14 @@ def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
     # labeling so only use the first number. The values will be labelled
     # separately.
     simple_x_labels = [label.split("-")[0] for label in x_labels]
+    if simple_x_labels and len(simple_x_labels[-1]) > 4:
+        rotation = 30
+    else:
+        rotation = 0
     return dict(
         x_labels=simple_x_labels,
         x_labels_major_every=round(len(x_labels) / 30),
-        x_label_rotation=30 if len(simple_x_labels[-1]) > 4 else 0,
+        x_label_rotation=rotation,
         show_minor_x_labels=False
     )
 
@@ -237,7 +242,7 @@ class Summary(ReportModule):
                 <td> Q20 reads</td>
                 <td style="text-align:right;">{self.q20_reads:,}</td>
                 <td style="text-align:right;">
-                    {self.q20_reads / self.total_reads:.2%}
+                    {self.q20_reads / max(self.total_reads, 1):.2%}
                 </td>
             </tr>
             <tr><td>Total bases</td><td style="text-align:right;">
@@ -248,7 +253,7 @@ class Summary(ReportModule):
                     {self.total_gc_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.total_gc_bases / self.total_bases:.2%}
+                    {self.total_gc_bases / max(self.total_bases, 1):.2%}
                 </td>
             </tr>
             <tr>
@@ -257,7 +262,7 @@ class Summary(ReportModule):
                     {self.q20_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.q20_bases / self.total_bases:.2%}
+                    {self.q20_bases / max(self.total_bases, 1):.2%}
                 </td>
             </tr>
             </table>
@@ -377,6 +382,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             x_title="position",
             y_title="phred score",
             y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
             style=pygal.style.DefaultStyle(
                 colors=["#000000"] * 12,
                 font_family="sans-serif",
@@ -421,6 +427,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
         for cat_index, table in enumerate(
                 table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total = sum(table)
+            if total == 0:
+                continue
             total_error_rate = sum(
                 PHRED_INDEX_TO_ERROR_RATE[i] * x for i, x in enumerate(table))
             percentile_thresholds = [int(f * total) for f in percentile_fractions]
@@ -436,15 +444,16 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                         accumulated_errors += (remaining_threshold *
                                                PHRED_INDEX_TO_ERROR_RATE[phred_index])
                         accumulated_count += remaining_threshold
-                        percentile_tables[thresh_index][cat_index] = (
-                            -10 * math.log10(
-                                accumulated_errors / accumulated_count))
-                        reversed_percentile_tables[thresh_index][cat_index] = (
-                            -10 * math.log10(
-                                (total_error_rate - accumulated_errors) /
-                                (total - accumulated_count)
+                        if accumulated_count > 0:
+                            percentile_tables[thresh_index][cat_index] = (
+                                -10 * math.log10(
+                                    accumulated_errors / accumulated_count))
+                            reversed_percentile_tables[thresh_index][cat_index] = (
+                                -10 * math.log10(
+                                    (total_error_rate - accumulated_errors) /
+                                    (total - accumulated_count)
+                                )
                             )
-                        )
                         count -= remaining_threshold
                         try:
                             thresh_index, current_threshold = next(threshold_iter)
@@ -492,6 +501,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
         for cat_index, table in enumerate(
                 table_iterator(phred_tables, NUMBER_OF_PHREDS)):
             total_nucs = sum(table)
+            if total_nucs == 0:
+                continue
             for offset, phred_count in enumerate(table):
                 if phred_count == 0:
                     continue
@@ -546,8 +557,11 @@ class PerSequenceAverageQualityScores(ReportModule):
             **COMMON_GRAPH_OPTIONS
         )
         total = sum(self.average_quality_counts)
-        percentage_scores = [100 * score / total
-                             for score in self.average_quality_counts]
+        if total == 0:
+            percentage_scores = [0.0 for _ in self.average_quality_counts]
+        else:
+            percentage_scores = [100 * score / total
+                                 for score in self.average_quality_counts]
 
         plot.add("", percentage_scores[:maximum_score])
         return plot.render(is_unicode=True)
@@ -760,7 +774,7 @@ class AdapterContent(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         adapter_content = [(label, content) for label, content in
-                           self.adapter_content if max(content) >= 0.1]
+                           self.adapter_content if content and max(content) >= 0.1]
         adapter_content.sort(key=lambda x: max(x[1]),
                              reverse=True)
         for label, content in adapter_content:
@@ -790,19 +804,33 @@ class AdapterContent(ReportModule):
         """
 
     @classmethod
-    def from_adapter_counter_names_and_ranges(
-            cls, adapter_counter: AdapterCounter, adapter_names: Sequence[str],
+    def from_adapter_counter_adapters_and_ranges(
+            cls, adapter_counter: AdapterCounter, adapters: Sequence[Adapter],
             data_ranges: Sequence[Tuple[int, int]]):
-        all_adapters = []
-        total_sequences = adapter_counter.number_of_sequences
-        for adapter, countarray in adapter_counter.get_counts():
-            adapter_counts = [sum(countarray[start:stop])
-                              for start, stop in data_ranges]
+
+        def accumulate_counts(counts: Iterable[int]) -> List[int]:
             total = 0
             accumulated_counts = []
-            for count in adapter_counts:
+            for count in counts:
                 total += count
                 accumulated_counts.append(total)
+            return accumulated_counts
+
+        all_adapters = []
+        sequence_to_adapter = {adapter.sequence: adapter for adapter in adapters}
+        adapter_names = [adapter.name for adapter in adapters]
+        total_sequences = adapter_counter.number_of_sequences
+        for adapter_sequence, countarray in adapter_counter.get_counts():
+            adapter = sequence_to_adapter[adapter_sequence]
+            adapter_counts = [sum(countarray[start:stop])
+                              for start, stop in data_ranges]
+            if adapter.sequence_position == "end":
+                accumulated_counts = accumulate_counts(adapter_counts)
+            else:
+                # Reverse the counts, accumulate them and reverse again for
+                # adapters at the front.
+                accumulated_counts = list(reversed(
+                    accumulate_counts(reversed(adapter_counts))))
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
         return cls(stringify_ranges(data_ranges),
@@ -950,11 +978,21 @@ class DuplicationCounts(ReportModule):
 
     def to_html(self):
         first_part = f"""
-        <p class="explanation">All sequences are fingerprinted based on the
-        first 16&#8239;bp, the last 16&#8239;bp
-        and the length integer divided by 64. This means that for long
-        read sequences, small indel sequencing errors will most likely not
-        affect the fingerprint. A subsample of the fingerprints is stored to
+        <p class="explanation">
+        Every sequence is fingerprinted by skipping the first 64 bases and
+        taking the first 8 bases after that, as well as getting the
+        8 bases before the last 64 bases. This gives a small 16&#8239;bp
+        sequence from two 8&#8239;bp stubs from the beginning and end.
+        This sequence is hashed using the length divided by 64 as a seed,
+        which results in the final fingerprint.
+        This ensures that sequences that have very different lengths get
+        different fingerprints. The 64&#8239;bp offset ensures that sequencing adapters
+        at the beginning or end of the sequence are not taken into account. On
+        short sequences, the offsets are proportionally shrunk.
+        The 16&#8239;bp length of the sequence used as base for the hash limits
+        the effect of sequencing errors, especially on long-read sequencing
+        technologies.
+        A subsample of the fingerprints is stored to
         estimate the duplication rate. See,
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
         the paper describing the methodology</a>.</p>
@@ -997,7 +1035,7 @@ class DuplicationCounts(ReportModule):
                 count_array[50_001] += count * duplication
             else:
                 count_array[duplication] = count * duplication
-        total = sum(count_array)
+        total = max(sum(count_array), 1)
         aggregated_fractions = [
             sum(count_array[slc]) / total for slc in named_slices.values()
         ]
@@ -1009,7 +1047,7 @@ class DuplicationCounts(ReportModule):
                               for duplicates, count in
                               duplication_counts.items())
         unique_sequences = sum(duplication_counts.values())
-        return unique_sequences / total_sequences
+        return unique_sequences / max(total_sequences, 1)
 
     @classmethod
     def from_dedup_estimator(cls, dedup_est: DedupEstimator):
@@ -1219,7 +1257,7 @@ class NanoStatsReport(ReportModule):
         time_slots = 200
         time_per_slot = duration / time_slots
         time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
-        time_interval = time_interval_minutes * 60
+        time_interval = max(time_interval_minutes * 60, 1)
         time_ranges = [(start, start + time_interval)
                        for start in range(0, duration, time_interval)]
         time_slots = len(time_ranges)
@@ -1255,6 +1293,8 @@ class NanoStatsReport(ReportModule):
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
+            if total_bases == 0:
+                continue
             phred_score = -10 * math.log10(error_rate / total_bases)
             per_channel_quality[channel] = phred_score
         qual_percentages_over_time: List[List[float]] = [[] for _ in
@@ -1464,6 +1504,11 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
+            <header><p>
+                Report created by sequali. Please visit the
+                <a href="https://github.com/rhpvorderman/sequali">homepage</a>
+                for bug reports and feature requests.
+            </p></header>
             <h1>sequali report</h1>
             <p>Filename: <code>{filename}</code></p>
             <p>Report generated on {time.strftime("%Y-%m-%d %H:%M:%S%z",
@@ -1503,7 +1548,7 @@ def qc_metrics_modules(metrics: QCMetrics,
     total_gc_bases = summary_bases[C] + summary_bases[G]
     return [
         Summary(
-            mean_length=total_bases / total_reads,
+            mean_length=total_bases / max(total_reads, 1),
             minimum_length=minimum_length,
             maximum_length=metrics.max_length,
             total_reads=total_reads,
@@ -1533,7 +1578,7 @@ def calculate_stats(
         sequence_duplication: SequenceDuplication,
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
-        adapter_names: List[str],
+        adapters: List[Adapter],
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
@@ -1546,8 +1591,8 @@ def calculate_stats(
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
         *qc_metrics_modules(metrics, data_ranges),
-        AdapterContent.from_adapter_counter_names_and_ranges(
-            adapter_counter, adapter_names, data_ranges),
+        AdapterContent.from_adapter_counter_adapters_and_ranges(
+            adapter_counter, adapters, data_ranges),
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality, data_ranges),
         DuplicationCounts.from_dedup_estimator(dedup_estimator),

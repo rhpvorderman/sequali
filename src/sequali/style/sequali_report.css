@@ -4,6 +4,12 @@ body {
     margin: auto;
 }
 
+header {
+    font-size: 90%;
+    font-style: italic;
+    background-color: AliceBlue;
+}
+
 .explanation {
     font-size: 90%;
     font-style: italic;

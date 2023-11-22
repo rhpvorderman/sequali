@@ -114,6 +114,9 @@ def guess_sequencing_technology_from_file(fp: io.BufferedReader) -> Optional[str
         data = fp.peek(io.DEFAULT_BUFFER_SIZE)
     except IOError:
         return None
+    if not data:
+        # Empty file
+        return None
     if data[0] == ord("@"):
         # This is A FASTQ file.
         header_end: Optional[SupportsIndex] = data.find(b"\n")

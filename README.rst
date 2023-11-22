@@ -11,7 +11,7 @@
   :alt:
 
 .. image:: https://img.shields.io/pypi/l/sequali.svg
-  :target: https://github.com/LUMC/sequali/blob/main/LICENSE
+  :target: https://github.com/rhpvorderman/sequali/blob/main/LICENSE
   :alt:
 
 ========
@@ -111,7 +111,7 @@ Usage
                             memory usage. Default: 5,000,000.
       --overrepresentation-fragment-length LENGTH
                             The length of the fragments to sample. The maximum is
-                            31. Default: 31.
+                            31. Default: 21.
       --overrepresentation-sample-every DIVISOR
                             How often a read should be sampled. More samples leads
                             to better precision, lower speed, and also towards
@@ -139,8 +139,8 @@ Acknowledgements
   a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
-+ Marcel Martin for providing extensive feedback on the program's report and
-  command line.
++ Marcel Martin for providing extensive feedback on every aspect of the
+  program.
 
 License
 =======

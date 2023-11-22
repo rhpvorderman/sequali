@@ -30,7 +30,7 @@ N: int
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_FRAGMENTS: int
 DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
-DEFAULT_UNIQUE_K: int 
+DEFAULT_FRAGMENT_LENGTH: int
 DEFAULT_UNIQUE_SAMPLE_EVERY: int 
 
 class FastqRecordView:
@@ -98,7 +98,7 @@ class SequenceDuplication:
 
     def __init__(self,
                  max_unique_fragments: int = DEFAULT_MAX_UNIQUE_FRAGMENTS,
-                 k: int = DEFAULT_UNIQUE_K,
+                 fragment_length: int = DEFAULT_FRAGMENT_LENGTH,
                  sample_every: int = DEFAULT_UNIQUE_SAMPLE_EVERY): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
