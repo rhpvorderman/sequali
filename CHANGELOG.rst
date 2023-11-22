@@ -9,6 +9,7 @@ Changelog
 
 version 0.3.0-dev
 -----------------
++ Added a small header with information on where to submit bug reports.
 + Use different adapter probes for nanopore adapters, such that the probes
   do occur at some distance from the strand extremities. The start and end
   of nanopore sequences are prone to errors and this hindered adapter
