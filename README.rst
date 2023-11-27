@@ -24,7 +24,7 @@ Features:
 + Low memory footprint, small install size and fast execution times.
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
-+ Overrepresentation analysis using 31 bp sequence fragments. Overrepresented
++ Overrepresentation analysis using 21 bp sequence fragments. Overrepresented
   sequences are checked against the NCBI univec database.
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
