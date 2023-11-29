@@ -7,6 +7,11 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.4.0-dev
+-----------------
++ Add an ``--adapter-file`` file flag which can be used to set custom adapter
+  files by users.
+
 version 0.3.0
 -----------------
 + Fingerprint using offsets of 64 bases from both ends of the sequence.
