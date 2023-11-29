@@ -92,8 +92,7 @@ Usage
                             current working directory.
       --adapter-file ADAPTER_FILE
                             File with adapters to search for. See default file for
-                            formatting. Default: /home/rhpvorderman/PycharmProject
-                            s/sequali/src/sequali/adapters/adapter_list.tsv.
+                            formatting. Default: src/sequali/adapters/adapter_list.tsv.
       --overrepresentation-threshold-fraction FRACTION
                             At what fraction a sequence is determined to be
                             overrepresented. The threshold is calculated as
