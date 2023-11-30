@@ -48,6 +48,11 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Output directory for the report files. default: "
                              "current working directory.",
                         default=os.getcwd())
+    parser.add_argument("--adapter-file",
+                        default=DEFAULT_ADAPTER_FILE,
+                        help=f"File with adapters to search for. See default "
+                             f"file for formatting. "
+                             f"Default: {DEFAULT_ADAPTER_FILE}.")
     parser.add_argument("--overrepresentation-threshold-fraction",
                         metavar="FRACTION",
                         type=float,
@@ -140,7 +145,7 @@ def main() -> None:
         else:
             reader = FastqParser(file)  # type: ignore
             seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
-        adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
+        adapters = list(adapters_from_file(args.adapter_file, seqtech))
         adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:
             for record_array in reader:

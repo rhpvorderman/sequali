@@ -790,18 +790,16 @@ class AdapterContent(ReportModule):
             threshold are problably false positives. The legend is sorted from
             most frequent to least frequent.</p>
             <p class="explanation">For nanopore the the adapter mix (AMX) and
-            ligation kit have
-            overlapping adapter sequences for the bottom strand adapter.
-            The ligation kit bottom strand adapter is longer however. Therefore
-            the ligation kit bottom strand has two detection probes, part I and
-            part II. If both are present, the bottom strand adapter is most
-            likely from the ligation kit. If only part I is present, it is most
-            likely from the adapter mix (AMX).</p>
+            ligation kit have overlapping adapter sequences and are therefore
+            indistinguishable. Please consult the
+            <a href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits">
+            nanopore documentation</a> for more information which adapters are
+            used by your kit.</p>
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.
             <figure>{self.plot()}</figure>
-        """
+        """  # noqa: E501
 
     @classmethod
     def from_adapter_counter_adapters_and_ranges(

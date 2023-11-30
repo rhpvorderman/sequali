@@ -67,6 +67,7 @@ Usage
 .. code-block::
 
     usage: sequali [-h] [--json JSON] [--html HTML] [--outdir OUTDIR]
+                   [--adapter-file ADAPTER_FILE]
                    [--overrepresentation-threshold-fraction FRACTION]
                    [--overrepresentation-min-threshold THRESHOLD]
                    [--overrepresentation-max-threshold THRESHOLD]
@@ -89,6 +90,9 @@ Usage
       --outdir OUTDIR, --dir OUTDIR
                             Output directory for the report files. default:
                             current working directory.
+      --adapter-file ADAPTER_FILE
+                            File with adapters to search for. See default file for
+                            formatting. Default: src/sequali/adapters/adapter_list.tsv.
       --overrepresentation-threshold-fraction FRACTION
                             At what fraction a sequence is determined to be
                             overrepresented. The threshold is calculated as
