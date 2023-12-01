@@ -869,6 +869,8 @@ class PerTileQualityReport(ReportModule):
         tiles_2x_errors = []
         tiles_10x_errors = []
         for tile, tile_phreds in average_phreds:
+            if not tile_phreds:
+                continue
             normalized_tile_phreds = [
                 tile_phred - average
                 for tile_phred, average in
