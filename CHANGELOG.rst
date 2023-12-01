@@ -9,6 +9,7 @@ Changelog
 
 version 0.4.0-dev
 -----------------
++ Add a ``--version`` command line flag.
 + Add an ``--adapter-file`` file flag which can be used to set custom adapter
   files by users.
 

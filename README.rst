@@ -74,7 +74,7 @@ Usage
                    [--overrepresentation-max-unique-fragments N]
                    [--overrepresentation-fragment-length LENGTH]
                    [--overrepresentation-sample-every DIVISOR]
-                   [--deduplication-estimate-bits BITS] [-t THREADS]
+                   [--deduplication-estimate-bits BITS] [-t THREADS] [--version]
                    INPUT
 
     Create a quality metrics report for sequencing data.
@@ -130,6 +130,7 @@ Usage
       -t THREADS, --threads THREADS
                             Number of threads to use. If greater than one sequali
                             will use an additional thread for gzip decompression.
+      --version             show program's version number and exit
 
 Acknowledgements
 ================
