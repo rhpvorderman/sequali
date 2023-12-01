@@ -1257,7 +1257,7 @@ class NanoStatsReport(ReportModule):
         time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
         time_interval = max(time_interval_minutes * 60, 1)
         time_ranges = [(start, start + time_interval)
-                       for start in range(0, duration, time_interval)]
+                       for start in range(0, max(1, duration), time_interval)]
         time_slots = len(time_ranges)
         time_active_slots_sets: List[Set[int]] = [set() for _ in
                                                   range(time_slots)]
