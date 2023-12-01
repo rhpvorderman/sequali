@@ -7,6 +7,16 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.4.0
+-----------------
++ Fix bugs that were triggered when empty reads were present on
+  illumina and nanopore platforms.
++ Fix a bug that was triggered when a single nucleotide read was present on
+  a nanopore platform.
++ Add a ``--version`` command line flag.
++ Add an ``--adapter-file`` file flag which can be used to set custom adapter
+  files by users.
+
 version 0.3.0
 -----------------
 + Fingerprint using offsets of 64 bases from both ends of the sequence.

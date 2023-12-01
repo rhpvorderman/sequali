@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from sequali.__main__ import main
 
 TEST_DATA = Path(__file__).parent / "data"
@@ -108,3 +110,44 @@ def test_single_nuc(tmp_path):
     assert result["summary"]["minimum_length"] == 1
     assert result["summary"]["total_gc_bases"] == 0
     assert result["summary"]["total_bases"] == 1
+
+
+def test_single_nanopore_metada(tmp_path):
+    fastq = (TEST_DATA / "single_nanopore_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "single_nanopore_metadata.fastq.json"
+    assert fastq_json.exists()
+
+
+def test_empty_nanopore_metada(tmp_path):
+    fastq = (TEST_DATA / "empty_nanopore_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "empty_nanopore_metadata.fastq.json"
+    assert fastq_json.exists()
+
+
+def test_single_illumina_metada(tmp_path):
+    fastq = (TEST_DATA / "single_illumina_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "single_illumina_metadata.fastq.json"
+    assert fastq_json.exists()
+
+
+def test_empty_illumina_metada(tmp_path):
+    fastq = (TEST_DATA / "empty_illumina_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "empty_illumina_metadata.fastq.json"
+    assert fastq_json.exists()
+
+
+def test_version_command(capsys):
+    sys.argv = ["", "--version"]
+    with pytest.raises(SystemExit):
+        main()
+    result = capsys.readouterr()
+    import sequali
+    assert result.out.strip() == sequali.__version__

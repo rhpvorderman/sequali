@@ -790,18 +790,16 @@ class AdapterContent(ReportModule):
             threshold are problably false positives. The legend is sorted from
             most frequent to least frequent.</p>
             <p class="explanation">For nanopore the the adapter mix (AMX) and
-            ligation kit have
-            overlapping adapter sequences for the bottom strand adapter.
-            The ligation kit bottom strand adapter is longer however. Therefore
-            the ligation kit bottom strand has two detection probes, part I and
-            part II. If both are present, the bottom strand adapter is most
-            likely from the ligation kit. If only part I is present, it is most
-            likely from the adapter mix (AMX).</p>
+            ligation kit have overlapping adapter sequences and are therefore
+            indistinguishable. Please consult the
+            <a href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits">
+            nanopore documentation</a> for more information which adapters are
+            used by your kit.</p>
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.
             <figure>{self.plot()}</figure>
-        """
+        """  # noqa: E501
 
     @classmethod
     def from_adapter_counter_adapters_and_ranges(
@@ -871,6 +869,8 @@ class PerTileQualityReport(ReportModule):
         tiles_2x_errors = []
         tiles_10x_errors = []
         for tile, tile_phreds in average_phreds:
+            if not tile_phreds:
+                continue
             normalized_tile_phreds = [
                 tile_phred - average
                 for tile_phred, average in
@@ -1259,7 +1259,7 @@ class NanoStatsReport(ReportModule):
         time_interval_minutes = (math.ceil(time_per_slot) + 59) // 60
         time_interval = max(time_interval_minutes * 60, 1)
         time_ranges = [(start, start + time_interval)
-                       for start in range(0, duration, time_interval)]
+                       for start in range(0, max(1, duration), time_interval)]
         time_slots = len(time_ranges)
         time_active_slots_sets: List[Set[int]] = [set() for _ in
                                                   range(time_slots)]
@@ -1276,8 +1276,11 @@ class NanoStatsReport(ReportModule):
             length = readinfo.length
             cumulative_error_rate = readinfo.cumulative_error_rate
             channel_id = readinfo.channel_id
-            phred = round(
-                -10 * math.log10(cumulative_error_rate / length))
+            if length:
+                phred = round(
+                    -10 * math.log10(cumulative_error_rate / length))
+            else:
+                phred = 0
             phred_index = min(phred, 47) >> 2
             time_active_slots_sets[timeslot].add(channel_id)
             time_bases[timeslot] += length
@@ -1293,9 +1296,10 @@ class NanoStatsReport(ReportModule):
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
-            if total_bases == 0:
-                continue
-            phred_score = -10 * math.log10(error_rate / total_bases)
+            if total_bases:
+                phred_score = -10 * math.log10(error_rate / total_bases)
+            else:
+                phred_score = 0
             per_channel_quality[channel] = phred_score
         qual_percentages_over_time: List[List[float]] = [[] for _ in
                                                          range(12)]

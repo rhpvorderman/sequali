@@ -26,6 +26,7 @@ from ._qc import (
     DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
     PerTileQuality, QCMetrics, SequenceDuplication
 )
+from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
@@ -48,6 +49,11 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Output directory for the report files. default: "
                              "current working directory.",
                         default=os.getcwd())
+    parser.add_argument("--adapter-file",
+                        default=DEFAULT_ADAPTER_FILE,
+                        help=f"File with adapters to search for. See default "
+                             f"file for formatting. "
+                             f"Default: {DEFAULT_ADAPTER_FILE}.")
     parser.add_argument("--overrepresentation-threshold-fraction",
                         metavar="FRACTION",
                         type=float,
@@ -107,6 +113,8 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Number of threads to use. If greater than one "
                              "sequali will use an additional thread for gzip "
                              "decompression.")
+    parser.add_argument("--version", action="version",
+                        version=__version__)
     return parser
 
 
@@ -140,7 +148,7 @@ def main() -> None:
         else:
             reader = FastqParser(file)  # type: ignore
             seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
-        adapters = list(adapters_from_file(DEFAULT_ADAPTER_FILE, seqtech))
+        adapters = list(adapters_from_file(args.adapter_file, seqtech))
         adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
         with progress:
             for record_array in reader:

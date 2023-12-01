@@ -24,7 +24,7 @@ Features:
 + Low memory footprint, small install size and fast execution times.
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
-+ Overrepresentation analysis using 31 bp sequence fragments. Overrepresented
++ Overrepresentation analysis using 21 bp sequence fragments. Overrepresented
   sequences are checked against the NCBI univec database.
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
@@ -67,13 +67,14 @@ Usage
 .. code-block::
 
     usage: sequali [-h] [--json JSON] [--html HTML] [--outdir OUTDIR]
+                   [--adapter-file ADAPTER_FILE]
                    [--overrepresentation-threshold-fraction FRACTION]
                    [--overrepresentation-min-threshold THRESHOLD]
                    [--overrepresentation-max-threshold THRESHOLD]
                    [--overrepresentation-max-unique-fragments N]
                    [--overrepresentation-fragment-length LENGTH]
                    [--overrepresentation-sample-every DIVISOR]
-                   [--deduplication-estimate-bits BITS] [-t THREADS]
+                   [--deduplication-estimate-bits BITS] [-t THREADS] [--version]
                    INPUT
 
     Create a quality metrics report for sequencing data.
@@ -89,6 +90,9 @@ Usage
       --outdir OUTDIR, --dir OUTDIR
                             Output directory for the report files. default:
                             current working directory.
+      --adapter-file ADAPTER_FILE
+                            File with adapters to search for. See default file for
+                            formatting. Default: src/sequali/adapters/adapter_list.tsv.
       --overrepresentation-threshold-fraction FRACTION
                             At what fraction a sequence is determined to be
                             overrepresented. The threshold is calculated as
@@ -126,6 +130,7 @@ Usage
       -t THREADS, --threads THREADS
                             Number of threads to use. If greater than one sequali
                             will use an additional thread for gzip decompression.
+      --version             show program's version number and exit
 
 Acknowledgements
 ================
@@ -139,8 +144,7 @@ Acknowledgements
   a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
-+ Marcel Martin for providing extensive feedback on every aspect of the
-  program.
++ Marcel Martin for providing very extensive feedback.
 
 License
 =======
