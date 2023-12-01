@@ -144,6 +144,14 @@ def test_empty_illumina_metada(tmp_path):
     assert fastq_json.exists()
 
 
+def test_nanopore_disparate_dates(tmp_path):
+    fastq = (TEST_DATA / "nanopore_disparate_dates.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "nanopore_disparate_dates.fastq.json"
+    assert fastq_json.exists()
+
+
 def test_version_command(capsys):
     sys.argv = ["", "--version"]
     with pytest.raises(SystemExit):
