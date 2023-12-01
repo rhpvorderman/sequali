@@ -1280,7 +1280,7 @@ class NanoStatsReport(ReportModule):
                 phred = round(
                     -10 * math.log10(cumulative_error_rate / length))
             else:
-                phred =0
+                phred = 0
             phred_index = min(phred, 47) >> 2
             time_active_slots_sets[timeslot].add(channel_id)
             time_bases[timeslot] += length

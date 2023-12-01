@@ -118,7 +118,6 @@ def test_single_nanopore_metada(tmp_path):
     main()
     fastq_json = tmp_path / "single_nanopore_metadata.fastq.json"
     assert fastq_json.exists()
-    result = json.loads(fastq_json.read_text())
 
 
 def test_empty_nanopore_metada(tmp_path):
@@ -127,7 +126,6 @@ def test_empty_nanopore_metada(tmp_path):
     main()
     fastq_json = tmp_path / "empty_nanopore_metadata.fastq.json"
     assert fastq_json.exists()
-    result = json.loads(fastq_json.read_text())
 
 
 def test_single_illumina_metada(tmp_path):
@@ -136,7 +134,6 @@ def test_single_illumina_metada(tmp_path):
     main()
     fastq_json = tmp_path / "single_illumina_metadata.fastq.json"
     assert fastq_json.exists()
-    result = json.loads(fastq_json.read_text())
 
 
 def test_empty_illumina_metada(tmp_path):
@@ -145,7 +142,6 @@ def test_empty_illumina_metada(tmp_path):
     main()
     fastq_json = tmp_path / "empty_illumina_metadata.fastq.json"
     assert fastq_json.exists()
-    result = json.loads(fastq_json.read_text())
 
 
 def test_version_command(capsys):
