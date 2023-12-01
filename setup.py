@@ -52,7 +52,7 @@ setup(
         "pygal>=3.0.4",
         "tqdm"
     ],
-    package_data={'sequali': ['*.c', '*.h', '*.pyi', 'py.typed',
+    package_data={'sequali': ['*.pyi', 'py.typed',
                               'contaminants/*', 'adapters/*', 'style/*']},
     ext_modules=[
         Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
