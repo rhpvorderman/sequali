@@ -130,6 +130,24 @@ def test_empty_nanopore_metada(tmp_path):
     result = json.loads(fastq_json.read_text())
 
 
+def test_single_illumina_metada(tmp_path):
+    fastq = (TEST_DATA / "single_illumina_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "single_illumina_metadata.fastq.json"
+    assert fastq_json.exists()
+    result = json.loads(fastq_json.read_text())
+
+
+def test_empty_illumina_metada(tmp_path):
+    fastq = (TEST_DATA / "empty_illumina_metadata.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq)]
+    main()
+    fastq_json = tmp_path / "empty_illumina_metadata.fastq.json"
+    assert fastq_json.exists()
+    result = json.loads(fastq_json.read_text())
+
+
 def test_version_command(capsys):
     sys.argv = ["", "--version"]
     with pytest.raises(SystemExit):
