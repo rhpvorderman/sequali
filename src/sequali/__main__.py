@@ -26,6 +26,7 @@ from ._qc import (
     DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
     PerTileQuality, QCMetrics, SequenceDuplication
 )
+from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
@@ -112,6 +113,8 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Number of threads to use. If greater than one "
                              "sequali will use an additional thread for gzip "
                              "decompression.")
+    parser.add_argument("--version", action="version",
+                        version=__version__)
     return parser
 
 
