@@ -21,7 +21,7 @@ from setuptools import Extension, find_packages, setup
 
 setup(
     name="sequali",
-    version="0.4.1",
+    version="0.5.0-dev",
     description="Fast sequencing quality metrics",
     author="Leiden University Medical Center",
     author_email="r.h.p.vorderman@lumc.nl",

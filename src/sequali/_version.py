@@ -14,4 +14,4 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-__version__ = "0.4.1"
+__version__ = "0.5.0-dev"
