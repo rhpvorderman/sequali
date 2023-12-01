@@ -1274,8 +1274,11 @@ class NanoStatsReport(ReportModule):
             length = readinfo.length
             cumulative_error_rate = readinfo.cumulative_error_rate
             channel_id = readinfo.channel_id
-            phred = round(
-                -10 * math.log10(cumulative_error_rate / length))
+            if length:
+                phred = round(
+                    -10 * math.log10(cumulative_error_rate / length))
+            else:
+                phred =0
             phred_index = min(phred, 47) >> 2
             time_active_slots_sets[timeslot].add(channel_id)
             time_bases[timeslot] += length
@@ -1291,9 +1294,10 @@ class NanoStatsReport(ReportModule):
         per_channel_quality: Dict[int, float] = {}
         for channel, error_rate in per_channel_cumulative_error.items():
             total_bases = per_channel_bases[channel]
-            if total_bases == 0:
-                continue
-            phred_score = -10 * math.log10(error_rate / total_bases)
+            if total_bases:
+                phred_score = -10 * math.log10(error_rate / total_bases)
+            else:
+                phred_score = 0
             per_channel_quality[channel] = phred_score
         qual_percentages_over_time: List[List[float]] = [[] for _ in
                                                          range(12)]
