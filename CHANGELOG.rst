@@ -9,6 +9,10 @@ Changelog
 
 version 0.4.0-dev
 -----------------
++ Fix bugs that were triggered when empty reads were present on
+  illumina and nanopore platforms.
++ Fix a bug that was triggered when a single nucleotide read was present on
+  a nanopore platform.
 + Add a ``--version`` command line flag.
 + Add an ``--adapter-file`` file flag which can be used to set custom adapter
   files by users.
