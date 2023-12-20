@@ -1,5 +1,8 @@
+import typing
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Iterator, Tuple
+
+FASTA_lINE_LENGTH = 70
 
 ONT_BARCODES = Path(__file__).parent / "oxford_nanopore_barcodes.tsv"
 ONT_NAIVE_BARCODES = Path(__file__).parent / "oxford_nanopore_naive_barcodes.tsv"
@@ -25,3 +28,14 @@ def barcodes_lookup() -> Dict[str, str]:
                 lookup[component] = sequence
     return lookup
 
+
+class FastaEntry(typing.NamedTuple):
+    name: str
+    sequence: str
+
+    def __str__(self):
+        sequence_parts = (
+            self.sequence[i: i + FASTA_lINE_LENGTH]
+            for i in range(0, len(self.sequence), FASTA_lINE_LENGTH)
+        )
+        return f">{self.name}\n" + "\n".join(sequence_parts) + "\n"
