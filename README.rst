@@ -29,7 +29,7 @@ Features:
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
   <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
-+ Checks for 6 illumina adapter sequences and 15 nanopore adapter sequences.
++ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences.
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".

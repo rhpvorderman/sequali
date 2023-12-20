@@ -53,3 +53,5 @@ Oxford nanopore VN primer	nanopore	TCTATCTTCTTT	end
 Oxford nanopore RT Primer (RTP)	nanopore	TCTTCAGAGGAG	start
 Oford nanopore Strand Switching Primer (SSP)	nanopore	GATATTGCTGGG	start
 Oxford nanopore Strand Switching Primer II (SSPII)	nanopore	TGATATTGCTTT	start
+Oxford nanopore Native Adapter (NA), top strand	nanopore	GTACGTATTGCT	start
+Oxford nanopore Native Adapter (NA), bottom strand	nanopore	ACGTAACTGAAC	end

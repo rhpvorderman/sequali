@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from sequali.util import (fastq_header_is_illumina, fastq_header_is_nanopore,
+from sequali.util import (fasta_parser,
+                          fastq_header_is_illumina, fastq_header_is_nanopore,
                           guess_sequencing_technology_from_bam_header)
 
 DATA = Path(__file__).parent / "data"
@@ -51,3 +52,12 @@ def test_fastq_header_is_nanopore(header, is_nanopore):
 def test_guess_from_bam():
     sam_file = SAM.read_bytes()
     assert guess_sequencing_technology_from_bam_header(sam_file) == "illumina"
+
+
+def test_fasta_parser():
+    fasta = DATA / "test.fasta"
+    assert list(fasta_parser(str(fasta))) == [
+        ("A simple long sequence", "A" * 100),
+        ("A simple multiline sequence", "AAAA"),
+        ("Shortseq", "gattaca")
+    ]
