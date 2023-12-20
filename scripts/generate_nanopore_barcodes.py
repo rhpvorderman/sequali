@@ -5,7 +5,7 @@ from typing import Dict, Iterator, Tuple
 FASTA_lINE_LENGTH = 70
 
 ONT_BARCODES = Path(__file__).parent / "oxford_nanopore_barcodes.tsv"
-ONT_NAIVE_BARCODES = Path(__file__).parent / "oxford_nanopore_naive_barcodes.tsv"
+ONT_NAIVE_BARCODES = Path(__file__).parent / "oxford_nanopore_native_barcodes.tsv"
 
 
 def native_barcodes_lookup() -> Dict[str, Tuple[str, str]]:
@@ -102,3 +102,9 @@ def all_barcodes() -> Iterator[FastaEntry]:
         yield FastaEntry(f"Oxford nanopore rapid barcode sequence, "
                          f"{barcode_name}",
                          f"GGTGCTG{barcode_seq}TTAACCT")
+
+
+if __name__ == "__main__":
+    with open("src/sequali/contaminants/oxford_nanopore_barcodes.fasta", "wt") as f:
+        for barcode_entry in all_barcodes():
+            f.write(str(barcode_entry))
