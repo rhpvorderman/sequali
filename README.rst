@@ -34,6 +34,11 @@ Features:
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
 
+Example reports:
+
++ `GM24385_1.fastq.gz <https://github.com/rhpvorderman/sequali/files/14480386/GM24385_1.fastq.gz.html.zip>`_;
+  HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. `Sequence file download <ftp://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/UCSC_Ultralong_OxfordNanopore_Promethion/GM24385_1.fastq.gz>`_.
+
 Supported formats
 =================
 - FASTQ. Only the Sanger variation with a phred offset of 33 and the error rate
