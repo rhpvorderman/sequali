@@ -109,8 +109,8 @@ Usage
                             set by the threshold fraction. Useful for smaller
                             files. Default: 100.
       --overrepresentation-max-threshold THRESHOLD
-                            The amount of occurrences for a sequence to
-                            beconsidered overrepresented, regardless of the bound
+                            The amount of occurrences for a sequence to be
+                            considered overrepresented, regardless of the bound
                             set by the threshold fraction. Useful for very large
                             files. Default: unlimited.
       --overrepresentation-max-unique-fragments N
@@ -135,6 +135,7 @@ Usage
       -t THREADS, --threads THREADS
                             Number of threads to use. If greater than one sequali
                             will use an additional thread for gzip decompression.
+                            Default: 2.
       --version             show program's version number and exit
 
 Acknowledgements

@@ -73,7 +73,7 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         metavar="THRESHOLD",
                         default=sys.maxsize,
-                        help="The amount of occurrences for a sequence to be"
+                        help="The amount of occurrences for a sequence to be "
                              "considered overrepresented, regardless of the "
                              "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
@@ -112,7 +112,7 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
                              "sequali will use an additional thread for gzip "
-                             "decompression.")
+                             "decompression. Default: 2.")
     parser.add_argument("--version", action="version",
                         version=__version__)
     return parser
