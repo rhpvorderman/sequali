@@ -252,6 +252,7 @@ class Summary(ReportModule):
     total_bases: int
     q20_bases: int
     total_gc_bases: int
+    total_n_bases: int
 
     def to_html(self) -> str:
         return f"""
@@ -281,7 +282,8 @@ class Summary(ReportModule):
                     {self.total_gc_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.total_gc_bases / max(self.total_bases, 1):.2%}
+                    {self.total_gc_bases / max(
+                        self.total_bases - self.total_n_bases, 1):.2%}
                 </td>
             </tr>
             <tr>
@@ -1585,7 +1587,8 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_bases=total_bases,
             q20_bases=sum(summary_phreds[5:]),
             q20_reads=q20_reads,
-            total_gc_bases=total_gc_bases),
+            total_gc_bases=total_gc_bases,
+            total_n_bases=summary_bases[N]),
         SequenceLengthDistribution.from_base_count_tables(
             base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
