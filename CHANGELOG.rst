@@ -9,6 +9,8 @@ Changelog
 
 version 0.5.0-dev
 -----------------
++ Add a new `meta` section to the JSON report to allow integration with
+  `MultiQC <https://github.com/multiqc/MultiQC>`_.
 + Add all nanopore barcode sequences and native adapters to the contaminants.
 + Add native adapters to the adapter search.
 
