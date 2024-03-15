@@ -1,1 +1,5 @@
-include src/sequali/*.h
+exclude .git*
+exclude tox.ini
+prune tests/
+prune .github/
+prune scripts/
