@@ -160,6 +160,7 @@ def main() -> None:
                 dedup_estimator.add_record_array(record_array)
                 progress.update(record_array)
     report_modules = calculate_stats(
+        filename,
         metrics,
         adapter_counter,
         per_tile_quality,
