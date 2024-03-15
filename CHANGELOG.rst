@@ -7,7 +7,7 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.5.0-dev
+version 0.5.0
 -----------------
 + Base the percentage in the overrepresented sequences section on the number
   of found fragments divided by the number of sampled sequences. Previously
