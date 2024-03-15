@@ -43,6 +43,9 @@ cutadapt = "cutadapt.cli:main_cli"
 sequali = "sequali.__main__:main"
 sequali-report = "sequali.__main__:sequali_report"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools.exclude-package-data]
 sequali = ["*.c", "*.h"]
 

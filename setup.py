@@ -14,13 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-from setuptools import Extension, find_packages, setup
+from setuptools import Extension, setup
 
 
 setup(
-    zip_safe=False,
-    packages=find_packages('src'),
-    package_dir={'': 'src'},
     ext_modules=[
         Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
     ],
