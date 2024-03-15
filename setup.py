@@ -21,8 +21,6 @@ setup(
     zip_safe=False,
     packages=find_packages('src'),
     package_dir={'': 'src'},
-    package_data={'sequali': ['*.pyi', 'py.typed',
-                              'contaminants/*', 'adapters/*', 'style/*']},
     ext_modules=[
         Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
     ],

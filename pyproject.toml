@@ -43,6 +43,17 @@ cutadapt = "cutadapt.cli:main_cli"
 sequali = "sequali.__main__:main"
 sequali-report = "sequali.__main__:sequali_report"
 
+[tool.setuptools.exclude-package-data]
+sequali = ["*.c", "*.h"]
+
+[tool.setuptools.package-data]
+sequali = [
+    '*.pyi',
+    'py.typed',
+    'contaminants/*',
+    'adapters/*',
+    'style/*'
+]
 [project.urls]
 "Homepage" = "https://github.com/rhpvorderman/sequali"
 
