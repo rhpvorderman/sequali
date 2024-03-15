@@ -1,3 +1,50 @@
 [build-system]
-requires = ["setuptools>=51", "wheel"]
+requires = ["setuptools>=60", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name="sequali"
+description="Fast sequencing quality metrics"
+authors = [
+    {name = "Ruben Vorderman", email = "r.h.p.vorderman@lumc.nl"}
+]
+keywords=[
+    "FASTQ",
+    "sequencing quality",
+    "uBAM",
+    "QC",
+    "nanopore",
+    "illumina",
+]
+readme = "README.rst"
+license = {text = "AGPL-v3.0"}
+classifiers = [
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+        "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">3.8"
+dependencies = [
+        "xopen>=1.8.0",
+        "pygal>=3.0.4",
+        "tqdm",
+]
+dynamic = ["version"]
+
+[project.scripts]
+cutadapt = "cutadapt.cli:main_cli"
+sequali = "sequali.__main__:main"
+sequali-report = "sequali.__main__:sequali_report"
+
+[project.urls]
+"Homepage" = "https://github.com/rhpvorderman/sequali"
+
+[tool.setuptools_scm]
+write_to = "src/sequali/_version.py"
