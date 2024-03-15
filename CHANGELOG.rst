@@ -7,6 +7,19 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.5.0
+-----------------
++ Base the percentage in the overrepresented sequences section on the number
+  of found fragments divided by the number of sampled sequences. Previously
+  this was based on the number of sampled fragments, which led to very low
+  percentages for long read sequences, whilst also being less intuitive to
+  understand. There were some inconsistencies in the documentation about this
+  that are now fixed.
++ Add a new `meta` section to the JSON report to allow integration with
+  `MultiQC <https://github.com/multiqc/MultiQC>`_.
++ Add all nanopore barcode sequences and native adapters to the contaminants.
++ Add native adapters to the adapter search.
+
 version 0.4.1
 -----------------
 + Fixed an issue that caused an off by one error if start and end time

@@ -57,11 +57,11 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-threshold-fraction",
                         metavar="FRACTION",
                         type=float,
-                        default=0.0001,
+                        default=0.001,
                         help="At what fraction a sequence is determined to be "
                              "overrepresented. The threshold is calculated as "
                              "fraction times the number of sampled sequences. "
-                             "Default: 0.0001 (1 in 100,000)."
+                             "Default: 0.001 (1 in 1,000)."
                         )
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         metavar="THRESHOLD",
@@ -73,7 +73,7 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         metavar="THRESHOLD",
                         default=sys.maxsize,
-                        help="The amount of occurrences for a sequence to be"
+                        help="The amount of occurrences for a sequence to be "
                              "considered overrepresented, regardless of the "
                              "bound set by the threshold fraction. Useful for "
                              "very large files. Default: unlimited.")
@@ -112,7 +112,7 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
                              "sequali will use an additional thread for gzip "
-                             "decompression.")
+                             "decompression. Default: 2.")
     parser.add_argument("--version", action="version",
                         version=__version__)
     return parser
@@ -160,6 +160,7 @@ def main() -> None:
                 dedup_estimator.add_record_array(record_array)
                 progress.update(record_array)
     report_modules = calculate_stats(
+        filename,
         metrics,
         adapter_counter,
         per_tile_quality,

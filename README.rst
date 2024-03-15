@@ -29,10 +29,15 @@ Features:
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
   <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
-+ Checks for 6 illumina adapter sequences and 15 nanopore adapter sequences.
++ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences.
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
+
+Example reports:
+
++ `GM24385_1.fastq.gz <https://github.com/rhpvorderman/sequali/files/14480386/GM24385_1.fastq.gz.html.zip>`_;
+  HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. `Sequence file download <https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/UCSC_Ultralong_OxfordNanopore_Promethion/GM24385_1.fastq.gz>`_.
 
 Supported formats
 =================
@@ -97,15 +102,15 @@ Usage
                             At what fraction a sequence is determined to be
                             overrepresented. The threshold is calculated as
                             fraction times the number of sampled sequences.
-                            Default: 0.0001 (1 in 100,000).
+                            Default: 0.001 (1 in 1,000).
       --overrepresentation-min-threshold THRESHOLD
                             The minimum amount of occurrences for a sequence to be
                             considered overrepresented, regardless of the bound
                             set by the threshold fraction. Useful for smaller
                             files. Default: 100.
       --overrepresentation-max-threshold THRESHOLD
-                            The amount of occurrences for a sequence to
-                            beconsidered overrepresented, regardless of the bound
+                            The amount of occurrences for a sequence to be
+                            considered overrepresented, regardless of the bound
                             set by the threshold fraction. Useful for very large
                             files. Default: unlimited.
       --overrepresentation-max-unique-fragments N
@@ -130,6 +135,7 @@ Usage
       -t THREADS, --threads THREADS
                             Number of threads to use. If greater than one sequali
                             will use an additional thread for gzip decompression.
+                            Default: 2.
       --version             show program's version number and exit
 
 Acknowledgements

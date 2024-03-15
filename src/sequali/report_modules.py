@@ -36,6 +36,7 @@ from ._qc import A, C, G, N, T
 from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
                   QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
+from ._version import __version__
 from .adapters import Adapter
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
@@ -215,6 +216,33 @@ class ReportModule(ABC):
 
 
 @dataclasses.dataclass
+class Meta(ReportModule):
+    sequali_version: str
+    report_generated: str
+    filename: str
+    filesize: int
+
+    @classmethod
+    def from_filepath(cls, filepath):
+        filename = os.path.basename(filepath)
+        try:
+            filesize = os.stat(filepath).st_size
+        except OSError:
+            filesize = 0
+        timestamp = time.time()
+        time_struct = time.localtime(timestamp)
+        report_generated = time.strftime("%Y-%m-%d %H:%M:%S%z", time_struct)
+        return cls(__version__, report_generated, filename, filesize)
+
+    def to_html(self) -> str:
+        return f"""
+            <p>Filename: <code>{self.filename}</code></p>
+            <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
+            <p>Report generated on {self.report_generated}</p>
+        """
+
+
+@dataclasses.dataclass
 class Summary(ReportModule):
     mean_length: float
     minimum_length: int
@@ -224,6 +252,7 @@ class Summary(ReportModule):
     total_bases: int
     q20_bases: int
     total_gc_bases: int
+    total_n_bases: int
 
     def to_html(self) -> str:
         return f"""
@@ -253,7 +282,8 @@ class Summary(ReportModule):
                     {self.total_gc_bases:,}
                 </td>
                 <td style="text-align:right;">
-                    {self.total_gc_bases / max(self.total_bases, 1):.2%}
+                    {self.total_gc_bases / max(
+                        self.total_bases - self.total_n_bases, 1):.2%}
                 </td>
             </tr>
             <tr>
@@ -1122,12 +1152,18 @@ class OverRepresentedSequences(ReportModule):
             <p class="explanation">A subsample of the sequences is analysed
             Sequences are cut into fragments of up to 31&#8239;bp. Fragments
             are stored and counted. When the maximum amount of unique fragments
-            is reached, only sequences that are already stored are counted. The
-            rest of the sequences is ignored.
+            is reached, only fragments that are already stored are counted. The
+            rest of the fragments is ignored.
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
             the lowest sort order. Both representations are shown in the
             table.
+            </p>
+            <p class="explanation">
+                The percentage shown is an estimate based on the number of
+                occurences of the fragment in relation to the number of
+                sampled sequences. This makes the assumption that a
+                fragment only occurs once in each sequence.
             </p>
             <table>
             <tr>
@@ -1459,6 +1495,7 @@ class NanoStatsReport(ReportModule):
 
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
+    "meta": Meta,
     "summary": Summary,
     "per_position_mean_quality_and_spread": PerPositionMeanQualityAndSpread,
     "per_position_quality_distribution": PerBaseQualityScoreDistribution,
@@ -1493,17 +1530,15 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 
 def write_html_report(report_modules: Iterable[ReportModule],
                       html: str,
-                      filename: str,
-                      timestamp=time.time()):
-    time_struct = time.localtime(timestamp)
+                      filename: str):
     default_config = pygal.Config()
+    pygal_script_uri = default_config.js[0].lstrip('/')
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
             <!DOCTYPE html>
             <html lang="en">
             <head>
-                <script
-                    src="https://{default_config.js[0].lstrip('/')}"></script>
+                <script src="https://{pygal_script_uri}"></script>
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}
                 </style>
@@ -1516,9 +1551,6 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 for bug reports and feature requests.
             </p></header>
             <h1>sequali report</h1>
-            <p>Filename: <code>{filename}</code></p>
-            <p>Report generated on {time.strftime("%Y-%m-%d %H:%M:%S%z",
-                                                  time_struct)}</p>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
@@ -1561,7 +1593,8 @@ def qc_metrics_modules(metrics: QCMetrics,
             total_bases=total_bases,
             q20_bases=sum(summary_phreds[5:]),
             q20_reads=q20_reads,
-            total_gc_bases=total_gc_bases),
+            total_gc_bases=total_gc_bases,
+            total_n_bases=summary_bases[N]),
         SequenceLengthDistribution.from_base_count_tables(
             base_count_tables, total_reads, data_ranges),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
@@ -1578,6 +1611,7 @@ def qc_metrics_modules(metrics: QCMetrics,
 
 
 def calculate_stats(
+        filename: str,
         metrics: QCMetrics,
         adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
@@ -1596,6 +1630,7 @@ def calculate_stats(
     else:
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     return [
+        Meta.from_filepath(filename),
         *qc_metrics_modules(metrics, data_ranges),
         AdapterContent.from_adapter_counter_adapters_and_ranges(
             adapter_counter, adapters, data_ranges),

@@ -158,4 +158,4 @@ def test_version_command(capsys):
         main()
     result = capsys.readouterr()
     import sequali
-    assert result.out.strip() == sequali.__version__
+    assert result.out.replace("\n", "") == sequali.__version__
