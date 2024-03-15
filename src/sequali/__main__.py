@@ -57,11 +57,11 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-threshold-fraction",
                         metavar="FRACTION",
                         type=float,
-                        default=0.0001,
+                        default=0.001,
                         help="At what fraction a sequence is determined to be "
                              "overrepresented. The threshold is calculated as "
                              "fraction times the number of sampled sequences. "
-                             "Default: 0.0001 (1 in 100,000)."
+                             "Default: 0.001 (1 in 1,000)."
                         )
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         metavar="THRESHOLD",

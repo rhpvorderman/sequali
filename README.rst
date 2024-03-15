@@ -102,7 +102,7 @@ Usage
                             At what fraction a sequence is determined to be
                             overrepresented. The threshold is calculated as
                             fraction times the number of sampled sequences.
-                            Default: 0.0001 (1 in 100,000).
+                            Default: 0.001 (1 in 1,000).
       --overrepresentation-min-threshold THRESHOLD
                             The minimum amount of occurrences for a sequence to be
                             considered overrepresented, regardless of the bound
