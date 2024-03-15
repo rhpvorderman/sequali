@@ -3566,8 +3566,8 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
         return NULL;
     }
 
-    uint64_t total_fragments = self->total_fragments;
-    Py_ssize_t hit_theshold = ceil(threshold * total_fragments);
+    uint64_t sampled_sequences = self->sampled_sequences;
+    Py_ssize_t hit_theshold = ceil(threshold * sampled_sequences);
     hit_theshold = Py_MAX(min_threshold, hit_theshold);
     hit_theshold = Py_MIN(max_threshold, hit_theshold);
     uint64_t minimum_hits = hit_theshold;
@@ -3588,7 +3588,7 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
             PyObject *entry_tuple = Py_BuildValue(
                 "(KdN)",
                 count,
-                (double)((double)count / (double)total_fragments),
+                (double)((double)count / (double)sampled_sequences),
                 sequence_obj);
             if (entry_tuple == NULL) {
                 goto error;

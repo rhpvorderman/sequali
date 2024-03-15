@@ -1152,12 +1152,18 @@ class OverRepresentedSequences(ReportModule):
             <p class="explanation">A subsample of the sequences is analysed
             Sequences are cut into fragments of up to 31&#8239;bp. Fragments
             are stored and counted. When the maximum amount of unique fragments
-            is reached, only sequences that are already stored are counted. The
-            rest of the sequences is ignored.
+            is reached, only fragments that are already stored are counted. The
+            rest of the fragments is ignored.
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
             the lowest sort order. Both representations are shown in the
             table.
+            </p>
+            <p class="explanation">
+                The percentage shown is an estimate based on the number of
+                occurences of the fragment in relation to the number of
+                sampled sequences. This makes the assumption that a
+                fragment only occurs once in each sequence.
             </p>
             <table>
             <tr>
