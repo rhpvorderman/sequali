@@ -1736,33 +1736,75 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
-    const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
     uint8_t phred_offset = self->phred_offset;
     double accumulated_error_rate = 0.0;
+    #ifdef __SSE2__
+    __m128d accumulator = _mm_setzero_pd();
+    const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - sizeof(__m128i);
+    uint8_t q_store[16];
+    uint8_t index_store[16];
     while(qualities_ptr < qualities_unroll_end_ptr) {
-        uint8_t q0 = qualities_ptr[0] - phred_offset;    
-        uint8_t q1 = qualities_ptr[1] - phred_offset;   
-        uint8_t q2 = qualities_ptr[2] - phred_offset;   
-        uint8_t q3 = qualities_ptr[3] - phred_offset;   
-        if (q0 > PHRED_MAX || q1 > PHRED_MAX || q2 > PHRED_MAX || q3 > PHRED_MAX) {
+        __m128i qualities = _mm_loadu_si128((__m128i *)qualities_ptr);
+        if (_mm_movemask_epi8(_mm_or_si128(
+            _mm_cmpgt_epi8(qualities, _mm_set1_epi8(phred_offset + PHRED_MAX)),
+            _mm_cmplt_epi8(qualities, _mm_set1_epi8(phred_offset))
+        ))) {
             break;
         }
-        uint8_t q0_index = phred_to_index(q0);
-        uint8_t q1_index = phred_to_index(q1);
-        uint8_t q2_index = phred_to_index(q2);
-        uint8_t q3_index = phred_to_index(q3);
-        staging_phred_counts_ptr[0][q0_index] += 1;
-        staging_phred_counts_ptr[1][q1_index] += 1;
-        staging_phred_counts_ptr[2][q2_index] += 1;
-        staging_phred_counts_ptr[3][q3_index] += 1;
-        /* By writing it as multiple independent additions this takes advantage 
-           of out of order execution. */
-        accumulated_error_rate += (
-            SCORE_TO_ERROR_RATE[q0] + SCORE_TO_ERROR_RATE[q1]) + 
-            (SCORE_TO_ERROR_RATE[q2] + SCORE_TO_ERROR_RATE[q3]);
-        staging_phred_counts_ptr += 4;
-        qualities_ptr += 4;
+        qualities = _mm_sub_epi8(qualities, _mm_set1_epi8(phred_offset));
+        __m128i indexes = _mm_srai_epi32(qualities, 2);
+        indexes = _mm_and_si128(indexes, _mm_set1_epi8(0b00001111));
+        indexes = _mm_min_epu8(indexes, _mm_set1_epi8(11));
+        _mm_storeu_si128((__m128i *)q_store, qualities);
+        _mm_storeu_si128((__m128i *)index_store, indexes);
+
+        staging_phred_counts_ptr[0][index_store[0]] += 1;
+        staging_phred_counts_ptr[1][index_store[1]] += 1;
+        staging_phred_counts_ptr[2][index_store[2]] += 1;
+        staging_phred_counts_ptr[3][index_store[3]] += 1;
+        staging_phred_counts_ptr[4][index_store[4]] += 1;
+        staging_phred_counts_ptr[5][index_store[5]] += 1;
+        staging_phred_counts_ptr[6][index_store[6]] += 1;
+        staging_phred_counts_ptr[7][index_store[7]] += 1;
+        staging_phred_counts_ptr[8][index_store[8]] += 1;
+        staging_phred_counts_ptr[9][index_store[9]] += 1;
+        staging_phred_counts_ptr[10][index_store[10]] += 1;
+        staging_phred_counts_ptr[11][index_store[11]] += 1;
+        staging_phred_counts_ptr[12][index_store[12]] += 1;
+        staging_phred_counts_ptr[13][index_store[13]] += 1;
+        staging_phred_counts_ptr[14][index_store[14]] += 1;
+        staging_phred_counts_ptr[15][index_store[15]] += 1;
+
+        __m128d vector_one = _mm_add_pd(
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[0]], SCORE_TO_ERROR_RATE[q_store[1]]),
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[2]], SCORE_TO_ERROR_RATE[q_store[3]])           
+        );
+        __m128d vector_two = _mm_add_pd(
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[4]], SCORE_TO_ERROR_RATE[q_store[5]]),
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[6]], SCORE_TO_ERROR_RATE[q_store[7]])           
+        );
+        __m128d vector_three = _mm_add_pd(
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[8]], SCORE_TO_ERROR_RATE[q_store[9]]),
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[10]], SCORE_TO_ERROR_RATE[q_store[11]])           
+        );
+        __m128d vector_four = _mm_add_pd(
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[12]], SCORE_TO_ERROR_RATE[q_store[13]]),
+            _mm_set_pd(SCORE_TO_ERROR_RATE[q_store[14]], SCORE_TO_ERROR_RATE[q_store[15]])           
+        );
+
+        accumulator = _mm_add_pd(accumulator, 
+            _mm_add_pd(
+                _mm_add_pd(vector_one, vector_two),
+                _mm_add_pd(vector_three, vector_four)
+            )
+        );
+        staging_phred_counts_ptr += 16;
+        qualities_ptr += 16;
     }
+    double double_store[2];
+    _mm_store_pd(double_store, accumulator);
+    accumulated_error_rate = double_store[0] + double_store[1];
+    #endif
     while(qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;    
         if (q > PHRED_MAX) {
