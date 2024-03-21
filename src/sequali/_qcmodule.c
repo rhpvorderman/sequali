@@ -1664,22 +1664,22 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i c_counts = _mm_setzero_si128();
         register __m128i g_counts = _mm_setzero_si128();
         register __m128i t_counts = _mm_setzero_si128();
-        register __m128i all254 = _mm_set1_epi8(254);
+        register __m128i all1 = _mm_set1_epi8(1);
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
             // This will make all the nucleotides uppercase.
             nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
             __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
-            __m128i a_positions = _mm_subs_epu8(a_nucs, all254);
+            __m128i a_positions = _mm_and_si128(a_nucs, all1);
             a_counts = _mm_add_epi8(a_counts, a_positions);
             __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i c_positions = _mm_subs_epu8(c_nucs, all254);
+            __m128i c_positions = _mm_and_si128(c_nucs, all1);
             c_counts = _mm_add_epi8(c_counts, c_positions);
             __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i g_positions = _mm_subs_epu8(g_nucs, all254);
+            __m128i g_positions = _mm_and_si128(g_nucs, all1);
             g_counts = _mm_add_epi8(g_counts, g_positions);
             __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i t_positions = _mm_subs_epu8(t_nucs, all254);
+            __m128i t_positions = _mm_and_si128(t_nucs, all1);
             t_counts = _mm_add_epi8(t_counts, t_positions);
 
             /* Manual loop unrolling gives the best result here */
