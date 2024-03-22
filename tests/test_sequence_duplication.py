@@ -164,3 +164,17 @@ def test_sequence_duplication_sampling_rate(divisor):
         seqdup.add_read(read)
     assert seqdup.number_of_sequences == number_of_sequences
     assert seqdup.sampled_sequences == (number_of_sequences + divisor - 1) // divisor
+
+
+@pytest.mark.parametrize(["sequence", "result"], [
+    ("GATTACAGATTACA", {"ATC": 1, "GTA": 1, "AGA": 1, "ACA": 1, "AAT": 1}),
+    ("GATTACAAA", {"ATC": 1, "GTA": 1, "AAA": 1}),
+    ("GA", {}),
+    ("GATT", {"ATC": 1, "AAT": 1}),
+    ("GATTACGATTAC", {"ATC": 2, "GTA": 2}),
+])
+def test_sequence_duplication_all_fragments(sequence, result):
+    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    seqdup.add_read(view_from_sequence(sequence))
+    seq_counts = seqdup.sequence_counts()
+    assert seq_counts == result
