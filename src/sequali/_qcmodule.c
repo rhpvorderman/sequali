@@ -3345,8 +3345,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t mid_point = (sequence_length + 1) / 2;
     Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
-    Py_ssize_t up_to_mid_point_fragments = (mid_point + fragment_length - 1) /  fragment_length;
-    Py_ssize_t from_mid_point_fragments = total_fragments - up_to_mid_point_fragments;
+    Py_ssize_t from_mid_point_fragments = total_fragments / 2;
     Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
     // Save all fragments starting from 0 and up to the midpoint.
