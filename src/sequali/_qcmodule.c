@@ -1664,22 +1664,22 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i c_counts = _mm_setzero_si128();
         register __m128i g_counts = _mm_setzero_si128();
         register __m128i t_counts = _mm_setzero_si128();
-        register __m128i all254 = _mm_set1_epi8(254);
+        register __m128i all1 = _mm_set1_epi8(1);
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
             // This will make all the nucleotides uppercase.
             nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
             __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
-            __m128i a_positions = _mm_subs_epu8(a_nucs, all254);
+            __m128i a_positions = _mm_and_si128(a_nucs, all1);
             a_counts = _mm_add_epi8(a_counts, a_positions);
             __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i c_positions = _mm_subs_epu8(c_nucs, all254);
+            __m128i c_positions = _mm_and_si128(c_nucs, all1);
             c_counts = _mm_add_epi8(c_counts, c_positions);
             __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i g_positions = _mm_subs_epu8(g_nucs, all254);
+            __m128i g_positions = _mm_and_si128(g_nucs, all1);
             g_counts = _mm_add_epi8(g_counts, g_positions);
             __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i t_positions = _mm_subs_epu8(t_nucs, all254);
+            __m128i t_positions = _mm_and_si128(t_nucs, all1);
             t_counts = _mm_add_epi8(t_counts, t_positions);
 
             /* Manual loop unrolling gives the best result here */
@@ -3344,10 +3344,12 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t mid_point = (sequence_length + 1) / 2;
+    Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
+    Py_ssize_t from_mid_point_fragments = total_fragments / 2;
+    Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
-    Py_ssize_t i;
     // Save all fragments starting from 0 and up to the midpoint.
-    for (i = 0; i < mid_point; i += fragment_length) {
+    for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3359,12 +3361,11 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
-    Py_ssize_t saved_up_to = i;
     // Save all subsequences of length k starting from the end until the point 
     // where the previous loop has saved the sequences. There might be slight 
     // overlap in the middle..
-    for (i = sequence_length; i > saved_up_to; i -= fragment_length) {
-        int64_t kmer = sequence_to_canonical_kmer(sequence + sequence_length - fragment_length, fragment_length);
+    for (Py_ssize_t i = mid_point_start; i < sequence_length; i += fragment_length) {
+        int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
                 warn_unknown = true;
@@ -3380,7 +3381,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             PyExc_UserWarning, 
             1,
             "Sequence contains a chacter that is not A, C, G, T or N: %R", 
-            PyUnicode_DecodeASCII((char *)sequence + i, fragment_length, NULL)
+            PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL)
         );
     }
     self->total_fragments += fragments;
