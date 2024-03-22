@@ -2183,13 +2183,13 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    uint64_t **uint64_tmp = PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
-    if (uint64_tmp == NULL) {
+    uint64_t **counter_tmp = PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
+    if (counter_tmp == NULL) {
         PyErr_NoMemory();
         goto error;
     }
-    memset(uint64_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
-    self->adapter_counter = uint64_tmp;
+    memset(counter_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
+    self->adapter_counter = counter_tmp;
     self->adapters = NULL;
     self->matchers = NULL;
     self->max_length = 0;
@@ -2622,7 +2622,7 @@ static PyMemberDef AdapterCounter_members[] = {
     {NULL},
 };
 
-static PyTypeObject Adapteruint64_type = {
+static PyTypeObject AdapterCounter_type = {
     .tp_name = "_qc.AdapterCounter",
     .tp_basicsize = sizeof(AdapterCounter),
     .tp_dealloc = (destructor)AdapterCounter_dealloc,
@@ -4481,7 +4481,7 @@ PyInit__qc(void)
     if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
     }
-    if (python_module_add_type(m, &Adapteruint64_type) != 0) {
+    if (python_module_add_type(m, &AdapterCounter_type) != 0) {
         return NULL;
     }
     if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
