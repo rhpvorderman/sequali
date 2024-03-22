@@ -3364,7 +3364,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     // where the previous loop has saved the sequences. There might be slight 
     // overlap in the middle..
     for (i = sequence_length; i > saved_up_to; i -= fragment_length) {
-        int64_t kmer = sequence_to_canonical_kmer(sequence + sequence_length - fragment_length, fragment_length);
+        int64_t kmer = sequence_to_canonical_kmer(sequence + i - fragment_length, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
                 warn_unknown = true;
