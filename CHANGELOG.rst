@@ -7,6 +7,12 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.5.1
+-----------------
++ Fix a bug in the overrepresented sequence sampling where the fragments from
+  the back half of the sequence were incorrectly sampled. Leading to the last
+  fragment being sampled over and over again.
+
 version 0.5.0
 -----------------
 + Base the percentage in the overrepresented sequences section on the number
