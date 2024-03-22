@@ -3344,10 +3344,13 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
     Py_ssize_t mid_point = (sequence_length + 1) / 2;
+    Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
+    Py_ssize_t up_to_mid_point_fragments = (mid_point + fragment_length - 1) /  fragment_length;
+    Py_ssize_t from_mid_point_fragments = total_fragments - up_to_mid_point_fragments;
+    Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
-    Py_ssize_t i;
     // Save all fragments starting from 0 and up to the midpoint.
-    for (i = 0; i < mid_point; i += fragment_length) {
+    for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3359,12 +3362,11 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
-    Py_ssize_t saved_up_to = i;
     // Save all subsequences of length k starting from the end until the point 
     // where the previous loop has saved the sequences. There might be slight 
     // overlap in the middle..
-    for (i = sequence_length; i > saved_up_to; i -= fragment_length) {
-        int64_t kmer = sequence_to_canonical_kmer(sequence + i - fragment_length, fragment_length);
+    for (Py_ssize_t i = mid_point_start; i < sequence_length; i += fragment_length) {
+        int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
                 warn_unknown = true;
@@ -3380,7 +3382,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
             PyExc_UserWarning, 
             1,
             "Sequence contains a chacter that is not A, C, G, T or N: %R", 
-            PyUnicode_DecodeASCII((char *)sequence + i, fragment_length, NULL)
+            PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL)
         );
     }
     self->total_fragments += fragments;
