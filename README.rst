@@ -79,7 +79,10 @@ Usage
                    [--overrepresentation-max-unique-fragments N]
                    [--overrepresentation-fragment-length LENGTH]
                    [--overrepresentation-sample-every DIVISOR]
-                   [--deduplication-estimate-bits BITS] [-t THREADS] [--version]
+                   [--deduplication-estimate-bits BITS]
+                   [--fingerprint-front-length N] [--fingerprint-back-length N]
+                   [--fingerprint-front-offset N] [--fingerprint-back-offset N]
+                   [-t THREADS] [--version]
                    INPUT
 
     Create a quality metrics report for sequencing data.
@@ -132,6 +135,22 @@ Usage
                             estimate the deduplication rate. Maximum stored
                             sequences: 2 ** bits * 7 // 10. Memory required: 2 **
                             bits * 24. Default: 21.
+      --fingerprint-front-length N
+                            Set the number of bases to be taken for the
+                            deduplication fingerprint from the front of the
+                            sequence. Default: 8.
+      --fingerprint-back-length N
+                            Set the number of bases to be taken for the
+                            deduplication fingerprint from the back of the
+                            sequence. Default: 8.
+      --fingerprint-front-offset N
+                            Set the offset for the front part of the deduplication
+                            fingerprint. Useful for avoiding adapter sequences.
+                            Default: 64.
+      --fingerprint-back-offset N
+                            Set the offset for the back part of the deduplication
+                            fingerprint. Useful for avoiding adapter sequences.
+                            Default: 64.
       -t THREADS, --threads THREADS
                             Number of threads to use. If greater than one sequali
                             will use an additional thread for gzip decompression.
