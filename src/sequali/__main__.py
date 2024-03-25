@@ -21,10 +21,22 @@ import sys
 import xopen
 
 from ._qc import (
-    AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-    DEFAULT_FRAGMENT_LENGTH, DEFAULT_MAX_UNIQUE_FRAGMENTS,
-    DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
-    PerTileQuality, QCMetrics, SequenceDuplication
+    AdapterCounter,
+    BamParser,
+    DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+    DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+    DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+    DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+    DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+    DEFAULT_FRAGMENT_LENGTH,
+    DEFAULT_MAX_UNIQUE_FRAGMENTS,
+    DEFAULT_UNIQUE_SAMPLE_EVERY,
+    DedupEstimator,
+    FastqParser,
+    NanoStats,
+    PerTileQuality,
+    QCMetrics,
+    SequenceDuplication
 )
 from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
@@ -109,6 +121,35 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"Maximum stored sequences: 2 ** bits * 7 // 10. "
                              f"Memory required: 2 ** bits * 24. "
                              f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
+    parser.add_argument("--fingerprint-front-length", type=int,
+                        default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+                        metavar="N",
+                        help=f"Set the number of bases to be taken for the "
+                             f"deduplication fingerprint from the front of "
+                             f"the sequence. "
+                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH}.")
+
+    parser.add_argument("--fingerprint-back-length", type=int,
+                        default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+                        metavar="N",
+                        help=f"Set the number of bases to be taken for the "
+                             f"deduplication fingerprint from the back of "
+                             f"the sequence. "
+                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH}.")
+    parser.add_argument("--fingerprint-front-offset", type=int,
+                        default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+                        metavar="N",
+                        help=f"Set the offset for the front part of the "
+                             f"deduplication fingerprint. Useful for avoiding "
+                             f"adapter sequences. "
+                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET}.")
+    parser.add_argument("--fingerprint-back-offset", type=int,
+                        default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+                        metavar="N",
+                        help=f"Set the offset for the back part of the "
+                             f"deduplication fingerprint. Useful for avoiding "
+                             f"adapter sequences. "
+                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET}.")
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
                              "sequali will use an additional thread for gzip "
@@ -133,7 +174,12 @@ def main() -> None:
         sample_every=args.overrepresentation_sample_every
     )
     dedup_estimator = DedupEstimator(
-        hash_table_size_bits=args.deduplication_estimate_bits)
+        hash_table_size_bits=args.deduplication_estimate_bits,
+        front_sequence_length=args.fingerprint_front_length,
+        front_sequence_offset=args.fingerprint_front_offset,
+        back_sequence_length=args.fingerprint_back_length,
+        back_sequence_offset=args.fingerprint_back_offset,
+    )
     nanostats = NanoStats()
     filename: str = args.input
     threads = args.threads

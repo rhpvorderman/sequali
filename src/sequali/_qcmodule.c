@@ -3715,6 +3715,19 @@ https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 // accurate results.
 #define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
 
+/* 
+Avoid the beginning and end of the sequence by at most 64 bp to avoid
+any adapters. Take the 8 bp after the start offset and the 8 bp before 
+the end offset. This creates a small 16 bp fingerprint. Hash it using 
+MurmurHash. 16 bp is small and therefore relatively insensitive to 
+sequencing errors while still offering 4^16 or 4 billion distinct 
+fingerprints. 
+*/
+#define DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH 8
+#define DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH 8
+#define DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET 64
+#define DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET 64
+
 // Use packing at the 4-byte boundary to save 4 bytes of storage.
 #pragma pack(4)
 struct EstimatorEntry {
@@ -3729,22 +3742,43 @@ typedef struct _DedupEstimatorStruct {
     size_t hash_table_size;
     size_t max_stored_entries;
     size_t stored_entries;
+    size_t front_sequence_length;
+    size_t front_sequence_offset;
+    size_t back_sequence_length;
+    size_t back_sequence_offset;
+    uint8_t *fingerprint_store;
     struct EstimatorEntry *hash_table;
 } DedupEstimator;
 
 static void 
 DedupEstimator_dealloc(DedupEstimator *self) {
     PyMem_Free(self->hash_table);
+    PyMem_Free(self->fingerprint_store);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
 DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     Py_ssize_t hash_table_size_bits = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS;
-    static char *kwargnames[] = {"hash_table_size_bits", NULL};
-    static char *format = "|n:DedupEstimator";
+    Py_ssize_t front_sequence_length = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH;
+    Py_ssize_t front_sequence_offset = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET;
+    Py_ssize_t back_sequence_length = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH;
+    Py_ssize_t back_sequence_offset = DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET;
+    static char *kwargnames[] = {
+        "hash_table_size_bits",
+        "front_sequence_length", 
+        "back_sequence_length",
+        "front_sequence_offset",
+        "back_sequence_offset", 
+        NULL
+    };
+    static char *format = "|n$nnnn:DedupEstimator";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &hash_table_size_bits)) {
+            &hash_table_size_bits,
+            &front_sequence_length, 
+            &back_sequence_length,
+            &front_sequence_offset,
+            &back_sequence_offset)) {
         return NULL;
     }
     if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
@@ -3755,16 +3789,44 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         );
         return NULL;
     }
+    Py_ssize_t lengths_and_offsets[4] = {
+        front_sequence_length,
+        back_sequence_length,
+        front_sequence_offset,
+        back_sequence_offset,
+    };
+    for (size_t i=0; i<4; i++) {
+        if (lengths_and_offsets[i] < 1) {
+            PyErr_Format(
+                PyExc_ValueError,
+                "%s must be larger than 0, got %zd", 
+                kwargnames[i+1],
+                lengths_and_offsets[i]
+            );
+        }
+    }
     size_t hash_table_size = 1ULL << hash_table_size_bits;
+    size_t fingerprint_size = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint_store = PyMem_Malloc(fingerprint_size);
+    if (fingerprint_store == NULL) {
+        return PyErr_NoMemory();
+    }
     struct EstimatorEntry *hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
     if (hash_table == NULL) {
+        PyMem_Free(fingerprint_store);
         return PyErr_NoMemory();
     }
     DedupEstimator *self = PyObject_New(DedupEstimator, type);
     if (self == NULL) {
+        PyMem_Free(fingerprint_store);
         PyMem_Free(hash_table);
         return PyErr_NoMemory();
     }
+    self->front_sequence_length = front_sequence_length;
+    self->front_sequence_offset = front_sequence_offset;
+    self->back_sequence_length = back_sequence_length; 
+    self->back_sequence_offset = back_sequence_offset;
+    self->fingerprint_store = fingerprint_store;
     self->hash_table_size = hash_table_size;
     // Get about 70% occupancy max
     self->max_stored_entries = (hash_table_size * 7) / 10;
@@ -3816,35 +3878,30 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
     return 0;
 }
 
-/* 
-Avoid the beginning and end of the sequence by at most 64 bp to avoid
-any adapters. Take the 8 bp after the start offset and the 8 bp before 
-the end offset. This creates a small 16 bp fingerprint. Hash it using 
-MurmurHash. 16 bp is small and therefore relatively insensitive to 
-sequencing errors while still offering 4^16 or 4 billion distinct 
-fingerprints. 
-*/
-#define FINGERPRINT_MAX_OFFSET 64
-#define FINGERPRINT_LENGTH 16
-
 static int 
 DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
                                uint8_t *sequence, size_t sequence_length) 
 {
 
     uint64_t hash;
-    if (sequence_length < 16) {
+    size_t front_sequence_length = self->front_sequence_length;
+    size_t back_sequence_length = self->back_sequence_length;
+    size_t front_sequence_offset = self->front_sequence_offset;
+    size_t back_sequence_offset = self->back_sequence_offset;
+    size_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    if (sequence_length <= fingerprint_length) {
         hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
     } else {
         uint64_t seed = sequence_length >> 6;
-        uint8_t fingerprint[FINGERPRINT_LENGTH];
-        size_t remainder = sequence_length - FINGERPRINT_LENGTH;
-        size_t offset = Py_MIN(remainder / 2, FINGERPRINT_MAX_OFFSET);
-        memcpy(fingerprint, sequence + offset, FINGERPRINT_LENGTH / 2);
-        memcpy(fingerprint + (FINGERPRINT_LENGTH / 2), 
-               sequence + sequence_length - (offset + (FINGERPRINT_LENGTH / 2)), 
-               (FINGERPRINT_LENGTH / 2));
-        hash = MurmurHash3_x64_64(fingerprint, FINGERPRINT_LENGTH, seed);
+        size_t remainder = sequence_length - fingerprint_length;
+        size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
+        size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
+        memcpy(fingerprint, sequence + front_offset, front_sequence_length);
+        memcpy(fingerprint + front_sequence_length, 
+               sequence + sequence_length - (back_offset + back_sequence_length), 
+               back_sequence_length);
+        hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
     }
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
@@ -4517,5 +4574,9 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
     PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
     return m;
 }
