@@ -238,6 +238,7 @@ class Meta(ReportModule):
         return f"""
             <p>Filename: <code>{self.filename}</code></p>
             <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
+            <p>Sequali version: {self.sequali_version}
             <p>Report generated on {self.report_generated}</p>
         """
 
