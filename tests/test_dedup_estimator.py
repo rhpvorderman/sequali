@@ -59,6 +59,8 @@ def test_dedup_estimator_switches_modulo():
      "back_sequence_offset"],
     [
         (1, 0, 1, 0),
+        (8, 64, 8, 64),
+        (100000, 80000, 10000, 80000),
     ],
 
 )
@@ -77,3 +79,24 @@ def test_dedup_estimator_valid_settings(
     dedup_est.add_sequence("test")
     dedup_est.add_sequence("test2")
     dedup_est.duplication_counts()
+
+
+@pytest.mark.parametrize(
+    ["parameter", "value"],
+    [
+        ("hash_table_size_bits", 7),
+        ("hash_table_size_bits", 60),
+        ("front_sequence_length", 0),
+        ("front_sequence_length", -1),
+        ("back_sequence_length", 0),
+        ("back_sequence_length", -1),
+        ("front_sequence_offset", -1),
+        ("back_sequence_offset", -1),
+    ]
+)
+def test_dedup_estimator_invalid_settings(parameter, value):
+    kwargs = {parameter: value}
+    with pytest.raises(ValueError) as e:
+        DedupEstimator(**kwargs)
+    assert e.match(parameter)
+    assert e.match(str(value))
