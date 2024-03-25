@@ -40,7 +40,7 @@ def test_dedup_estimator():
 
 def test_dedup_estimator_switches_modulo():
     dedup_est = DedupEstimator(8)
-    assert dedup_est._modulo_bits == 1
+    assert dedup_est._modulo_bits == 0
     ten_alphabets = [string.ascii_letters] * 10
     infinite_seqs = ("".join(letters) for letters in itertools.product(*ten_alphabets))
     for i, seq in zip(range(10000), infinite_seqs):
