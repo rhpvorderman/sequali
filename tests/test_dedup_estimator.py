@@ -17,6 +17,8 @@
 import itertools
 import string
 
+import pytest
+
 from sequali._qc import DedupEstimator
 
 
@@ -48,3 +50,30 @@ def test_dedup_estimator_switches_modulo():
     # 10_000 / 179 = 56 sequences per slot. That requires 6 bits modulo,
     # selecting one in 64 sequences.
     assert dedup_est._modulo_bits == 6
+
+
+@pytest.mark.parametrize(
+    ["front_sequence_length",
+     "front_sequence_offset",
+     "back_sequence_length",
+     "back_sequence_offset"],
+    [
+        (1, 0, 1, 0),
+    ],
+
+)
+def test_dedup_estimator_valid_settings(
+    front_sequence_length,
+    front_sequence_offset,
+    back_sequence_length,
+    back_sequence_offset,
+):
+    dedup_est = DedupEstimator(
+        front_sequence_length=front_sequence_length,
+        front_sequence_offset=front_sequence_offset,
+        back_sequence_length=back_sequence_length,
+        back_sequence_offset=back_sequence_offset,
+    )
+    dedup_est.add_sequence("test")
+    dedup_est.add_sequence("test2")
+    dedup_est.duplication_counts()

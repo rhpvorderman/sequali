@@ -3789,22 +3789,39 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         );
         return NULL;
     }
-    Py_ssize_t lengths_and_offsets[4] = {
-        front_sequence_length,
-        back_sequence_length,
-        front_sequence_offset,
-        back_sequence_offset,
-    };
-    for (size_t i=0; i<4; i++) {
-        if (lengths_and_offsets[i] < 1) {
-            PyErr_Format(
-                PyExc_ValueError,
-                "%s must be larger than 0, got %zd", 
-                kwargnames[i+1],
-                lengths_and_offsets[i]
-            );
-        }
+    if (front_sequence_length < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "front_sequence_length must be at least 1, got %zd.",
+            front_sequence_length
+        );
+        return NULL;
     }
+    if (front_sequence_offset < 0) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "front_sequence_offset must be at least 0, got %zd.",
+            front_sequence_offset
+        );
+        return NULL;
+    }
+     if (back_sequence_length < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "back_sequence_length must be at least 1, got %zd.",
+            back_sequence_length
+        );
+        return NULL;
+    }
+    if (back_sequence_offset < 0) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "back_sequence_offset must be at least 1, got %zd.",
+            back_sequence_offset
+        );
+        return NULL;
+    }
+
     size_t hash_table_size = 1ULL << hash_table_size_bits;
     size_t fingerprint_size = front_sequence_length + back_sequence_length;
     uint8_t *fingerprint_store = PyMem_Malloc(fingerprint_size);
