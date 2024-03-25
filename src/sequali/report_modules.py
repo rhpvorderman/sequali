@@ -40,7 +40,7 @@ from ._version import __version__
 from .adapters import Adapter
 from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
-from .util import fasta_parser
+from .util import data_to_percentiles, fasta_parser
 
 SEQUALI_REPORT_CSS = Path(__file__).parent / "style" / "sequali_report.css"
 SEQUALI_REPORT_CSS_CONTENT = SEQUALI_REPORT_CSS.read_text(encoding="utf-8")
@@ -372,33 +372,11 @@ class SequenceLengthDistribution(ReportModule):
         lengths = [sum(seqlength_view[start:stop]) for start, stop in
                    data_ranges]
         x_labels = stringify_ranges(data_ranges)
-        percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
-        percentile_thresholds = [int(p * total_sequences / 100) for p in percentiles]
-        thresh_iter = enumerate(percentile_thresholds)
-        thresh_index, current_threshold = next(thresh_iter)
-        accumulated_count = 0
-        percentile_lengths = [0 for _ in percentiles]
-        done = False
-        for length, count in enumerate(sequence_lengths):
-            while count > 0 and not done:
-                remaining_threshold = current_threshold - accumulated_count
-                if count > remaining_threshold:
-                    accumulated_count += remaining_threshold
-                    percentile_lengths[thresh_index] = length
-                    count -= remaining_threshold
-                    try:
-                        thresh_index, current_threshold = next(thresh_iter)
-                    except StopIteration:
-                        done = True
-                        break
-                    continue
-                break
-            accumulated_count += count
-            if done:
-                break
+        percentile_data = data_to_percentiles(lengths)
+        percentile_lengths = {f"q{perc}": reads for perc, reads in percentile_data.items()}
 
         return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
-                   *percentile_lengths)
+                   **percentile_lengths)
 
 
 @dataclasses.dataclass
@@ -569,6 +547,15 @@ class PerBaseQualityScoreDistribution(ReportModule):
 @dataclasses.dataclass
 class PerSequenceAverageQualityScores(ReportModule):
     average_quality_counts: Sequence[int]
+    q1: int
+    q5: int
+    q10: int
+    q25: int
+    q50: int
+    q75: int
+    q90: int
+    q95: int
+    q99: int
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
     def plot(self) -> str:
@@ -597,15 +584,38 @@ class PerSequenceAverageQualityScores(ReportModule):
         plot.add("", percentage_scores[:maximum_score])
         return plot.render(is_unicode=True)
 
+    def distribution_table(self):
+        return f"""
+            <table>
+                <tr><th>Quantile</th><th>Quality score</th></tr>
+                <tr><td>N1</td><td style="text-align:right;">{self.q1:,}</td></tr>
+                <tr><td>N5</td><td style="text-align:right;">{self.q5:,}</td></tr>
+                <tr><td>N10</td><td style="text-align:right;">{self.q10:,}</td></tr>
+                <tr><td>N25</td><td style="text-align:right;">{self.q25:,}</td></tr>
+                <tr><td>N50</td><td style="text-align:right;">{self.q50:,}</td></tr>
+                <tr><td>N75</td><td style="text-align:right;">{self.q75:,}</td></tr>
+                <tr><td>N90</td><td style="text-align:right;">{self.q90:,}</td></tr>
+                <tr><td>N95</td><td style="text-align:right;">{self.q95:,}</td></tr>
+                <tr><td>N99</td><td style="text-align:right;">{self.q99:,}</td></tr>
+            </table>
+        """
+
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence average quality scores</h2>
+            <p>{self.distribution_table()}</p>
             <figure>{self.plot()}</figure>
         """
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(list(metrics.phred_scores()))
+        phred_scores = list(metrics.phred_scores())
+        percentile_data = data_to_percentiles(phred_scores)
+        percentile_dict = {f"q{perc}": count for perc, count in percentile_data.items()}
+        return cls(
+            phred_scores,
+            **percentile_dict
+        )
 
 
 @dataclasses.dataclass

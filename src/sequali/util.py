@@ -18,8 +18,8 @@ import gzip
 import io
 import os
 import string
-from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
-                    Tuple)
+from typing import (BinaryIO, Callable, Dict, Iterator, List, Optional,
+                    Sequence, SupportsIndex, Tuple)
 
 import tqdm
 
@@ -196,3 +196,32 @@ def guess_sequencing_technology_from_bam_header(bam_header: bytes):
                     elif value == "Illumina":
                         return "illumina"
     return None
+
+
+def data_to_percentiles(
+        data: Sequence[int],
+        percentiles: Sequence[int] = (1, 5, 10, 25, 50, 75, 90, 95, 99)
+) -> Dict[int, int]:
+    total = sum(data)
+    percentile_thresholds = [int(p * total / 100) for p in percentiles]
+    thresh_iter = enumerate(percentile_thresholds)
+    thresh_index, current_threshold = next(thresh_iter)
+    accumulated_count = 0
+    percentile_indexes = [0 for _ in percentiles]
+    done = False
+    for value, count in enumerate(data):
+        while count > 0 and not done:
+            remaining_threshold = current_threshold - accumulated_count
+            if count > remaining_threshold:
+                accumulated_count += remaining_threshold
+                percentile_indexes[thresh_index] = value
+                count -= remaining_threshold
+                try:
+                    thresh_index, current_threshold = next(thresh_iter)
+                except StopIteration:
+                    done = True
+                    break
+                continue
+            break
+        accumulated_count += count
+    return dict(zip(percentiles, percentile_indexes))
