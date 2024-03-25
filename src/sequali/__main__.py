@@ -123,7 +123,7 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
     parser.add_argument("--fingerprint-front-length", type=int,
                         default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
-                        metavar="N",
+                        metavar="LENGTH",
                         help=f"Set the number of bases to be taken for the "
                              f"deduplication fingerprint from the front of "
                              f"the sequence. "
@@ -131,21 +131,21 @@ def argument_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--fingerprint-back-length", type=int,
                         default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
-                        metavar="N",
+                        metavar="LENGTH",
                         help=f"Set the number of bases to be taken for the "
                              f"deduplication fingerprint from the back of "
                              f"the sequence. "
                              f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH}.")
     parser.add_argument("--fingerprint-front-offset", type=int,
                         default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
-                        metavar="N",
+                        metavar="LENGTH",
                         help=f"Set the offset for the front part of the "
                              f"deduplication fingerprint. Useful for avoiding "
                              f"adapter sequences. "
                              f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET}.")
     parser.add_argument("--fingerprint-back-offset", type=int,
                         default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
-                        metavar="N",
+                        metavar="LENGTH",
                         help=f"Set the offset for the back part of the "
                              f"deduplication fingerprint. Useful for avoiding "
                              f"adapter sequences. "
