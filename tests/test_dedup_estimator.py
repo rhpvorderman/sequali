@@ -61,6 +61,8 @@ def test_dedup_estimator_switches_modulo():
         (1, 0, 1, 0),
         (8, 64, 8, 64),
         (100000, 80000, 10000, 80000),
+        (1, 0, 0, 0),
+        (0, 0, 1, 0),
     ],
 
 )
@@ -86,9 +88,7 @@ def test_dedup_estimator_valid_settings(
     [
         ("hash_table_size_bits", 7),
         ("hash_table_size_bits", 60),
-        ("front_sequence_length", 0),
         ("front_sequence_length", -1),
-        ("back_sequence_length", 0),
         ("back_sequence_length", -1),
         ("front_sequence_offset", -1),
         ("back_sequence_offset", -1),
@@ -100,3 +100,47 @@ def test_dedup_estimator_invalid_settings(parameter, value):
         DedupEstimator(**kwargs)
     assert e.match(parameter)
     assert e.match(str(value))
+
+
+@pytest.mark.parametrize(
+    ["front_sequence_length",
+     "front_sequence_offset",
+     "back_sequence_length",
+     "back_sequence_offset",
+     "result"
+     ],
+    [
+        (8, 0, 8, 0, {1, }),
+        (0, 0, 6, 0, {1, }),
+        (1, 6, 1, 6, {6, }),
+        (2, 6, 1, 6, {3, }),
+        (2, 6, 2, 6, {2, 1, }),
+        (1, 0, 0, 0, {1, }),
+        (0, 0, 1, 0, {6, }),
+    ],
+)
+def test_dedup_estimator_offsets_and_lengths(
+        front_sequence_length,
+        front_sequence_offset,
+        back_sequence_length,
+        back_sequence_offset,
+        result,
+):
+    input_sequences = [
+        "123456AC TA123451",
+        "234561AC AA234561",
+        "345612AC TA345611",
+        "456123AG AA456121",
+        "561234AG TA561231",
+        "612345AG AA612341",
+    ]
+    dedup_est = DedupEstimator(
+        front_sequence_offset=front_sequence_offset,
+        front_sequence_length=front_sequence_length,
+        back_sequence_length=back_sequence_length,
+        back_sequence_offset=back_sequence_offset,
+        hash_table_size_bits=8,
+    )
+    for sequence in input_sequences:
+        dedup_est.add_sequence(sequence)
+    assert set(dedup_est.duplication_counts()) == result

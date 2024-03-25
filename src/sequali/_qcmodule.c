@@ -3789,41 +3789,33 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
         );
         return NULL;
     }
-    if (front_sequence_length < 1) {
-        PyErr_Format(
-            PyExc_ValueError,
-            "front_sequence_length must be at least 1, got %zd.",
-            front_sequence_length
-        );
-        return NULL;
+    Py_ssize_t lengths_and_offsets[4] = {
+        front_sequence_length,
+        back_sequence_length,
+        front_sequence_offset,
+        back_sequence_offset,
+    };
+    for (size_t i=0; i < 4; i++) {
+        if (lengths_and_offsets[i] < 0) {
+            PyErr_Format(
+                PyExc_ValueError,
+                "%s must be at least 0, got %zd.",
+                kwargnames[i+1],
+                lengths_and_offsets[i]
+            );
+            return NULL;
+        }
     }
-    if (front_sequence_offset < 0) {
-        PyErr_Format(
+    size_t fingerprint_size = front_sequence_length + back_sequence_length;
+    if (fingerprint_size == 0) {
+        PyErr_SetString(
             PyExc_ValueError,
-            "front_sequence_offset must be at least 0, got %zd.",
-            front_sequence_offset
-        );
-        return NULL;
-    }
-     if (back_sequence_length < 1) {
-        PyErr_Format(
-            PyExc_ValueError,
-            "back_sequence_length must be at least 1, got %zd.",
-            back_sequence_length
-        );
-        return NULL;
-    }
-    if (back_sequence_offset < 0) {
-        PyErr_Format(
-            PyExc_ValueError,
-            "back_sequence_offset must be at least 1, got %zd.",
-            back_sequence_offset
+            "The sum of front_sequence_length and back_sequence_length must be at least 0"
         );
         return NULL;
     }
 
     size_t hash_table_size = 1ULL << hash_table_size_bits;
-    size_t fingerprint_size = front_sequence_length + back_sequence_length;
     uint8_t *fingerprint_store = PyMem_Malloc(fingerprint_size);
     if (fingerprint_store == NULL) {
         return PyErr_NoMemory();
@@ -3848,7 +3840,7 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     // Get about 70% occupancy max
     self->max_stored_entries = (hash_table_size * 7) / 10;
     self->hash_table = hash_table;
-    self->modulo_bits = 1;
+    self->modulo_bits = 0;
     self->stored_entries = 0;
     return (PyObject *)self;
 }
