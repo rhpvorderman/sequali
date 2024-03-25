@@ -4055,6 +4055,14 @@ static PyMemberDef DedupEstimator_members[] = {
      READONLY, NULL},
     {"tracked_sequences", T_ULONGLONG, offsetof(DedupEstimator, stored_entries), 
      READONLY, NULL},
+    {"front_sequence_length", T_ULONGLONG, 
+      offsetof(DedupEstimator, front_sequence_length), READONLY, NULL},
+    {"back_sequence_length", T_ULONGLONG, 
+     offsetof(DedupEstimator, back_sequence_length), READONLY, NULL},
+    {"front_sequence_offset", T_ULONGLONG, 
+     offsetof(DedupEstimator, front_sequence_offset), READONLY, NULL},
+    {"back_sequence_offset", T_ULONGLONG, 
+     offsetof(DedupEstimator, back_sequence_offset), READONLY, NULL},
     {NULL},
 };
 

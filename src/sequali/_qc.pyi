@@ -119,6 +119,10 @@ class DedupEstimator:
     _modulo_bits: int 
     _hash_table_size: int 
     tracked_sequences: int
+    front_sequence_length: int 
+    back_sequence_length: int 
+    front_sequence_offset: int 
+    back_sequence_offset: int
 
     def __init__(
             self,
