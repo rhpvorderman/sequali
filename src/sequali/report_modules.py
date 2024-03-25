@@ -990,6 +990,10 @@ class DuplicationCounts(ReportModule):
     duplication_counts: Sequence[Tuple[int, int]]
     remaining_fraction: float
     estimated_duplication_fractions: Dict[str, float]
+    fingerprint_front_sequence_length: int
+    fingerprint_back_sequence_length: int
+    fingerprint_front_sequence_offset: int
+    fingerprint_back_sequence_offset: int
 
     def plot(self):
         plot = pygal.Bar(
@@ -1009,29 +1013,60 @@ class DuplicationCounts(ReportModule):
     def to_html(self):
         first_part = f"""
         <p class="explanation">
-        Every sequence is fingerprinted by skipping the first 64 bases and
-        taking the first 8 bases after that, as well as getting the
-        8 bases before the last 64 bases. This gives a small 16&#8239;bp
-        sequence from two 8&#8239;bp stubs from the beginning and end.
-        This sequence is hashed using the length divided by 64 as a seed,
-        which results in the final fingerprint.
+        Every sequence is fingerprinted by taking a predetermined number of
+        bases at a predetermined offset from the front as well as taking
+        a predetermined number of bases at an offset from the back. These
+        sequences are combined and hashed using the sequence original
+        length divided by 64 as a seed, which results in the final fingerprint.
+
         This ensures that sequences that have very different lengths get
-        different fingerprints. The 64&#8239;bp offset ensures that sequencing adapters
+        different fingerprints. The offsets ensure that sequencing adapters
         at the beginning or end of the sequence are not taken into account. On
         short sequences, the offsets are proportionally shrunk.
-        The 16&#8239;bp length of the sequence used as base for the hash limits
-        the effect of sequencing errors, especially on long-read sequencing
-        technologies.
+
         A subsample of the fingerprints is stored to
         estimate the duplication rate. See,
         <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
         the paper describing the methodology</a>.</p>
-        <p>The subsample for this file consists of
-        {self.tracked_unique_sequences:,} fingerprints.
+        <p>
+        <table>
+            <tr>
+                <td>Fingerprint front sequence length</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_front_sequence_length:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint front sequence offset</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_front_sequence_offset:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint back sequence length</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_back_sequence_length}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint back sequence offset</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_back_sequence_offset:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Subsampled fingerprints</td>
+                <td style="text-align:right;">
+                    {self.tracked_unique_sequences:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Estimated remaining sequences if deduplicated</td>
+                <td style="text-align:right;">{self.remaining_fraction:.2%}</td>
+            </tr>
+            </table>
         </p>
-        <p>Estimated remaining sequences if deduplicated:
-        {self.remaining_fraction:.2%}</p>
-            """
+        """
         return f"""
             <h2>Duplication percentages</h2>
             {first_part}
@@ -1094,6 +1129,10 @@ class DuplicationCounts(ReportModule):
             duplication_counts=sorted(duplication_categories.items()),
             estimated_duplication_fractions=estimated_duplication_fractions,
             remaining_fraction=deduplicated_fraction,
+            fingerprint_front_sequence_length=dedup_est.front_sequence_length,
+            fingerprint_back_sequence_length=dedup_est.back_sequence_length,
+            fingerprint_front_sequence_offset=dedup_est.front_sequence_offset,
+            fingerprint_back_sequence_offset=dedup_est.back_sequence_offset,
         )
 
 

@@ -31,7 +31,12 @@ MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_FRAGMENTS: int
 DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
 DEFAULT_FRAGMENT_LENGTH: int
-DEFAULT_UNIQUE_SAMPLE_EVERY: int 
+DEFAULT_UNIQUE_SAMPLE_EVERY: int
+DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH: int
+DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH: int
+DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET: int
+DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET: int
+
 
 class FastqRecordView:
     obj: bytes
@@ -114,8 +119,20 @@ class DedupEstimator:
     _modulo_bits: int 
     _hash_table_size: int 
     tracked_sequences: int
+    front_sequence_length: int 
+    back_sequence_length: int 
+    front_sequence_offset: int 
+    back_sequence_offset: int
 
-    def __init__(self, hash_table_size_bits: int = 21): ...
+    def __init__(
+            self,
+            hash_table_size_bits: int = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+            *,
+            front_sequence_length: int = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+            back_sequence_length: int = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+            front_sequence_offset: int = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+            back_sequence_offset: int = DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+    ): ...
     def add_sequence(self, __sequence: str) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def duplication_counts(self) -> array.ArrayType: ...

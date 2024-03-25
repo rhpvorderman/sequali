@@ -17,6 +17,8 @@
 import itertools
 import string
 
+import pytest
+
 from sequali._qc import DedupEstimator
 
 
@@ -38,7 +40,7 @@ def test_dedup_estimator():
 
 def test_dedup_estimator_switches_modulo():
     dedup_est = DedupEstimator(8)
-    assert dedup_est._modulo_bits == 1
+    assert dedup_est._modulo_bits == 0
     ten_alphabets = [string.ascii_letters] * 10
     infinite_seqs = ("".join(letters) for letters in itertools.product(*ten_alphabets))
     for i, seq in zip(range(10000), infinite_seqs):
@@ -48,3 +50,97 @@ def test_dedup_estimator_switches_modulo():
     # 10_000 / 179 = 56 sequences per slot. That requires 6 bits modulo,
     # selecting one in 64 sequences.
     assert dedup_est._modulo_bits == 6
+
+
+@pytest.mark.parametrize(
+    ["front_sequence_length",
+     "front_sequence_offset",
+     "back_sequence_length",
+     "back_sequence_offset"],
+    [
+        (1, 0, 1, 0),
+        (8, 64, 8, 64),
+        (100000, 80000, 10000, 80000),
+        (1, 0, 0, 0),
+        (0, 0, 1, 0),
+    ],
+
+)
+def test_dedup_estimator_valid_settings(
+    front_sequence_length,
+    front_sequence_offset,
+    back_sequence_length,
+    back_sequence_offset,
+):
+    dedup_est = DedupEstimator(
+        front_sequence_length=front_sequence_length,
+        front_sequence_offset=front_sequence_offset,
+        back_sequence_length=back_sequence_length,
+        back_sequence_offset=back_sequence_offset,
+    )
+    dedup_est.add_sequence("test")
+    dedup_est.add_sequence("test2")
+    dedup_est.duplication_counts()
+
+
+@pytest.mark.parametrize(
+    ["parameter", "value"],
+    [
+        ("hash_table_size_bits", 7),
+        ("hash_table_size_bits", 60),
+        ("front_sequence_length", -1),
+        ("back_sequence_length", -1),
+        ("front_sequence_offset", -1),
+        ("back_sequence_offset", -1),
+    ]
+)
+def test_dedup_estimator_invalid_settings(parameter, value):
+    kwargs = {parameter: value}
+    with pytest.raises(ValueError) as e:
+        DedupEstimator(**kwargs)
+    assert e.match(parameter)
+    assert e.match(str(value))
+
+
+@pytest.mark.parametrize(
+    ["front_sequence_length",
+     "front_sequence_offset",
+     "back_sequence_length",
+     "back_sequence_offset",
+     "result"
+     ],
+    [
+        (8, 0, 8, 0, {1, }),
+        (0, 0, 6, 0, {1, }),
+        (1, 6, 1, 6, {6, }),
+        (2, 6, 1, 6, {3, }),
+        (2, 6, 2, 6, {2, 1, }),
+        (1, 0, 0, 0, {1, }),
+        (0, 0, 1, 0, {6, }),
+    ],
+)
+def test_dedup_estimator_offsets_and_lengths(
+        front_sequence_length,
+        front_sequence_offset,
+        back_sequence_length,
+        back_sequence_offset,
+        result,
+):
+    input_sequences = [
+        "123456AC TA123451",
+        "234561AC AA234561",
+        "345612AC TA345611",
+        "456123AG AA456121",
+        "561234AG TA561231",
+        "612345AG AA612341",
+    ]
+    dedup_est = DedupEstimator(
+        front_sequence_offset=front_sequence_offset,
+        front_sequence_length=front_sequence_length,
+        back_sequence_length=back_sequence_length,
+        back_sequence_offset=back_sequence_offset,
+        hash_table_size_bits=8,
+    )
+    for sequence in input_sequences:
+        dedup_est.add_sequence(sequence)
+    assert set(dedup_est.duplication_counts()) == result
