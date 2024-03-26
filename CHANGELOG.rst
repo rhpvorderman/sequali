@@ -9,6 +9,7 @@ Changelog
 
 version 0.6.0-dev
 -----------------
++ The progressbar can track progress through more file formats.
 + The deduplication fingerprint that is used is now configurable from the
   command line.
 + The deduplication module starts by gathering all sequences rather than half
