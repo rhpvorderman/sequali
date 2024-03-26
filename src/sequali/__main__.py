@@ -185,26 +185,27 @@ def main() -> None:
     threads = args.threads
     if threads < 1:
         raise ValueError(f"Threads must be greater than 1, got {threads}.")
-    with xopen.xopen(filename, "rb", threads=threads-1) as file:  # type: ignore
-        progress = ProgressUpdater(filename, file)
-        if filename.endswith(".bam") or (
-                hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
-            reader = BamParser(file)
-            seqtech = guess_sequencing_technology_from_bam_header(reader.header)
-        else:
-            reader = FastqParser(file)  # type: ignore
-            seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
-        adapters = list(adapters_from_file(args.adapter_file, seqtech))
-        adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
-        with progress:
-            for record_array in reader:
-                metrics.add_record_array(record_array)
-                per_tile_quality.add_record_array(record_array)
-                adapter_counter.add_record_array(record_array)
-                sequence_duplication.add_record_array(record_array)
-                nanostats.add_record_array(record_array)
-                dedup_estimator.add_record_array(record_array)
-                progress.update(record_array)
+    with open(filename, "rb") as raw:
+        progress = ProgressUpdater(raw)
+        with xopen.xopen(raw, "rb", threads=threads - 1) as file:
+            if filename.endswith(".bam") or (
+                    hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
+                reader = BamParser(file)
+                seqtech = guess_sequencing_technology_from_bam_header(reader.header)
+            else:
+                reader = FastqParser(file)  # type: ignore
+                seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
+            adapters = list(adapters_from_file(args.adapter_file, seqtech))
+            adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
+            with progress:
+                for record_array in reader:
+                    metrics.add_record_array(record_array)
+                    per_tile_quality.add_record_array(record_array)
+                    adapter_counter.add_record_array(record_array)
+                    sequence_duplication.add_record_array(record_array)
+                    nanostats.add_record_array(record_array)
+                    dedup_estimator.add_record_array(record_array)
+                    progress.update(record_array)
     report_modules = calculate_stats(
         filename,
         metrics,
