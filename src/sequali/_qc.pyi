@@ -113,7 +113,6 @@ class SequenceDuplication:
                                   min_threshold: int = 1,
                                   max_threshold: int = sys.maxsize,
                                   ) -> List[Tuple[int, float, str]]: ...
-    def duplication_counts(self) -> array.ArrayType: ...
 
 class DedupEstimator:
     _modulo_bits: int 

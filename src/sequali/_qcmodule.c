@@ -3594,40 +3594,6 @@ error:
     return NULL;
 }
 
-PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
-"duplication_counts($self)\n"
-"--\n"
-"\n"
-"Return a array.array with only the counts.\n"
-);
-
-#define SequenceDuplication_duplication_counts_method METH_NOARGS
-
-static PyObject *
-SequenceDuplication_duplication_counts(SequenceDuplication *self, 
-									   PyObject *Py_UNUSED(ignore))
-{
-    uint64_t number_of_uniques = self->number_of_unique_fragments;
-	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
-    if (counts == NULL) {
-        return PyErr_NoMemory();
-    }
-    uint32_t *counters = self->counts;
-    size_t count_index = 0;
-    size_t hash_table_size = self->hash_table_size;
-
-    for (size_t i=0; i < hash_table_size; i+=1) {
-        uint32_t count = counters[i];
-        if (count != 0) {
-            counts[count_index] = count;
-            count_index += 1;
-        }
-    }
-    PyObject *result = PythonArray_FromBuffer('Q', counts, number_of_uniques * sizeof(uint64_t));
-    PyMem_Free(counts);
-    return result;
-}
-
 static PyMethodDef SequenceDuplication_methods[] = {
     {"add_read", (PyCFunction)SequenceDuplication_add_read, 
      SequenceDuplication_add_read_method, 
@@ -3642,10 +3608,6 @@ static PyMethodDef SequenceDuplication_methods[] = {
      (PyCFunction)(void(*)(void))SequenceDuplication_overrepresented_sequences,
       SequenceDuplication_overrepresented_sequences_method,
       SequenceDuplication_overrepresented_sequences__doc__},
-    {"duplication_counts", 
-     (PyCFunction)(void(*)(void))SequenceDuplication_duplication_counts,
-     SequenceDuplication_duplication_counts_method,
-     SequenceDuplication_duplication_counts__doc__},
     {NULL},
 };
 
