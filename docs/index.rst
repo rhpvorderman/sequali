@@ -54,6 +54,8 @@ Usage
    :func: argument_parser
    :prog: sequali
 
+.. include:: module_options.rst
+
 ==================
 Acknowledgements
 ==================
