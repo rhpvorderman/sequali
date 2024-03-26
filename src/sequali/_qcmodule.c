@@ -286,15 +286,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *sequence_obj = NULL; 
     PyObject *qualities_obj = NULL; 
     static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
-    static char *format = "OOO|:FastqRecordView";
+    static char *format = "UUU|:FastqRecordView";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
         &name_obj, &sequence_obj, &qualities_obj)) {
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(name_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "name should be of type str, got %s.", 
-                    Py_TYPE(name_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(name_obj)) {
@@ -303,22 +297,10 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      name_obj);
         return NULL;
     }
-    if (!PyUnicode_CheckExact(sequence_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "sequence should be of type str, got %s.", 
-                     Py_TYPE(sequence_obj)->tp_name);
-        return NULL;
-    }
     if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
         PyErr_Format(PyExc_ValueError, 
                      "sequence should contain only ASCII characters: %R",
                      sequence_obj);
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(qualities_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "qualities should be of type str, got %s.", 
-                    Py_TYPE(qualities_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(qualities_obj)) {
@@ -327,7 +309,6 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      qualities_obj); 
         return NULL;
     }
-    
 
     uint8_t *name = PyUnicode_DATA(name_obj);
     size_t name_length = PyUnicode_GET_LENGTH(name_obj);
