@@ -62,7 +62,7 @@ class ProgressUpdater():
             desc=f"Processing {os.path.basename(filename)}",
             unit="iB", unit_scale=True, unit_divisor=1024,
             total=total,
-            smoothing=0.01,  # Much less erratic than default 0.3
+            smoothing=0.05,  # Much less erratic than default 0.3
         )
 
     def __enter__(self):
