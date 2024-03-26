@@ -286,15 +286,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *sequence_obj = NULL; 
     PyObject *qualities_obj = NULL; 
     static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
-    static char *format = "OOO|:FastqRecordView";
+    static char *format = "UUU|:FastqRecordView";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
         &name_obj, &sequence_obj, &qualities_obj)) {
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(name_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "name should be of type str, got %s.", 
-                    Py_TYPE(name_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(name_obj)) {
@@ -303,22 +297,10 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      name_obj);
         return NULL;
     }
-    if (!PyUnicode_CheckExact(sequence_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "sequence should be of type str, got %s.", 
-                     Py_TYPE(sequence_obj)->tp_name);
-        return NULL;
-    }
     if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
         PyErr_Format(PyExc_ValueError, 
                      "sequence should contain only ASCII characters: %R",
                      sequence_obj);
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(qualities_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "qualities should be of type str, got %s.", 
-                    Py_TYPE(qualities_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(qualities_obj)) {
@@ -327,7 +309,6 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      qualities_obj); 
         return NULL;
     }
-    
 
     uint8_t *name = PyUnicode_DATA(name_obj);
     size_t name_length = PyUnicode_GET_LENGTH(name_obj);
@@ -2942,68 +2923,6 @@ PerTileQuality_add_record_array(PerTileQuality *self, FastqRecordArrayView *reco
 }
 
 
-PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
-"get_tile_averages($self, /)\n"
-"--\n"
-"\n"
-"Get a list of tuples with the tile IDs and a list of their averages. \n"
-);
-
-#define PerTileQuality_get_tile_averages_method METH_NOARGS
-
-static PyObject *
-PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
-{
-    TileQuality *tile_qualities = self->tile_qualities;
-    size_t maximum_tile = self->number_of_tiles;
-    size_t tile_length = self->max_length;
-    PyObject *result = PyList_New(0);
-    if (result == NULL) {
-        return PyErr_NoMemory();
-    }
-
-    for (size_t i=0; i<maximum_tile; i++) {
-        TileQuality *tile_quality = tile_qualities + i;
-        double *total_errors = tile_quality->total_errors;
-        uint64_t *length_counts = tile_quality->length_counts;
-        if (length_counts == NULL && total_errors == NULL) {
-            continue;
-        }
-        PyObject *entry = PyTuple_New(2);
-        PyObject *tile_id = PyLong_FromSize_t(i);
-        PyObject *averages_list = PyList_New(tile_length);
-        if (entry == NULL || tile_id == NULL || averages_list == NULL) {
-            Py_DECREF(result);
-            return PyErr_NoMemory();
-        }
-        
-        /* Work back from the lenght counts. If we have 200 reads total and a
-           100 are length 150 and a 100 are length 120. This means we have 
-           a 100 bases at each position 120-150 and 200 bases at 0-120. */
-        uint64_t total_bases = 0;
-        for (Py_ssize_t j=tile_length - 1; j >= 0; j -= 1) {
-            total_bases += length_counts[j];
-            double error_count = total_errors[j];
-            double average = error_count / (double)total_bases;
-            PyObject *average_obj = PyFloat_FromDouble(average);
-            if (average_obj == NULL) {
-                Py_DECREF(result);
-                return PyErr_NoMemory();
-            }
-            PyList_SET_ITEM(averages_list, j, average_obj);
-        }
-        PyTuple_SET_ITEM(entry, 0, tile_id);
-        PyTuple_SET_ITEM(entry, 1, averages_list);
-        int ret = PyList_Append(result, entry);
-        if (ret != 0) {
-            Py_DECREF(result);
-            return NULL;
-        }
-        Py_DECREF(entry);
-    }
-    return result;
-}
-
 PyDoc_STRVAR(PerTileQuality_get_tile_counts__doc__,
 "get_tile_counts($self, /)\n"
 "--\n"
@@ -3073,9 +2992,6 @@ static PyMethodDef PerTileQuality_methods[] = {
      PerTileQuality_add_read_method, PerTileQuality_add_read__doc__},
     {"add_record_array", (PyCFunction)PerTileQuality_add_record_array,
      PerTileQuality_add_record_array_method, PerTileQuality_add_record_array__doc__},
-    {"get_tile_averages", (PyCFunction)PerTileQuality_get_tile_averages,
-     PerTileQuality_get_tile_averages_method, 
-     PerTileQuality_get_tile_averages__doc__},
      {"get_tile_counts", (PyCFunction)PerTileQuality_get_tile_counts,
      PerTileQuality_get_tile_counts_method,
      PerTileQuality_get_tile_counts__doc__},
@@ -3613,40 +3529,6 @@ error:
     return NULL;
 }
 
-PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
-"duplication_counts($self)\n"
-"--\n"
-"\n"
-"Return a array.array with only the counts.\n"
-);
-
-#define SequenceDuplication_duplication_counts_method METH_NOARGS
-
-static PyObject *
-SequenceDuplication_duplication_counts(SequenceDuplication *self, 
-									   PyObject *Py_UNUSED(ignore))
-{
-    uint64_t number_of_uniques = self->number_of_unique_fragments;
-	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
-    if (counts == NULL) {
-        return PyErr_NoMemory();
-    }
-    uint32_t *counters = self->counts;
-    size_t count_index = 0;
-    size_t hash_table_size = self->hash_table_size;
-
-    for (size_t i=0; i < hash_table_size; i+=1) {
-        uint32_t count = counters[i];
-        if (count != 0) {
-            counts[count_index] = count;
-            count_index += 1;
-        }
-    }
-    PyObject *result = PythonArray_FromBuffer('Q', counts, number_of_uniques * sizeof(uint64_t));
-    PyMem_Free(counts);
-    return result;
-}
-
 static PyMethodDef SequenceDuplication_methods[] = {
     {"add_read", (PyCFunction)SequenceDuplication_add_read, 
      SequenceDuplication_add_read_method, 
@@ -3661,10 +3543,6 @@ static PyMethodDef SequenceDuplication_methods[] = {
      (PyCFunction)(void(*)(void))SequenceDuplication_overrepresented_sequences,
       SequenceDuplication_overrepresented_sequences_method,
       SequenceDuplication_overrepresented_sequences__doc__},
-    {"duplication_counts", 
-     (PyCFunction)(void(*)(void))SequenceDuplication_duplication_counts,
-     SequenceDuplication_duplication_counts_method,
-     SequenceDuplication_duplication_counts__doc__},
     {NULL},
 };
 

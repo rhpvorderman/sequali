@@ -9,6 +9,9 @@ Changelog
 
 version 0.6.0-dev
 -----------------
++ Add a small table that lists how many reads are >=Q5, >=Q7 etc. in the
+  per sequence average quality report.
++ The progressbar can track progress through more file formats.
 + The deduplication fingerprint that is used is now configurable from the
   command line.
 + The deduplication module starts by gathering all sequences rather than half

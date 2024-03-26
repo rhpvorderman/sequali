@@ -238,6 +238,7 @@ class Meta(ReportModule):
         return f"""
             <p>Filename: <code>{self.filename}</code></p>
             <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
+            <p>Sequali version: {self.sequali_version}
             <p>Report generated on {self.report_generated}</p>
         """
 
@@ -599,8 +600,31 @@ class PerSequenceAverageQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence average quality scores</h2>
+            <p>{self.quality_scores_table()}</p>
             <figure>{self.plot()}</figure>
         """
+
+    def quality_scores_table(self) -> str:
+        table = io.StringIO()
+        total = max(sum(self.average_quality_counts), 1)
+        fractions = [count / total for count in self.average_quality_counts]
+        table.write("<table>")
+        for i in (5, 7, 10, 12, 15, 20, 30):
+            table.write(
+                f"""
+                <tr>
+                    <td>&gt=Q{i}</td>
+                    <td style="text-align:right;">
+                        {sum(self.average_quality_counts[i:]):,}
+                    </td>
+                    <td style="text-align:right;">
+                        {sum(fractions[i:]):.2%}
+                    </td>
+                </tr>
+                """
+            )
+        table.write("</table>")
+        return table.getvalue()
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
