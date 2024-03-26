@@ -185,8 +185,9 @@ def main() -> None:
     threads = args.threads
     if threads < 1:
         raise ValueError(f"Threads must be greater than 1, got {threads}.")
-    with xopen.xopen(filename, "rb", threads=threads-1) as file:  # type: ignore
-        progress = ProgressUpdater(filename, file)
+    with open(filename, "rb") as raw:
+        progress = ProgressUpdater(raw)
+        file = xopen.xopen(raw, "rb", threads=threads - 1)
         if filename.endswith(".bam") or (
                 hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
             reader = BamParser(file)

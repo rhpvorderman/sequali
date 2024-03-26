@@ -14,12 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with sequali.  If not, see <https://www.gnu.org/licenses/
 
-import gzip
 import io
 import os
 import string
-from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
-                    Tuple)
+from typing import Callable, Iterator, List, Optional, SupportsIndex, Tuple
 
 import tqdm
 
@@ -48,18 +46,14 @@ class ProgressUpdater():
     next_update_at: int
     tqdm: tqdm.tqdm
 
-    def __init__(self, filename, filereader: BinaryIO):
+    def __init__(self, filereader: io.BufferedReader):
         self.previous_file_pos = 0
         self.current_processed_bytes = 0
         self.progress_update_every = 1024 * 1024 * 10
         self.next_update_at = self.progress_update_every
+        filename = filereader.name
         total: Optional[int] = os.stat(filename).st_size
-        if isinstance(filereader, gzip.GzipFile):
-            self._get_position = filereader.fileobj.tell
-        elif (isinstance(filereader, io.BufferedReader) and
-                isinstance(filereader.raw, _ThreadedGzipReader)):
-            self._get_position = filereader.raw.raw.tell
-        elif filereader.seekable():
+        if filereader.seekable():
             self._get_position = filereader.tell
         else:
             self._get_position = lambda: self.current_processed_bytes
