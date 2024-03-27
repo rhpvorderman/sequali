@@ -89,9 +89,55 @@ The following command line parameters affect this module:
 
 .. [#F1] A canonical k-mer is the k-mer that has the lowest sort order compared
          to itself and its reverse complement. This way the canonical-kmer is
-         always the same regardless of read orientation.
+         always the same regardless if it, or its reverse complement are read.
+         This is useful to identify sequences regardless of orientation.
 
 Duplication Estimation Module
 -----------------------------
+Properly evaluating duplication in a reference-free fashion requires an
+all-to-all alignment of sequences and using a predefined set of criteria to
+ascertain whether the sequences are duplicates. This is unpractical.
 
+For a practical estimate it is common practice to take a small part of the
+sequence as a fingerprint and use a hash table to store and count fingerprints.
+Since the fingerprint is small, sequence errors do not affect it heavily. As
+such this can provide a reasonable estimate, which is good enough for detecting
+problematic libraries.
 
+Sequali's fingerprints by collecting a small sample from the front and back
+of the sequence. To avoid adapter sequences, the samples are taken at an
+offset. If the sequence is small, the offsets are sunk proportionally. If the
+sequence is smaller than the sample sequence lenghts, its entire length
+is sampled.
+
+.. figure:: _static/images/fingerprint.svg
+
+    Sequali fingerprinting. Small samples are taken from the front and back
+    of the sequence at an offset. Sequence #1 shows the common situation where
+    the sequence is long. Sequence #2 is smaller than the combined length of
+    the offsets and the samples, so the offsets are shrunk proportionally.
+    Sequence #3 is smaller than the sample length, so its sampled entirely.
+
+The sampled sequences are then combined into one and hashed. The hash
+seed is determined by the sequence length integer divided by 64. The resulting
+hash is the fingerprint.
+
+Since not all fingerprints can be counted due to memory constraints, `a hash
+subsampling technique from the file storage world
+<https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_ is used.
+
+This technique first counts all the fingerprints. Then when the hash table is
+full, a new hash table is created. The already counted fingerprints are inserted
+but only if the last bit of the hash is ``0``. This eliminates on average half
+of the fingerprints. The fingerprinting and counting is then continued, but
+only hashes that end in ``0`` are considered. If the hash table is full again,
+the process is repeated but now only hashes that end with the last two bits
+``00`` are considered, and so on.
+
+The advantage of this technique is that it subsamples
+only part of the fingerprints which is good for memory usage.
+As stated in the paper, unlike subsampling only the fingerprints from the
+beginning of the file, this technique is much less biased towards unique
+sequences.
+
+The following command line options affect this module:
