@@ -53,6 +53,40 @@ ends towards the middle. This means that the first and last fragment will
 always be the first 21 bp of the beginning and the last 21 bp in the end. As
 such the adapter sequences will always be sampled in the same frame.
 
+.. figure:: _static/images/overrepresented_sampling.svg
+
+    This figure shows how fragments are sampled in sequali. The silver elements
+    represent the fragments. Sequence #1 is longer and hence more fragments are
+    sampled. Despite the length differences between sequence #1 and sequence #2
+    the fragments for the adapter and barcode sequences are the same.
+    In Sequence #1 the fragments sampled from the back end overlap somewhat
+    with sequences from the front end. This is a necessity to ensure all of the
+    sequence is sampled when the length is not divisible by the size of the
+    fragments.
+
+Fragments are stored and counted in a hash table. When the hash table is full
+only fragments that are already present will be counted. To diminish the time
+spent on the module, by default 1 in 8 sequences is analysed.
+
+After the module is run, stored fragments are checked for their counts. If the
+count exceeds a certain threshold it is considered overrepresented. Sequali
+does a k-mer analysis of the sequences and compares that with sequences from
+the NCBI UniVec database to determine possible origins.
+
+The following command line parameters affect this module:
+
++ ``--overrepresentation-threshold-fraction``: If count / total exceeds this
+  fraction, the fragment is considered overrepresented.
++ ``--overrepresentation-min-threshold``: The minimum count to be considered
+  overrepresented.
++ ``--overrepresentation-max-threshold``: The maximum count to be considered
+  overrepresented. On large libraries with billions of sampled fragments this
+  can be used to force detection for certain counts regardless of threshold.
++ ``--overrepresentation-max-unique-fragments``: The amount of fragments to
+  store.
++ ``--overrepresentation-sample-every``: How often a sequence is sampled. Default
+  is every 8 sequences.
+
 .. [#F1] A canonical k-mer is the k-mer that has the lowest sort order compared
          to itself and its reverse complement. This way the canonical-kmer is
          always the same regardless of read orientation.
