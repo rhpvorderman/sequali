@@ -141,3 +141,14 @@ beginning of the file, this technique is much less biased towards unique
 sequences.
 
 The following command line options affect this module:
+
++ ``--duplication-max-stored-fingerprints``: The maximum amount of stored
+  fingerprints. More fingerprints lead to more accurate estimates but also more
+  memory usage.
+
+These options can be used to control how the fingerprint is taken
+
++ ``--fingerprint-front-length``
++ ``--fingerprint-back-length``
++ ``--fingerprint-front-offset``
++ ``--fingerprint-back-offset``
