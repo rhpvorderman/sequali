@@ -3259,12 +3259,28 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
-    Py_ssize_t mid_point = (sequence_length + 1) / 2;
+    /* A full fragment at the beginning and the end is desired so that adapter
+       fragments at the beginning and end do not get added to the hash table in 
+       a lot of different frames. To do so sample from the beginning and end
+       with a little overlap in the middle
+
+                                     | <- mid_point
+       sequence    ==========================================
+       from front  |------||------||------|
+       from back                     |------||------||------|
+
+       The mid_point is not the exact middle, but the middlish point were the 
+       back sequences start sampling.
+
+       If the sequence length is exactly divisible by the fragment length, this
+       results in exactly no overlap between front and back fragments, while 
+       still all of the sequence is being sampled.
+    */
     Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
     Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t mid_point = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
-    // Save all fragments starting from 0 and up to the midpoint.
+    // Sample front sequences
     for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
@@ -3277,10 +3293,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
-    // Save all subsequences of length k starting from the end until the point 
-    // where the previous loop has saved the sequences. There might be slight 
-    // overlap in the middle..
-    for (Py_ssize_t i = mid_point_start; i < sequence_length; i += fragment_length) {
+
+    // Sample back sequences
+    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
