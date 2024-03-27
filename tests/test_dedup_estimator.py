@@ -23,7 +23,7 @@ from sequali._qc import DedupEstimator
 
 
 def test_dedup_estimator():
-    dedup_est = DedupEstimator(hash_table_size_bits=8)
+    dedup_est = DedupEstimator(160)
     assert dedup_est._hash_table_size == 1 << 8
     dedup_est.add_sequence("test")
     dedup_est.add_sequence("test2")
@@ -39,14 +39,14 @@ def test_dedup_estimator():
 
 
 def test_dedup_estimator_switches_modulo():
-    dedup_est = DedupEstimator(8)
+    dedup_est = DedupEstimator(179)
     assert dedup_est._modulo_bits == 0
     ten_alphabets = [string.ascii_letters] * 10
     infinite_seqs = ("".join(letters) for letters in itertools.product(*ten_alphabets))
     for i, seq in zip(range(10000), infinite_seqs):
         dedup_est.add_sequence(seq)
     assert dedup_est._modulo_bits != 1
-    # 2 ** 8 * 7 // 10 = 179 seqs can be stored.
+    # 179 seqs can be stored.
     # 10_000 / 179 = 56 sequences per slot. That requires 6 bits modulo,
     # selecting one in 64 sequences.
     assert dedup_est._modulo_bits == 6
@@ -86,8 +86,7 @@ def test_dedup_estimator_valid_settings(
 @pytest.mark.parametrize(
     ["parameter", "value"],
     [
-        ("hash_table_size_bits", 7),
-        ("hash_table_size_bits", 60),
+        ("max_stored_fingerprints", 7),
         ("front_sequence_length", -1),
         ("back_sequence_length", -1),
         ("front_sequence_offset", -1),
@@ -139,7 +138,7 @@ def test_dedup_estimator_offsets_and_lengths(
         front_sequence_length=front_sequence_length,
         back_sequence_length=back_sequence_length,
         back_sequence_offset=back_sequence_offset,
-        hash_table_size_bits=8,
+        max_stored_fingerprints=100,
     )
     for sequence in input_sequences:
         dedup_est.add_sequence(sequence)
