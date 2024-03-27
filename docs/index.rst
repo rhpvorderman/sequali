@@ -45,6 +45,9 @@ Quickstart
 For a complete overview of the available command line options check the
 usage below.
 
+For more information about how the different modules see the
+`Module option explanations`_.
+
 ==================
 Usage
 ==================
