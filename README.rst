@@ -95,7 +95,7 @@ in the current working directory.
 .. quickstart end
 
 For all command line options checkout the
-`usage documentation<https://sequali.readthedocs.io/#usage>`_.
+`usage documentation <https://sequali.readthedocs.io/#usage>`_.
 
 For more extensive information about the module options check the
 `documentation on the module options
