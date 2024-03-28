@@ -78,10 +78,10 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         metavar="THRESHOLD",
                         default=100,
-                        help=f"The minimum amount of occurrences for a sequence "
-                             f"to be considered overrepresented, regardless of "
-                             f"the bound set by the threshold fraction. Useful for "
-                             f"smaller files. Default: {100}.")
+                        help="The minimum amount of occurrences for a sequence "
+                             "to be considered overrepresented, regardless of "
+                             "the bound set by the threshold fraction. Useful for "
+                             "smaller files. Default: 100.")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         metavar="THRESHOLD",
                         default=sys.maxsize,
@@ -120,7 +120,7 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"stored to estimate the duplication rate. "
                              f"More fingerprints leads to a more accurate "
                              f"estimate, but also more memory usage. "
-                             f"Default: {DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS}.")
+                             f"Default: {DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS:,}.")
     parser.add_argument("--fingerprint-front-length", type=int,
                         default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
                         metavar="LENGTH",
