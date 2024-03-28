@@ -9,6 +9,8 @@ Changelog
 
 version 0.6.0-dev
 -----------------
++ Change the ``-deduplication-estimate-bits`` to a more understandable
+  ``--duplication-max-stored-fingerprints``.
 + Add a small table that lists how many reads are >=Q5, >=Q7 etc. in the
   per sequence average quality report.
 + The progressbar can track progress through more file formats.
