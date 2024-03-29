@@ -7,7 +7,7 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.6.0-dev
+version 0.6.0
 -----------------
 + Add links to the documentation in the report.
 + Moved documentation to readthedocs and added extensive module documentation.
