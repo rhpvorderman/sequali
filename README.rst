@@ -27,7 +27,7 @@
   :alt:
 
 ========
-sequali
+Sequali
 ========
 
 .. introduction start
@@ -122,7 +122,7 @@ Acknowledgements
 
 + `FastQC <https://www.bioinformatics.babraham.ac.uk/projects/fastqc/>`_ for
   its excellent selection of relevant metrics. For this reason these metrics
-  are also gathered by sequali.
+  are also gathered by Sequali.
 + The matplotlib team for their excellent work on colormaps. Their work was
   an inspiration for how to present the data and their RdBu colormap is used
   to represent quality score data. Check their `writings on colormaps
@@ -141,7 +141,7 @@ License
 
 This project is licensed under the GNU Affero General Public License v3. Mainly
 to avoid commercial parties from using it without notifying the users that they
-can run it themselves. If you want to include code from sequali in your
+can run it themselves. If you want to include code from Sequali in your
 open source project, but it is not compatible with the AGPL, please contact me
 and we can discuss a separate license.
 

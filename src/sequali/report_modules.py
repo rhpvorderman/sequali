@@ -1,18 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
 import collections
@@ -236,10 +236,12 @@ class Meta(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <p>Filename: <code>{self.filename}</code></p>
-            <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
-            <p>Sequali version: {self.sequali_version}
-            <p>Report generated on {self.report_generated}</p>
+        <table>
+            <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
+            <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
+            <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
+            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
+        </table>
         """
 
 
@@ -1037,21 +1039,12 @@ class DuplicationCounts(ReportModule):
     def to_html(self):
         first_part = f"""
         <p class="explanation">
-        Every sequence is fingerprinted by taking a predetermined number of
-        bases at a predetermined offset from the front as well as taking
-        a predetermined number of bases at an offset from the back. These
-        sequences are combined and hashed using the sequence original
-        length divided by 64 as a seed, which results in the final fingerprint.
-
-        This ensures that sequences that have very different lengths get
-        different fingerprints. The offsets ensure that sequencing adapters
-        at the beginning or end of the sequence are not taken into account. On
-        short sequences, the offsets are proportionally shrunk.
-
-        A subsample of the fingerprints is stored to
-        estimate the duplication rate. See,
-        <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
-        the paper describing the methodology</a>.</p>
+        Fingerprints are taken by taking a sample from the beginning and the
+        end at an offset. The samples are combined and hashed while using the
+        length as a seed. A subsample of these fingerprints is stored to
+        estimate the duplication rate. See
+        <a href="https://sequali.readthedocs.io/#duplication-estimation-module">
+        the documentation</a> for a complete explanation.</p>
         <p>
         <table>
             <tr>
@@ -1220,7 +1213,9 @@ class OverRepresentedSequences(ReportModule):
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
             the lowest sort order. Both representations are shown in the
-            table.
+            table. See
+            <a href="https://sequali.readthedocs.io/#overrepresented-sequences-module">
+            the documentation for a complete explanation.</a>
             </p>
             <p class="explanation">
                 The percentage shown is an estimate based on the number of
@@ -1609,11 +1604,11 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <header><p>
-                Report created by sequali. Please visit the
+                Report created by Sequali. Please visit the
                 <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
-            <h1>sequali report</h1>
+            <h1>Sequali report</h1>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:

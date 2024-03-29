@@ -1,18 +1,19 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
+
 import argparse
 import json
 import os
@@ -152,8 +153,8 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET}.")
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
-                             "sequali will use an additional thread for gzip "
-                             "decompression. Default: 2.")
+                             "an additional thread for gzip "
+                             "decompression will be used. Default: 2.")
     parser.add_argument("--version", action="version",
                         version=__version__)
     return parser
