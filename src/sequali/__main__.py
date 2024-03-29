@@ -23,7 +23,7 @@ import xopen
 from ._qc import (
     AdapterCounter,
     BamParser,
-    DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+    DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
     DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
@@ -78,10 +78,10 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         metavar="THRESHOLD",
                         default=100,
-                        help=f"The minimum amount of occurrences for a sequence "
-                             f"to be considered overrepresented, regardless of "
-                             f"the bound set by the threshold fraction. Useful for "
-                             f"smaller files. Default: {100}.")
+                        help="The minimum amount of occurrences for a sequence "
+                             "to be considered overrepresented, regardless of "
+                             "the bound set by the threshold fraction. Useful for "
+                             "smaller files. Default: 100.")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         metavar="THRESHOLD",
                         default=sys.maxsize,
@@ -113,14 +113,14 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"gets filled up with more sequences from the "
                              f"beginning. "
                              f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}.")
-    parser.add_argument("--deduplication-estimate-bits", type=int,
-                        default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-                        metavar="BITS",
-                        help=f"Determines how many sequences are maximally "
-                             f"stored to estimate the deduplication rate. "
-                             f"Maximum stored sequences: 2 ** bits * 7 // 10. "
-                             f"Memory required: 2 ** bits * 24. "
-                             f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
+    parser.add_argument("--duplication-max-stored-fingerprints", type=int,
+                        default=DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
+                        metavar="N",
+                        help=f"Determines how many fingerprints are maximally "
+                             f"stored to estimate the duplication rate. "
+                             f"More fingerprints leads to a more accurate "
+                             f"estimate, but also more memory usage. "
+                             f"Default: {DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS:,}.")
     parser.add_argument("--fingerprint-front-length", type=int,
                         default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
                         metavar="LENGTH",
@@ -174,7 +174,7 @@ def main() -> None:
         sample_every=args.overrepresentation_sample_every
     )
     dedup_estimator = DedupEstimator(
-        hash_table_size_bits=args.deduplication_estimate_bits,
+        max_stored_fingerprints=args.duplication_max_stored_fingerprints,
         front_sequence_length=args.fingerprint_front_length,
         front_sequence_offset=args.fingerprint_front_offset,
         back_sequence_length=args.fingerprint_back_length,

@@ -29,7 +29,7 @@ T: int
 N: int 
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_FRAGMENTS: int
-DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
+DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS: int
 DEFAULT_FRAGMENT_LENGTH: int
 DEFAULT_UNIQUE_SAMPLE_EVERY: int
 DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH: int
@@ -124,7 +124,7 @@ class DedupEstimator:
 
     def __init__(
             self,
-            hash_table_size_bits: int = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
+            max_stored_fingerprints: int = DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
             *,
             front_sequence_length: int = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
             back_sequence_length: int = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,

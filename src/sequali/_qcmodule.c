@@ -3259,12 +3259,28 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
-    Py_ssize_t mid_point = (sequence_length + 1) / 2;
+    /* A full fragment at the beginning and the end is desired so that adapter
+       fragments at the beginning and end do not get added to the hash table in 
+       a lot of different frames. To do so sample from the beginning and end
+       with a little overlap in the middle
+
+                                     | <- mid_point
+       sequence    ==========================================
+       from front  |------||------||------|
+       from back                     |------||------||------|
+
+       The mid_point is not the exact middle, but the middlish point were the 
+       back sequences start sampling.
+
+       If the sequence length is exactly divisible by the fragment length, this
+       results in exactly no overlap between front and back fragments, while 
+       still all of the sequence is being sampled.
+    */
     Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
     Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t mid_point = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
-    // Save all fragments starting from 0 and up to the midpoint.
+    // Sample front sequences
     for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
@@ -3277,10 +3293,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
-    // Save all subsequences of length k starting from the end until the point 
-    // where the previous loop has saved the sequences. There might be slight 
-    // overlap in the middle..
-    for (Py_ssize_t i = mid_point_start; i < sequence_length; i += fragment_length) {
+
+    // Sample back sequences
+    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3588,10 +3603,12 @@ Fei Xie, Michael Condict, Sandip Shete
 https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 */
 
-// 2 ** 21 * 12 is 24MB which balloons to 48MB when creating a new table.
-// This allows storing up to 1.46 million sequences which leads to quite
-// accurate results.
-#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
+/*
+Store 1 million fingerprints. This requires 24MB which balloons to 48MB when 
+creating a new table. Between 500,000 and 1,000,000 sequences will lead to a
+quite accurate result.
+*/
+#define DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS 1000000
 
 /* 
 Avoid the beginning and end of the sequence by at most 64 bp to avoid
@@ -3637,13 +3654,13 @@ DedupEstimator_dealloc(DedupEstimator *self) {
 
 static PyObject *
 DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
-    Py_ssize_t hash_table_size_bits = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS;
+    Py_ssize_t max_stored_fingerprints = DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS;
     Py_ssize_t front_sequence_length = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH;
     Py_ssize_t front_sequence_offset = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET;
     Py_ssize_t back_sequence_length = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH;
     Py_ssize_t back_sequence_offset = DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET;
     static char *kwargnames[] = {
-        "hash_table_size_bits",
+        "max_stored_fingerprints",
         "front_sequence_length", 
         "back_sequence_length",
         "front_sequence_offset",
@@ -3652,21 +3669,24 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     };
     static char *format = "|n$nnnn:DedupEstimator";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &hash_table_size_bits,
+            &max_stored_fingerprints,
             &front_sequence_length, 
             &back_sequence_length,
             &front_sequence_offset,
             &back_sequence_offset)) {
         return NULL;
     }
-    if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
+
+    if (max_stored_fingerprints < 100 ) {
         PyErr_Format(
             PyExc_ValueError, 
-            "hash_table_size_bits must be between 8 and 58, not %zd",
-            hash_table_size_bits
+            "max_stored_fingerprints must be at least 100, not %zd",
+            max_stored_fingerprints
         );
         return NULL;
     }
+    size_t hash_table_size_bits = (size_t)(log2(max_stored_fingerprints * 1.5) + 1);
+
     Py_ssize_t lengths_and_offsets[4] = {
         front_sequence_length,
         back_sequence_length,
@@ -3716,7 +3736,7 @@ DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
     self->fingerprint_store = fingerprint_store;
     self->hash_table_size = hash_table_size;
     // Get about 70% occupancy max
-    self->max_stored_entries = (hash_table_size * 7) / 10;
+    self->max_stored_entries = max_stored_fingerprints;
     self->hash_table = hash_table;
     self->modulo_bits = 0;
     self->stored_entries = 0;
@@ -4466,7 +4486,7 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
-    PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
+    PyModule_AddIntMacro(m, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
     PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
