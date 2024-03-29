@@ -1,5 +1,7 @@
 Release checklist
 - [ ] Check outstanding issues on JIRA and Github.
+- [ ] Check [latest documentation](https://sequali.readthedocs.io/en/latest) 
+      looks fine.
 - [ ] Create a release branch.
   - [ ] Change current development version in `CHANGELOG.rst` to stable version.
 - [ ] Check memory leaks with `tox -e asan`
