@@ -44,6 +44,8 @@ Example reports:
 
 .. introduction end
 
+For more information check `the documentation <https://sequali.readthedocs.io>`_.
+
 Supported formats
 =================
 
