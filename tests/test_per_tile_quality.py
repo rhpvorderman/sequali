@@ -1,18 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import pytest
 
@@ -30,15 +30,16 @@ def test_per_tile_quality():
     assert ptq.number_of_reads == 1
     assert ptq.max_length == 4
     assert ptq.skipped_reason is None
-    averages = ptq.get_tile_averages()
-    assert len(averages) == 1
-    tile, average_list = averages[0]
+    counts = ptq.get_tile_counts()
+    assert len(counts) == 1
+    tile, sum_list, count_list = counts[0]
     assert tile == 15
-    assert len(average_list) == 4
-    assert average_list[0] == 10 ** (-32 / 10)
-    assert average_list[1] == 10 ** (-33 / 10)
-    assert average_list[2] == 10 ** (-34 / 10)
-    assert average_list[3] == 10 ** (-35 / 10)
+    assert len(sum_list) == 4
+    assert sum_list[0] == 10 ** (-32 / 10)
+    assert sum_list[1] == 10 ** (-33 / 10)
+    assert sum_list[2] == 10 ** (-34 / 10)
+    assert sum_list[3] == 10 ** (-35 / 10)
+    assert count_list == [1, 1, 1, 1]
 
 
 @pytest.mark.parametrize("tile_id", list(range(100)) + [1234, 99239])
@@ -50,9 +51,9 @@ def test_tile_parse_correct(tile_id):
     )
     ptq = PerTileQuality()
     ptq.add_read(read)
-    averages = ptq.get_tile_averages()
+    averages = ptq.get_tile_counts()
     assert len(averages) == 1
-    tile, average_list = averages[0]
+    tile, sum_list, count_list = averages[0]
     assert tile == tile_id
 
 

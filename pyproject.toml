@@ -32,7 +32,7 @@ classifiers = [
 ]
 requires-python = ">3.8"
 dependencies = [
-        "xopen>=1.8.0",
+        "xopen>=2.0.0",
         "pygal>=3.0.4",
         "tqdm",
 ]
@@ -57,7 +57,9 @@ sequali = [
     'style/*'
 ]
 [project.urls]
+"Documentation" = "https://sequali.readthedocs.io"
 "Homepage" = "https://github.com/rhpvorderman/sequali"
+"Issue tracker" = "https://github.com/rhpvorderman/sequali/issues"
 
 [tool.setuptools_scm]
 write_to = "src/sequali/_version.py"

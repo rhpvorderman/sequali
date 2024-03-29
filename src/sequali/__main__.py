@@ -1,18 +1,19 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
+
 import argparse
 import json
 import os
@@ -21,10 +22,22 @@ import sys
 import xopen
 
 from ._qc import (
-    AdapterCounter, BamParser, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-    DEFAULT_FRAGMENT_LENGTH, DEFAULT_MAX_UNIQUE_FRAGMENTS,
-    DEFAULT_UNIQUE_SAMPLE_EVERY, DedupEstimator, FastqParser, NanoStats,
-    PerTileQuality, QCMetrics, SequenceDuplication
+    AdapterCounter,
+    BamParser,
+    DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
+    DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+    DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+    DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+    DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+    DEFAULT_FRAGMENT_LENGTH,
+    DEFAULT_MAX_UNIQUE_FRAGMENTS,
+    DEFAULT_UNIQUE_SAMPLE_EVERY,
+    DedupEstimator,
+    FastqParser,
+    NanoStats,
+    PerTileQuality,
+    QCMetrics,
+    SequenceDuplication
 )
 from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
@@ -66,10 +79,10 @@ def argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overrepresentation-min-threshold", type=int,
                         metavar="THRESHOLD",
                         default=100,
-                        help=f"The minimum amount of occurrences for a sequence "
-                             f"to be considered overrepresented, regardless of "
-                             f"the bound set by the threshold fraction. Useful for "
-                             f"smaller files. Default: {100}.")
+                        help="The minimum amount of occurrences for a sequence "
+                             "to be considered overrepresented, regardless of "
+                             "the bound set by the threshold fraction. Useful for "
+                             "smaller files. Default: 100.")
     parser.add_argument("--overrepresentation-max-threshold", type=int,
                         metavar="THRESHOLD",
                         default=sys.maxsize,
@@ -101,18 +114,47 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"gets filled up with more sequences from the "
                              f"beginning. "
                              f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}.")
-    parser.add_argument("--deduplication-estimate-bits", type=int,
-                        default=DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS,
-                        metavar="BITS",
-                        help=f"Determines how many sequences are maximally "
-                             f"stored to estimate the deduplication rate. "
-                             f"Maximum stored sequences: 2 ** bits * 7 // 10. "
-                             f"Memory required: 2 ** bits * 24. "
-                             f"Default: {DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS}.")
+    parser.add_argument("--duplication-max-stored-fingerprints", type=int,
+                        default=DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
+                        metavar="N",
+                        help=f"Determines how many fingerprints are maximally "
+                             f"stored to estimate the duplication rate. "
+                             f"More fingerprints leads to a more accurate "
+                             f"estimate, but also more memory usage. "
+                             f"Default: {DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS:,}.")
+    parser.add_argument("--fingerprint-front-length", type=int,
+                        default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+                        metavar="LENGTH",
+                        help=f"Set the number of bases to be taken for the "
+                             f"deduplication fingerprint from the front of "
+                             f"the sequence. "
+                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH}.")
+
+    parser.add_argument("--fingerprint-back-length", type=int,
+                        default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+                        metavar="LENGTH",
+                        help=f"Set the number of bases to be taken for the "
+                             f"deduplication fingerprint from the back of "
+                             f"the sequence. "
+                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH}.")
+    parser.add_argument("--fingerprint-front-offset", type=int,
+                        default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+                        metavar="LENGTH",
+                        help=f"Set the offset for the front part of the "
+                             f"deduplication fingerprint. Useful for avoiding "
+                             f"adapter sequences. "
+                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET}.")
+    parser.add_argument("--fingerprint-back-offset", type=int,
+                        default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+                        metavar="LENGTH",
+                        help=f"Set the offset for the back part of the "
+                             f"deduplication fingerprint. Useful for avoiding "
+                             f"adapter sequences. "
+                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET}.")
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
-                             "sequali will use an additional thread for gzip "
-                             "decompression. Default: 2.")
+                             "an additional thread for gzip "
+                             "decompression will be used. Default: 2.")
     parser.add_argument("--version", action="version",
                         version=__version__)
     return parser
@@ -133,32 +175,38 @@ def main() -> None:
         sample_every=args.overrepresentation_sample_every
     )
     dedup_estimator = DedupEstimator(
-        hash_table_size_bits=args.deduplication_estimate_bits)
+        max_stored_fingerprints=args.duplication_max_stored_fingerprints,
+        front_sequence_length=args.fingerprint_front_length,
+        front_sequence_offset=args.fingerprint_front_offset,
+        back_sequence_length=args.fingerprint_back_length,
+        back_sequence_offset=args.fingerprint_back_offset,
+    )
     nanostats = NanoStats()
     filename: str = args.input
     threads = args.threads
     if threads < 1:
         raise ValueError(f"Threads must be greater than 1, got {threads}.")
-    with xopen.xopen(filename, "rb", threads=threads-1) as file:  # type: ignore
-        progress = ProgressUpdater(filename, file)
-        if filename.endswith(".bam") or (
-                hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
-            reader = BamParser(file)
-            seqtech = guess_sequencing_technology_from_bam_header(reader.header)
-        else:
-            reader = FastqParser(file)  # type: ignore
-            seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
-        adapters = list(adapters_from_file(args.adapter_file, seqtech))
-        adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
-        with progress:
-            for record_array in reader:
-                metrics.add_record_array(record_array)
-                per_tile_quality.add_record_array(record_array)
-                adapter_counter.add_record_array(record_array)
-                sequence_duplication.add_record_array(record_array)
-                nanostats.add_record_array(record_array)
-                dedup_estimator.add_record_array(record_array)
-                progress.update(record_array)
+    with open(filename, "rb") as raw:
+        progress = ProgressUpdater(raw)
+        with xopen.xopen(raw, "rb", threads=threads - 1) as file:
+            if filename.endswith(".bam") or (
+                    hasattr(file, "peek") and file.peek(4)[:4] == b"BAM\1"):
+                reader = BamParser(file)
+                seqtech = guess_sequencing_technology_from_bam_header(reader.header)
+            else:
+                reader = FastqParser(file)  # type: ignore
+                seqtech = guess_sequencing_technology_from_file(file)  # type: ignore
+            adapters = list(adapters_from_file(args.adapter_file, seqtech))
+            adapter_counter = AdapterCounter(adapter.sequence for adapter in adapters)
+            with progress:
+                for record_array in reader:
+                    metrics.add_record_array(record_array)
+                    per_tile_quality.add_record_array(record_array)
+                    adapter_counter.add_record_array(record_array)
+                    sequence_duplication.add_record_array(record_array)
+                    nanostats.add_record_array(record_array)
+                    dedup_estimator.add_record_array(record_array)
+                    progress.update(record_array)
     report_modules = calculate_stats(
         filename,
         metrics,
@@ -204,6 +252,5 @@ def sequali_report():
         output = ".".join(in_json.split(".")[:-1]) + ".html"
     with open(in_json) as j:
         json_data = json.load(j)
-    timestamp = os.stat(in_json).st_mtime
     write_html_report(dict_to_report_modules(json_data), output,
-                      output.rstrip(".html"), timestamp)
+                      output.rstrip(".html"))

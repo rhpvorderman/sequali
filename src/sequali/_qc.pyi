@@ -1,18 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
 import sys
@@ -29,9 +29,14 @@ T: int
 N: int 
 MAX_SEQUENCE_SIZE: int
 DEFAULT_MAX_UNIQUE_FRAGMENTS: int
-DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS: int
+DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS: int
 DEFAULT_FRAGMENT_LENGTH: int
-DEFAULT_UNIQUE_SAMPLE_EVERY: int 
+DEFAULT_UNIQUE_SAMPLE_EVERY: int
+DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH: int
+DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH: int
+DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET: int
+DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET: int
+
 
 class FastqRecordView:
     obj: bytes
@@ -84,7 +89,6 @@ class PerTileQuality:
     def __init__(self): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
-    def get_tile_averages(self) -> List[Tuple[int, List[float]]]: ...
     def get_tile_counts(self) -> List[Tuple[int, List[float], List[int]]]: ...
 
 class SequenceDuplication:
@@ -108,14 +112,25 @@ class SequenceDuplication:
                                   min_threshold: int = 1,
                                   max_threshold: int = sys.maxsize,
                                   ) -> List[Tuple[int, float, str]]: ...
-    def duplication_counts(self) -> array.ArrayType: ...
 
 class DedupEstimator:
     _modulo_bits: int 
     _hash_table_size: int 
     tracked_sequences: int
+    front_sequence_length: int 
+    back_sequence_length: int 
+    front_sequence_offset: int 
+    back_sequence_offset: int
 
-    def __init__(self, hash_table_size_bits: int = 21): ...
+    def __init__(
+            self,
+            max_stored_fingerprints: int = DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
+            *,
+            front_sequence_length: int = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH,
+            back_sequence_length: int = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
+            front_sequence_offset: int = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
+            back_sequence_offset: int = DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
+    ): ...
     def add_sequence(self, __sequence: str) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def duplication_counts(self) -> array.ArrayType: ...

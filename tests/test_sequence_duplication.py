@@ -1,20 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
-
-import collections
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 import itertools
 import math
 
@@ -115,30 +113,6 @@ def test_sequence_duplication_overrepresented_sequences():
     )
     assert len(overrepresented) == 2
     assert overrepresented[1][2] == "C" * fragment_length
-
-
-def test_sequence_duplication_duplication_counts():
-    fragment_length = 31
-    seqdup = SequenceDuplication(sample_every=1, fragment_length=fragment_length)
-    for i in range(100):
-        seqdup.add_read(view_from_sequence("A" * fragment_length))
-    for i in range(200):
-        seqdup.add_read(view_from_sequence("C" * fragment_length))
-    for i in range(2000):
-        seqdup.add_read(view_from_sequence("G" * fragment_length))
-    for i in range(10):
-        seqdup.add_read(view_from_sequence("T" * fragment_length))
-    seqdup.add_read(view_from_sequence("GATTACA" * 5))
-    seqdup.add_read(view_from_sequence("TACCAGA" * 5))
-    for i in range(50_000):
-        seqdup.add_read(view_from_sequence("CAT" * 11))
-    dupcounts = collections.Counter(seqdup.duplication_counts())
-    assert dupcounts[0] == 0
-    assert dupcounts[1] == 4
-    assert dupcounts[2200] == 1
-    assert dupcounts[110] == 1
-    assert dupcounts[50_000] == 2
-    assert sum(dupcounts.values()) == 8
 
 
 def test_sequence_duplication_case_insensitive():

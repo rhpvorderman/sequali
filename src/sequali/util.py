@@ -1,25 +1,23 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
-import gzip
 import io
 import os
 import string
-from typing import (BinaryIO, Callable, Iterator, List, Optional, SupportsIndex,
-                    Tuple)
+from typing import Callable, Iterator, List, Optional, SupportsIndex, Tuple
 
 import tqdm
 
@@ -48,18 +46,14 @@ class ProgressUpdater():
     next_update_at: int
     tqdm: tqdm.tqdm
 
-    def __init__(self, filename, filereader: BinaryIO):
+    def __init__(self, filereader: io.BufferedReader):
         self.previous_file_pos = 0
         self.current_processed_bytes = 0
         self.progress_update_every = 1024 * 1024 * 10
         self.next_update_at = self.progress_update_every
+        filename = filereader.name
         total: Optional[int] = os.stat(filename).st_size
-        if isinstance(filereader, gzip.GzipFile):
-            self._get_position = filereader.fileobj.tell
-        elif (isinstance(filereader, io.BufferedReader) and
-                isinstance(filereader.raw, _ThreadedGzipReader)):
-            self._get_position = filereader.raw.raw.tell
-        elif filereader.seekable():
+        if filereader.seekable():
             self._get_position = filereader.tell
         else:
             self._get_position = lambda: self.current_processed_bytes
@@ -68,7 +62,7 @@ class ProgressUpdater():
             desc=f"Processing {os.path.basename(filename)}",
             unit="iB", unit_scale=True, unit_divisor=1024,
             total=total,
-            smoothing=0.01,  # Much less erratic than default 0.3
+            smoothing=0.05,  # Much less erratic than default 0.3
         )
 
     def __enter__(self):

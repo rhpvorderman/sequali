@@ -1,18 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
 import collections
@@ -236,9 +236,12 @@ class Meta(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <p>Filename: <code>{self.filename}</code></p>
-            <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
-            <p>Report generated on {self.report_generated}</p>
+        <table>
+            <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
+            <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
+            <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
+            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
+        </table>
         """
 
 
@@ -599,8 +602,31 @@ class PerSequenceAverageQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             <h2>Per sequence average quality scores</h2>
+            <p>{self.quality_scores_table()}</p>
             <figure>{self.plot()}</figure>
         """
+
+    def quality_scores_table(self) -> str:
+        table = io.StringIO()
+        total = max(sum(self.average_quality_counts), 1)
+        fractions = [count / total for count in self.average_quality_counts]
+        table.write("<table>")
+        for i in (5, 7, 10, 12, 15, 20, 30):
+            table.write(
+                f"""
+                <tr>
+                    <td>&gt=Q{i}</td>
+                    <td style="text-align:right;">
+                        {sum(self.average_quality_counts[i:]):,}
+                    </td>
+                    <td style="text-align:right;">
+                        {sum(fractions[i:]):.2%}
+                    </td>
+                </tr>
+                """
+            )
+        table.write("</table>")
+        return table.getvalue()
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics):
@@ -990,6 +1016,10 @@ class DuplicationCounts(ReportModule):
     duplication_counts: Sequence[Tuple[int, int]]
     remaining_fraction: float
     estimated_duplication_fractions: Dict[str, float]
+    fingerprint_front_sequence_length: int
+    fingerprint_back_sequence_length: int
+    fingerprint_front_sequence_offset: int
+    fingerprint_back_sequence_offset: int
 
     def plot(self):
         plot = pygal.Bar(
@@ -1009,29 +1039,51 @@ class DuplicationCounts(ReportModule):
     def to_html(self):
         first_part = f"""
         <p class="explanation">
-        Every sequence is fingerprinted by skipping the first 64 bases and
-        taking the first 8 bases after that, as well as getting the
-        8 bases before the last 64 bases. This gives a small 16&#8239;bp
-        sequence from two 8&#8239;bp stubs from the beginning and end.
-        This sequence is hashed using the length divided by 64 as a seed,
-        which results in the final fingerprint.
-        This ensures that sequences that have very different lengths get
-        different fingerprints. The 64&#8239;bp offset ensures that sequencing adapters
-        at the beginning or end of the sequence are not taken into account. On
-        short sequences, the offsets are proportionally shrunk.
-        The 16&#8239;bp length of the sequence used as base for the hash limits
-        the effect of sequencing errors, especially on long-read sequencing
-        technologies.
-        A subsample of the fingerprints is stored to
-        estimate the duplication rate. See,
-        <a href=https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>
-        the paper describing the methodology</a>.</p>
-        <p>The subsample for this file consists of
-        {self.tracked_unique_sequences:,} fingerprints.
+        Fingerprints are taken by taking a sample from the beginning and the
+        end at an offset. The samples are combined and hashed while using the
+        length as a seed. A subsample of these fingerprints is stored to
+        estimate the duplication rate. See
+        <a href="https://sequali.readthedocs.io/#duplication-estimation-module">
+        the documentation</a> for a complete explanation.</p>
+        <p>
+        <table>
+            <tr>
+                <td>Fingerprint front sequence length</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_front_sequence_length:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint front sequence offset</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_front_sequence_offset:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint back sequence length</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_back_sequence_length}
+                </td>
+            </tr>
+            <tr>
+                <td>Fingerprint back sequence offset</td>
+                <td style="text-align:right;">
+                    {self.fingerprint_back_sequence_offset:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Subsampled fingerprints</td>
+                <td style="text-align:right;">
+                    {self.tracked_unique_sequences:,}
+                </td>
+            </tr>
+            <tr>
+                <td>Estimated remaining sequences if deduplicated</td>
+                <td style="text-align:right;">{self.remaining_fraction:.2%}</td>
+            </tr>
+            </table>
         </p>
-        <p>Estimated remaining sequences if deduplicated:
-        {self.remaining_fraction:.2%}</p>
-            """
+        """
         return f"""
             <h2>Duplication percentages</h2>
             {first_part}
@@ -1094,6 +1146,10 @@ class DuplicationCounts(ReportModule):
             duplication_counts=sorted(duplication_categories.items()),
             estimated_duplication_fractions=estimated_duplication_fractions,
             remaining_fraction=deduplicated_fraction,
+            fingerprint_front_sequence_length=dedup_est.front_sequence_length,
+            fingerprint_back_sequence_length=dedup_est.back_sequence_length,
+            fingerprint_front_sequence_offset=dedup_est.front_sequence_offset,
+            fingerprint_back_sequence_offset=dedup_est.back_sequence_offset,
         )
 
 
@@ -1157,7 +1213,9 @@ class OverRepresentedSequences(ReportModule):
             Fragments are stored in their canonical representation. That is
             either the sequence or the reverse complement, whichever has
             the lowest sort order. Both representations are shown in the
-            table.
+            table. See
+            <a href="https://sequali.readthedocs.io/#overrepresented-sequences-module">
+            the documentation for a complete explanation.</a>
             </p>
             <p class="explanation">
                 The percentage shown is an estimate based on the number of
@@ -1546,11 +1604,11 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <header><p>
-                Report created by sequali. Please visit the
+                Report created by Sequali. Please visit the
                 <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
-            <h1>sequali report</h1>
+            <h1>Sequali report</h1>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:

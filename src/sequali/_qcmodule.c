@@ -1,19 +1,19 @@
 /*
 Copyright (C) 2023 Leiden University Medical Center
-This file is part of sequali
+This file is part of Sequali
 
-sequali is free software: you can redistribute it and/or modify
+Sequali is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 
-sequali is distributed in the hope that it will be useful,
+Sequali is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with sequali.  If not, see <https://www.gnu.org/licenses/
+along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
 #define PY_SSIZE_T_CLEAN
@@ -286,15 +286,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *sequence_obj = NULL; 
     PyObject *qualities_obj = NULL; 
     static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
-    static char *format = "OOO|:FastqRecordView";
+    static char *format = "UUU|:FastqRecordView";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
         &name_obj, &sequence_obj, &qualities_obj)) {
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(name_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "name should be of type str, got %s.", 
-                    Py_TYPE(name_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(name_obj)) {
@@ -303,22 +297,10 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      name_obj);
         return NULL;
     }
-    if (!PyUnicode_CheckExact(sequence_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                     "sequence should be of type str, got %s.", 
-                     Py_TYPE(sequence_obj)->tp_name);
-        return NULL;
-    }
     if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
         PyErr_Format(PyExc_ValueError, 
                      "sequence should contain only ASCII characters: %R",
                      sequence_obj);
-        return NULL;
-    }
-    if (!PyUnicode_CheckExact(qualities_obj)) {
-        PyErr_Format(PyExc_TypeError, 
-                    "qualities should be of type str, got %s.", 
-                    Py_TYPE(qualities_obj)->tp_name);
         return NULL;
     }
     if (!PyUnicode_IS_COMPACT_ASCII(qualities_obj)) {
@@ -327,7 +309,6 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      qualities_obj); 
         return NULL;
     }
-    
 
     uint8_t *name = PyUnicode_DATA(name_obj);
     size_t name_length = PyUnicode_GET_LENGTH(name_obj);
@@ -2183,13 +2164,13 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    uint64_t **uint64_tmp = PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
-    if (uint64_tmp == NULL) {
+    uint64_t **counter_tmp = PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
+    if (counter_tmp == NULL) {
         PyErr_NoMemory();
         goto error;
     }
-    memset(uint64_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
-    self->adapter_counter = uint64_tmp;
+    memset(counter_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
+    self->adapter_counter = counter_tmp;
     self->adapters = NULL;
     self->matchers = NULL;
     self->max_length = 0;
@@ -2622,7 +2603,7 @@ static PyMemberDef AdapterCounter_members[] = {
     {NULL},
 };
 
-static PyTypeObject Adapteruint64_type = {
+static PyTypeObject AdapterCounter_type = {
     .tp_name = "_qc.AdapterCounter",
     .tp_basicsize = sizeof(AdapterCounter),
     .tp_dealloc = (destructor)AdapterCounter_dealloc,
@@ -2942,68 +2923,6 @@ PerTileQuality_add_record_array(PerTileQuality *self, FastqRecordArrayView *reco
 }
 
 
-PyDoc_STRVAR(PerTileQuality_get_tile_averages__doc__,
-"get_tile_averages($self, /)\n"
-"--\n"
-"\n"
-"Get a list of tuples with the tile IDs and a list of their averages. \n"
-);
-
-#define PerTileQuality_get_tile_averages_method METH_NOARGS
-
-static PyObject *
-PerTileQuality_get_tile_averages(PerTileQuality *self, PyObject *Py_UNUSED(ignore))
-{
-    TileQuality *tile_qualities = self->tile_qualities;
-    size_t maximum_tile = self->number_of_tiles;
-    size_t tile_length = self->max_length;
-    PyObject *result = PyList_New(0);
-    if (result == NULL) {
-        return PyErr_NoMemory();
-    }
-
-    for (size_t i=0; i<maximum_tile; i++) {
-        TileQuality *tile_quality = tile_qualities + i;
-        double *total_errors = tile_quality->total_errors;
-        uint64_t *length_counts = tile_quality->length_counts;
-        if (length_counts == NULL && total_errors == NULL) {
-            continue;
-        }
-        PyObject *entry = PyTuple_New(2);
-        PyObject *tile_id = PyLong_FromSize_t(i);
-        PyObject *averages_list = PyList_New(tile_length);
-        if (entry == NULL || tile_id == NULL || averages_list == NULL) {
-            Py_DECREF(result);
-            return PyErr_NoMemory();
-        }
-        
-        /* Work back from the lenght counts. If we have 200 reads total and a
-           100 are length 150 and a 100 are length 120. This means we have 
-           a 100 bases at each position 120-150 and 200 bases at 0-120. */
-        uint64_t total_bases = 0;
-        for (Py_ssize_t j=tile_length - 1; j >= 0; j -= 1) {
-            total_bases += length_counts[j];
-            double error_count = total_errors[j];
-            double average = error_count / (double)total_bases;
-            PyObject *average_obj = PyFloat_FromDouble(average);
-            if (average_obj == NULL) {
-                Py_DECREF(result);
-                return PyErr_NoMemory();
-            }
-            PyList_SET_ITEM(averages_list, j, average_obj);
-        }
-        PyTuple_SET_ITEM(entry, 0, tile_id);
-        PyTuple_SET_ITEM(entry, 1, averages_list);
-        int ret = PyList_Append(result, entry);
-        if (ret != 0) {
-            Py_DECREF(result);
-            return NULL;
-        }
-        Py_DECREF(entry);
-    }
-    return result;
-}
-
 PyDoc_STRVAR(PerTileQuality_get_tile_counts__doc__,
 "get_tile_counts($self, /)\n"
 "--\n"
@@ -3073,9 +2992,6 @@ static PyMethodDef PerTileQuality_methods[] = {
      PerTileQuality_add_read_method, PerTileQuality_add_read__doc__},
     {"add_record_array", (PyCFunction)PerTileQuality_add_record_array,
      PerTileQuality_add_record_array_method, PerTileQuality_add_record_array__doc__},
-    {"get_tile_averages", (PyCFunction)PerTileQuality_get_tile_averages,
-     PerTileQuality_get_tile_averages_method, 
-     PerTileQuality_get_tile_averages__doc__},
      {"get_tile_counts", (PyCFunction)PerTileQuality_get_tile_counts,
      PerTileQuality_get_tile_counts_method,
      PerTileQuality_get_tile_counts__doc__},
@@ -3343,12 +3259,28 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *sequence = meta->record_start + meta->sequence_offset;
-    Py_ssize_t mid_point = (sequence_length + 1) / 2;
+    /* A full fragment at the beginning and the end is desired so that adapter
+       fragments at the beginning and end do not get added to the hash table in 
+       a lot of different frames. To do so sample from the beginning and end
+       with a little overlap in the middle
+
+                                     | <- mid_point
+       sequence    ==========================================
+       from front  |------||------||------|
+       from back                     |------||------||------|
+
+       The mid_point is not the exact middle, but the middlish point were the 
+       back sequences start sampling.
+
+       If the sequence length is exactly divisible by the fragment length, this
+       results in exactly no overlap between front and back fragments, while 
+       still all of the sequence is being sampled.
+    */
     Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
     Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point_start = sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t mid_point = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
-    // Save all fragments starting from 0 and up to the midpoint.
+    // Sample front sequences
     for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
@@ -3361,10 +3293,9 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         uint64_t hash = wanghash64(kmer);
         Sequence_duplication_insert_hash(self, hash);
     }
-    // Save all subsequences of length k starting from the end until the point 
-    // where the previous loop has saved the sequences. There might be slight 
-    // overlap in the middle..
-    for (Py_ssize_t i = mid_point_start; i < sequence_length; i += fragment_length) {
+
+    // Sample back sequences
+    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3613,40 +3544,6 @@ error:
     return NULL;
 }
 
-PyDoc_STRVAR(SequenceDuplication_duplication_counts__doc__,
-"duplication_counts($self)\n"
-"--\n"
-"\n"
-"Return a array.array with only the counts.\n"
-);
-
-#define SequenceDuplication_duplication_counts_method METH_NOARGS
-
-static PyObject *
-SequenceDuplication_duplication_counts(SequenceDuplication *self, 
-									   PyObject *Py_UNUSED(ignore))
-{
-    uint64_t number_of_uniques = self->number_of_unique_fragments;
-	uint64_t *counts = PyMem_Calloc(number_of_uniques, sizeof(uint64_t));
-    if (counts == NULL) {
-        return PyErr_NoMemory();
-    }
-    uint32_t *counters = self->counts;
-    size_t count_index = 0;
-    size_t hash_table_size = self->hash_table_size;
-
-    for (size_t i=0; i < hash_table_size; i+=1) {
-        uint32_t count = counters[i];
-        if (count != 0) {
-            counts[count_index] = count;
-            count_index += 1;
-        }
-    }
-    PyObject *result = PythonArray_FromBuffer('Q', counts, number_of_uniques * sizeof(uint64_t));
-    PyMem_Free(counts);
-    return result;
-}
-
 static PyMethodDef SequenceDuplication_methods[] = {
     {"add_read", (PyCFunction)SequenceDuplication_add_read, 
      SequenceDuplication_add_read_method, 
@@ -3661,10 +3558,6 @@ static PyMethodDef SequenceDuplication_methods[] = {
      (PyCFunction)(void(*)(void))SequenceDuplication_overrepresented_sequences,
       SequenceDuplication_overrepresented_sequences_method,
       SequenceDuplication_overrepresented_sequences__doc__},
-    {"duplication_counts", 
-     (PyCFunction)(void(*)(void))SequenceDuplication_duplication_counts,
-     SequenceDuplication_duplication_counts_method,
-     SequenceDuplication_duplication_counts__doc__},
     {NULL},
 };
 
@@ -3710,10 +3603,25 @@ Fei Xie, Michael Condict, Sandip Shete
 https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf
 */
 
-// 2 ** 21 * 12 is 24MB which balloons to 48MB when creating a new table.
-// This allows storing up to 1.46 million sequences which leads to quite
-// accurate results.
-#define DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS 21
+/*
+Store 1 million fingerprints. This requires 24MB which balloons to 48MB when 
+creating a new table. Between 500,000 and 1,000,000 sequences will lead to a
+quite accurate result.
+*/
+#define DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS 1000000
+
+/* 
+Avoid the beginning and end of the sequence by at most 64 bp to avoid
+any adapters. Take the 8 bp after the start offset and the 8 bp before 
+the end offset. This creates a small 16 bp fingerprint. Hash it using 
+MurmurHash. 16 bp is small and therefore relatively insensitive to 
+sequencing errors while still offering 4^16 or 4 billion distinct 
+fingerprints. 
+*/
+#define DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH 8
+#define DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH 8
+#define DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET 64
+#define DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET 64
 
 // Use packing at the 4-byte boundary to save 4 bytes of storage.
 #pragma pack(4)
@@ -3729,47 +3637,108 @@ typedef struct _DedupEstimatorStruct {
     size_t hash_table_size;
     size_t max_stored_entries;
     size_t stored_entries;
+    size_t front_sequence_length;
+    size_t front_sequence_offset;
+    size_t back_sequence_length;
+    size_t back_sequence_offset;
+    uint8_t *fingerprint_store;
     struct EstimatorEntry *hash_table;
 } DedupEstimator;
 
 static void 
 DedupEstimator_dealloc(DedupEstimator *self) {
     PyMem_Free(self->hash_table);
+    PyMem_Free(self->fingerprint_store);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
 static PyObject *
 DedupEstimator__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
-    Py_ssize_t hash_table_size_bits = DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS;
-    static char *kwargnames[] = {"hash_table_size_bits", NULL};
-    static char *format = "|n:DedupEstimator";
+    Py_ssize_t max_stored_fingerprints = DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS;
+    Py_ssize_t front_sequence_length = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH;
+    Py_ssize_t front_sequence_offset = DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET;
+    Py_ssize_t back_sequence_length = DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH;
+    Py_ssize_t back_sequence_offset = DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET;
+    static char *kwargnames[] = {
+        "max_stored_fingerprints",
+        "front_sequence_length", 
+        "back_sequence_length",
+        "front_sequence_offset",
+        "back_sequence_offset", 
+        NULL
+    };
+    static char *format = "|n$nnnn:DedupEstimator";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-            &hash_table_size_bits)) {
+            &max_stored_fingerprints,
+            &front_sequence_length, 
+            &back_sequence_length,
+            &front_sequence_offset,
+            &back_sequence_offset)) {
         return NULL;
     }
-    if (hash_table_size_bits < 8 || hash_table_size_bits > 58) {
+
+    if (max_stored_fingerprints < 100 ) {
         PyErr_Format(
             PyExc_ValueError, 
-            "hash_table_size_bits must be between 8 and 58, not %zd",
-            hash_table_size_bits
+            "max_stored_fingerprints must be at least 100, not %zd",
+            max_stored_fingerprints
         );
         return NULL;
     }
+    size_t hash_table_size_bits = (size_t)(log2(max_stored_fingerprints * 1.5) + 1);
+
+    Py_ssize_t lengths_and_offsets[4] = {
+        front_sequence_length,
+        back_sequence_length,
+        front_sequence_offset,
+        back_sequence_offset,
+    };
+    for (size_t i=0; i < 4; i++) {
+        if (lengths_and_offsets[i] < 0) {
+            PyErr_Format(
+                PyExc_ValueError,
+                "%s must be at least 0, got %zd.",
+                kwargnames[i+1],
+                lengths_and_offsets[i]
+            );
+            return NULL;
+        }
+    }
+    size_t fingerprint_size = front_sequence_length + back_sequence_length;
+    if (fingerprint_size == 0) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "The sum of front_sequence_length and back_sequence_length must be at least 0"
+        );
+        return NULL;
+    }
+
     size_t hash_table_size = 1ULL << hash_table_size_bits;
+    uint8_t *fingerprint_store = PyMem_Malloc(fingerprint_size);
+    if (fingerprint_store == NULL) {
+        return PyErr_NoMemory();
+    }
     struct EstimatorEntry *hash_table = PyMem_Calloc(hash_table_size, sizeof(struct EstimatorEntry));
     if (hash_table == NULL) {
+        PyMem_Free(fingerprint_store);
         return PyErr_NoMemory();
     }
     DedupEstimator *self = PyObject_New(DedupEstimator, type);
     if (self == NULL) {
+        PyMem_Free(fingerprint_store);
         PyMem_Free(hash_table);
         return PyErr_NoMemory();
     }
+    self->front_sequence_length = front_sequence_length;
+    self->front_sequence_offset = front_sequence_offset;
+    self->back_sequence_length = back_sequence_length; 
+    self->back_sequence_offset = back_sequence_offset;
+    self->fingerprint_store = fingerprint_store;
     self->hash_table_size = hash_table_size;
     // Get about 70% occupancy max
-    self->max_stored_entries = (hash_table_size * 7) / 10;
+    self->max_stored_entries = max_stored_fingerprints;
     self->hash_table = hash_table;
-    self->modulo_bits = 1;
+    self->modulo_bits = 0;
     self->stored_entries = 0;
     return (PyObject *)self;
 }
@@ -3816,35 +3785,30 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
     return 0;
 }
 
-/* 
-Avoid the beginning and end of the sequence by at most 64 bp to avoid
-any adapters. Take the 8 bp after the start offset and the 8 bp before 
-the end offset. This creates a small 16 bp fingerprint. Hash it using 
-MurmurHash. 16 bp is small and therefore relatively insensitive to 
-sequencing errors while still offering 4^16 or 4 billion distinct 
-fingerprints. 
-*/
-#define FINGERPRINT_MAX_OFFSET 64
-#define FINGERPRINT_LENGTH 16
-
 static int 
 DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
                                uint8_t *sequence, size_t sequence_length) 
 {
 
     uint64_t hash;
-    if (sequence_length < 16) {
+    size_t front_sequence_length = self->front_sequence_length;
+    size_t back_sequence_length = self->back_sequence_length;
+    size_t front_sequence_offset = self->front_sequence_offset;
+    size_t back_sequence_offset = self->back_sequence_offset;
+    size_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    if (sequence_length <= fingerprint_length) {
         hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
     } else {
         uint64_t seed = sequence_length >> 6;
-        uint8_t fingerprint[FINGERPRINT_LENGTH];
-        size_t remainder = sequence_length - FINGERPRINT_LENGTH;
-        size_t offset = Py_MIN(remainder / 2, FINGERPRINT_MAX_OFFSET);
-        memcpy(fingerprint, sequence + offset, FINGERPRINT_LENGTH / 2);
-        memcpy(fingerprint + (FINGERPRINT_LENGTH / 2), 
-               sequence + sequence_length - (offset + (FINGERPRINT_LENGTH / 2)), 
-               (FINGERPRINT_LENGTH / 2));
-        hash = MurmurHash3_x64_64(fingerprint, FINGERPRINT_LENGTH, seed);
+        size_t remainder = sequence_length - fingerprint_length;
+        size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
+        size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
+        memcpy(fingerprint, sequence + front_offset, front_sequence_length);
+        memcpy(fingerprint + front_sequence_length, 
+               sequence + sequence_length - (back_offset + back_sequence_length), 
+               back_sequence_length);
+        hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
     }
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
@@ -3998,6 +3962,14 @@ static PyMemberDef DedupEstimator_members[] = {
      READONLY, NULL},
     {"tracked_sequences", T_ULONGLONG, offsetof(DedupEstimator, stored_entries), 
      READONLY, NULL},
+    {"front_sequence_length", T_ULONGLONG, 
+      offsetof(DedupEstimator, front_sequence_length), READONLY, NULL},
+    {"back_sequence_length", T_ULONGLONG, 
+     offsetof(DedupEstimator, back_sequence_length), READONLY, NULL},
+    {"front_sequence_offset", T_ULONGLONG, 
+     offsetof(DedupEstimator, front_sequence_offset), READONLY, NULL},
+    {"back_sequence_offset", T_ULONGLONG, 
+     offsetof(DedupEstimator, back_sequence_offset), READONLY, NULL},
     {NULL},
 };
 
@@ -4481,7 +4453,7 @@ PyInit__qc(void)
     if (python_module_add_type(m, &QCMetrics_Type) != 0) {
         return NULL;
     }
-    if (python_module_add_type(m, &Adapteruint64_type) != 0) {
+    if (python_module_add_type(m, &AdapterCounter_type) != 0) {
         return NULL;
     }
     if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
@@ -4514,8 +4486,12 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, PHRED_MAX);
     PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
     PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
-    PyModule_AddIntMacro(m, DEFAULT_DEDUP_HASH_TABLE_SIZE_BITS);
+    PyModule_AddIntMacro(m, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
     PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
+    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
     return m;
 }

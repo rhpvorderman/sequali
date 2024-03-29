@@ -7,6 +7,21 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.6.0
+-----------------
++ Add links to the documentation in the report.
++ Moved documentation to readthedocs and added extensive module documentation.
++ Change the ``-deduplication-estimate-bits`` to a more understandable
+  ``--duplication-max-stored-fingerprints``.
++ Add a small table that lists how many reads are >=Q5, >=Q7 etc. in the
+  per sequence average quality report.
++ The progressbar can track progress through more file formats.
++ The deduplication fingerprint that is used is now configurable from the
+  command line.
++ The deduplication module starts by gathering all sequences rather than half
+  of the sequences. This allows all sequences to be considered using a big
+  enough hash table.
+
 version 0.5.1
 -----------------
 + Fix a bug in the overrepresented sequence sampling where the fragments from
