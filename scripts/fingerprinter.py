@@ -24,3 +24,4 @@ if __name__ == "__main__":
     print(dict(sorted(dupcounter.items())))
     estimated_fractions = DuplicationCounts.estimated_counts_to_fractions(dupcounter.items())
     print(estimated_fractions)
+    print(DuplicationCounts.deduplicated_fraction(dupcounter))
