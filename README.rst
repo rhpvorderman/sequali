@@ -14,6 +14,10 @@
   :target: https://github.com/rhpvorderman/sequali/blob/main/LICENSE
   :alt:
 
+.. image:: https://readthedocs.org/projects/sequali/badge/?version=latest
+    :target: https://sequali.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
+
 ========
 sequali
 ========
