@@ -32,7 +32,7 @@ Sequali
 
 .. introduction start
 
-Sequence quality metrics
+Sequence quality metrics for FASTQ and uBAM files.
 
 Features:
 
