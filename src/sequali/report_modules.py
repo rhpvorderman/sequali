@@ -1,18 +1,18 @@
 # Copyright (C) 2023 Leiden University Medical Center
-# This file is part of sequali
+# This file is part of Sequali
 #
-# sequali is free software: you can redistribute it and/or modify
+# Sequali is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
 #
-# sequali is distributed in the hope that it will be useful,
+# Sequali is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with sequali.  If not, see <https://www.gnu.org/licenses/
+# along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
 import collections
@@ -1602,11 +1602,11 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <header><p>
-                Report created by sequali. Please visit the
+                Report created by Sequali. Please visit the
                 <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
-            <h1>sequali report</h1>
+            <h1>Sequali report</h1>
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
