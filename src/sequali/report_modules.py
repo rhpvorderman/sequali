@@ -236,10 +236,12 @@ class Meta(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <p>Filename: <code>{self.filename}</code></p>
-            <p>Filesize: {self.filesize / (1024 ** 3):.2f} GiB
-            <p>Sequali version: {self.sequali_version}
-            <p>Report generated on {self.report_generated}</p>
+        <table>
+            <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
+            <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
+            <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
+            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
+        </table>
         """
 
 
