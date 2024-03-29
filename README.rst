@@ -18,6 +18,9 @@
     :target: https://sequali.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
+.. image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
+ :target: https://codecov.io/gh/rhpvorderman/sequali
+
 ========
 sequali
 ========
