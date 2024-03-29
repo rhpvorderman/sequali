@@ -9,6 +9,7 @@ Changelog
 
 version 0.6.0-dev
 -----------------
++ Add links to the documentation in the report.
 + Moved documentation to readthedocs and added extensive module documentation.
 + Change the ``-deduplication-estimate-bits`` to a more understandable
   ``--duplication-max-stored-fingerprints``.
