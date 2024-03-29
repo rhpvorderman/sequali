@@ -12,28 +12,44 @@ def fingerprint_sequence_original(sequence: str):
     return sequence[:16] + sequence[-16:]
 
 
-def new_fingerprint(sequence: str, fingerprint_length=32, max_offset=32):
-    fingerprint_part_length = fingerprint_length // 2
+def new_fingerprint(sequence: str,
+                    front_length: int,
+                    back_length: int,
+                    front_offset: int,
+                    back_offset: int):
+    fingerprint_length = front_length + back_length
     if len(sequence) < fingerprint_length:
         return sequence
+
     remainder = len(sequence) - fingerprint_length
-    offset = max(remainder // 2, max_offset)
-    return sequence[offset: offset + fingerprint_part_length] + sequence[-(offset + fingerprint_part_length):-offset]
+    front_offset = min(remainder // 2, front_offset)
+    back_offset = min(remainder // 2, back_offset)
+    return (sequence[front_offset: front_offset + front_length] +
+            sequence[-(back_offset + back_length):-back_offset])
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("fastq")
-    parser.add_argument("--fingerprint-length", nargs="?", default=32, type=int)
-    parser.add_argument("--offset", nargs="?", default=32, type=int)
+    parser.add_argument("--front-length", default=8, type=int)
+    parser.add_argument("--back-length", default=8, type=int)
+    parser.add_argument("--front-offset", default=64, type=int)
+    parser.add_argument("--back-offset", default=64, type=int)
     args = parser.parse_args()
-    offset = args.offset
-    fingerprint_length = args.fingerprint_length
+    front_length = args.front_length
+    back_length = args.back_length
+    fingerprint_length = front_length + back_length
     expected_errors = [0 for _ in range(fingerprint_length + 1)]
     with dnaio.open(args.fastq, mode="r", open_threads=1) as reader:
         for read in reader:  # type: dnaio.SequenceRecord
-            fingerprint_quals = new_fingerprint(read.qualities, fingerprint_length, offset)
+            fingerprint_quals = new_fingerprint(
+                read.qualities,
+                front_length=front_length,
+                back_length=back_length,
+                front_offset=args.front_offset,
+                back_offset=args.back_offset,
+            )
             prob = 0.0
             for q in fingerprint_quals.encode("ascii"):
                 prob += QUAL_TO_PHRED[q]
