@@ -15,11 +15,16 @@
   :alt:
 
 .. image:: https://readthedocs.org/projects/sequali/badge/?version=latest
-    :target: https://sequali.readthedocs.io/en/latest/?badge=latest
-    :alt: Documentation Status
+  :target: https://sequali.readthedocs.io/en/latest/?badge=latest
+  :alt:
 
 .. image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
- :target: https://codecov.io/gh/rhpvorderman/sequali
+  :target: https://codecov.io/gh/rhpvorderman/sequali
+  :alt:
+
+.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
+  :target: https://doi.org/10.5281/zenodo.10854010
+  :alt:
 
 ========
 sequali
