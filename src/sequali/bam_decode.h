@@ -36,7 +36,6 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>
-#include "immintrin.h"
 
 static void 
 decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size_t length)  {
@@ -69,6 +68,8 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
 }
 
 #if GCC_AT_LEAST(4, 8) 
+#include "immintrin.h"
+
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
