@@ -16,13 +16,22 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
-// Macro also used in htslib, very useful.
+// Macros also used in htslib, very useful.
 #if defined __GNUC__
 #define GCC_AT_LEAST(major, minor) \
     (__GNUC__ > (major) || (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
 #else 
 # define GCC_AT_LEAST(major, minor) 0
 #endif
+
+#ifdef __clang__
+#ifdef __has_attribute
+#define CLANG_COMPILER_HAS(attribute) __has_attribute(attribute)
+#endif 
+#endif
+#ifndef CLANG_COMPILER_HAS 
+#define CLANG_COMPILER_HAS(attribute) 0
+#endif 
 
 #include <stdint.h>
 #include <string.h>
@@ -139,11 +148,15 @@ static inline void decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_seq
 }
 #endif 
 
-#if GCC_AT_LEAST(4,4)
+// Code is simple enough to be auto vectorized.
+#if GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize)
 __attribute__((optimize("O3")))
 #endif
 static void 
-decode_bam_qualities(uint8_t *restrict dest, const uint8_t *restrict encoded_qualities, size_t length)
+decode_bam_qualities(
+    uint8_t *restrict dest,
+    const uint8_t *restrict encoded_qualities,
+    size_t length)
 {
     for (size_t i=0; i<length; i++) {
         dest[i] = encoded_qualities[i] + 33;
