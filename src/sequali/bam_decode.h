@@ -57,13 +57,13 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
         "B=BABCBMBGBRBSBVBTBWBYBHBKBDBBBN"
         "N=NANCNMNGNRNSNVNTNWNYNHNKNDNBNN";
     static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
-    size_t length_2 = length & (~1ULL); 
+    size_t length_2 = length / 2;
     for (size_t i=0; i < length_2; i++) {
         memcpy(dest + i*2, code2base + ((size_t)encoded_sequence[i] * 2), 2);
     }
     if (length & 1) {
-        uint8_t encoded = encoded_sequence[length - 1] >> 4;
-        dest[(length - 1) * 2] = nuc_lookup[encoded];
+        uint8_t encoded = encoded_sequence[length_2] >> 4;
+        dest[(length - 1)] = nuc_lookup[encoded];
     }
 }
 
