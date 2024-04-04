@@ -23,7 +23,7 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include "stdbool.h"
 #include "math.h"
 
-#include "bam_decode.h"
+#include "function_dispatch.h"
 #include "score_to_error_rate.h"
 #include "murmur3.h"
 #include "wanghash.h"
