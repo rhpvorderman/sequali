@@ -33,6 +33,16 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define CLANG_COMPILER_HAS(attribute) 0
 #endif 
 
+#define COMPILER_HAS_TARGET GCC_AT_LEAST(4, 8) || CLANG_COMPILER_HAS(__target__)
+#define COMPILER_HAS_OPTIMIZE GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize)
+
+#if defined(__x86_64__) || defined(_M_X64)
+#define BUILD_IS_X86_64 1
+#include "immintrin.h"
+#else 
+#define BUILD_IS_X86_64 0
+#endif
+
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>
@@ -67,9 +77,7 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
     }
 }
 
-#if GCC_AT_LEAST(4, 8) 
-#include "immintrin.h"
-
+#if COMPILER_HAS_TARGET && BUILD_IS_x86_64
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
@@ -150,7 +158,7 @@ static inline void decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_seq
 #endif 
 
 // Code is simple enough to be auto vectorized.
-#if GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize)
+#if COMPILER_HAS_OPTIMIZE
 __attribute__((optimize("O3")))
 #endif
 static void 
@@ -209,11 +217,11 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
     return revcomp >> (64 - (k *2));
 }
 
-static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
+static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k) {
     uint64_t kmer = 0;
     size_t all_nucs = 0;
-    Py_ssize_t i=0;
-    Py_ssize_t vector_end = k - 4;
+    int64_t i=0;
+    int64_t vector_end = k - 4;
     for (i=0; i<vector_end; i+=4) {
         size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
@@ -224,7 +232,7 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
         kmer <<= 8;
         kmer |= kchunk;
     }
-    for (i=i; i<(Py_ssize_t)k; i++) {
+    for (i=i; i<(int64_t)k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
@@ -245,3 +253,146 @@ static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
     }
     return revcomp_kmer;
 }
+
+#if COMPILER_HAS_TARGET && BUILD_IS_x86_64
+__attribute__((__target__("avx2")))
+static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
+   __m256i seq_vec_raw = _mm256_lddqu_si256((__m256i *)sequence);
+    /* Use only the last 3 bits to create indices from 0-15. A,C,G and T are 
+        distinct in the last 3 bits. This will yield results for any 
+        input. The non-ACGT check is performed at the end of the function.
+    */
+   __m256i indices_vec = _mm256_and_si256(_mm256_set1_epi8(7), seq_vec_raw);
+   /* Use the shufb instruction to convert the 0-7 indices to corresponding 
+      ACGT twobit representation. Everything non C, G, T will be 0, the same as 
+      A. */
+   __m256i twobit_vec = _mm256_shuffle_epi8(_mm256_setr_epi8(
+        /*     A,  , C, T,  ,  , G */
+            0, 0, 0, 1, 3, 0, 0, 2,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 1, 3, 0, 0, 2,
+            0, 0, 0, 0, 0, 0, 0, 0
+        ), indices_vec
+    );
+    /* Now the twobits need to be shifted to be in the position of their byte. 
+     * For each group of 4, the first entry must be shifted by 6, the second by
+     * 4, the third by 2 and the last not shifted. 
+     * To do this, an alternating mask ff00 is used to select only one byte of 
+     * each byte pair. This byte is shifted by 2. This leads to a vector were
+     * bytes are shifted by 2, 0, 2, 0 etc. 
+     * After that the first two bytes of each four byte group are selected and
+     * shifted by 4. This results in a vector were all bytes are shifted 
+     * 6, 4, 2, 0. 
+    */
+    __m256i alternate_byte_select = _mm256_set1_epi16(0xff00);
+    __m256i alternate_word_select = _mm256_set1_epi32(0xffff0000);
+    __m256i first_shift = _mm256_blendv_epi8(
+        _mm256_slli_epi16(twobit_vec, 2), 
+        twobit_vec,
+        alternate_byte_select
+    );
+    __m256i twobit_shifted_vec = _mm256_blendv_epi8(
+        _mm256_slli_epi16(first_shift, 4), 
+        first_shift,
+        alternate_word_select
+    );
+    /* Now the groups of four need to be bitwise ORred together. Due to the 
+       way the data is prepared ADD and OR have the same effect. We can use
+       _mm256_sad_epu8 instruction with a zero function to horizontally add 
+       8-bit integers. Since this adds 8-bit integers in groups of 8, we use
+       a mask to select only 4 bytes. We can then use a shift and a or to 
+       get all resulting integers into one vector again.
+    */
+    __m256i four_select_mask = _mm256_set1_epi64x(0x00000000FFFFFFFF);
+    __m256i upper_twobit = _mm256_sad_epu8(_mm256_and_si256(four_select_mask, twobit_shifted_vec), _mm256_setzero_si256());
+    __m256i lower_twobit = _mm256_sad_epu8(_mm256_andnot_si256(four_select_mask, twobit_shifted_vec), _mm256_setzero_si256());
+    __m256i combined_twobit = _mm256_or_si256(_mm256_bslli_epi128(upper_twobit, 1), lower_twobit);
+
+    /* The following instructions arrange the 8 resulting twobit bytes in the 
+       correct order to be extracted as a 64 bit integer. */
+    __m256i packed_twobit = _mm256_shuffle_epi8(combined_twobit,_mm256_setr_epi8(
+        8, 9, 0, 1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1, 
+        8, 9, 0, 1, -1, -1, -1, -1,
+        -1, -1, -1, -1, -1, -1, -1, -1
+    ));
+    __m256i shuffled_twobit = _mm256_permutevar8x32_epi32(packed_twobit, _mm256_setr_epi32(4, 0, 7, 7, 7, 7, 7, 7));
+    uint64_t kmer = _mm_cvtsi128_si64(_mm256_castsi256_si128(shuffled_twobit));
+    kmer =  kmer >> (64 - (k *2));
+
+    /* NON-ACGT CHECK*/
+
+    /* In order to mask only k characters.
+      Create an array with only k. Create an array with 0, -1, -2, -3 etc. 
+      Add k array to descending array. If k=2 descending array will be,
+      2, 1, 0, -1, etc. cmpgt with zero array results in, yes, yes, no, no  etc. 
+      First two characters masked with k=2.
+   */
+   __m256i seq_mask = _mm256_cmpgt_epi8(
+        _mm256_add_epi8(
+            _mm256_set1_epi8(k),
+            _mm256_setr_epi8(
+                0, -1, -2, -3, -4, -5, -6, -7, 
+                -8, -9, -10, -11, -12, -13, -14, -15, 
+                -16, -17, -18, -19, -20, -21, -22, -23,
+                -24, -25, -26, -27, -28, -29, -30, -31
+            )
+        ), 
+        _mm256_setzero_si256()
+    );
+    /* Mask all characters not of interest as A to not false positively trigger
+       the non-ACGT detection */
+    __m256i seq_vec = _mm256_blendv_epi8(_mm256_set1_epi8('A'), seq_vec_raw, seq_mask);
+    /* 32 is the ASCII lowercase bit. Use and not to make everything upper case. */
+    __m256i seq_vec_upper = _mm256_andnot_si256(_mm256_set1_epi8(32), seq_vec);
+    __m256i ACGT_vec = _mm256_or_si256(
+        _mm256_or_si256(
+            _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('A')),
+            _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('C'))
+        ), 
+        _mm256_or_si256(
+            _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('G')),
+            _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('T'))
+
+        )
+    );
+    /* XOR with all 1s. If all characters are ACGT this should result in 0. */
+    int not_all_characters_acgt = _mm256_movemask_epi8(_mm256_xor_si256(ACGT_vec, _mm256_set1_epi8(-1))); 
+    if (not_all_characters_acgt) {
+        __m256i N_vec = _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('N'));
+        int not_all_characters_acgtn = _mm256_movemask_epi8(_mm256_xor_si256(
+            _mm256_or_si256(ACGT_vec, N_vec), _mm256_set1_epi8(-1)
+        ));
+        if (not_all_characters_acgtn) {
+            return TWOBIT_UNKNOWN_CHAR;
+        }
+        return TWOBIT_N_CHAR;
+    }
+    uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
+    if (revcomp_kmer < kmer) {
+        return revcomp_kmer;
+    }
+    return kmer;
+}
+
+static int64_t (*sequence_to_canonical_kmer)(uint8_t *sequence, uint64_t k);
+
+static int64_t sequence_to_canonical_kmer_dispatch(uint8_t *sequence, uint64_t k) 
+{
+    if (__builtin_cpu_supports("avx2")) {
+        sequence_to_canonical_kmer = sequence_to_canonical_kmer_avx2;
+    } 
+    else {
+        sequence_to_canonical_kmer = sequence_to_canonical_kmer_default;
+    }
+    return sequence_to_canonical_kmer(sequence, k);
+}
+
+static int64_t (*sequence_to_canonical_kmer)(
+    uint8_t *sequence, uint64_t k) = sequence_to_canonical_kmer_dispatch;
+
+#else 
+static inline int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
+    return sequence_to_canonical_kmer_default(sequence, k);
+}
+#endif
