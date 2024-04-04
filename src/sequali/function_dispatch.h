@@ -198,6 +198,8 @@ static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
               ((revcomp & 0x0000FFFF0000FFFFULL) << 16);
     revcomp = ((revcomp & 0xFF00FF00FF00FF00ULL) >> 8) |
               ((revcomp & 0x00FF00FF00FF00FFULL) << 8);
+    /* Compiler properly recognizes the above as a byteswap and will simplify
+       using the bswap instruction. */
     revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) |
               ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
     revcomp = ((revcomp & 0xCCCCCCCCCCCCCCCCULL) >> 2) |
