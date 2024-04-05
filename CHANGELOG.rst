@@ -7,6 +7,12 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.7.0-dev
+-----------------
++ Enable building on ARM platforms such as M1 macintosh and Aarch64.
++ Speedup the overrepresentated sequences module by adding an AVX2 k-mer
+  construction algorithm.
+
 version 0.6.0
 -----------------
 + Add links to the documentation in the report.
