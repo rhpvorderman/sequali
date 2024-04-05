@@ -15,6 +15,7 @@
 # along with Sequali.  If not, see <https://www.gnu.org/licenses/
 import itertools
 import math
+import warnings
 
 import pytest
 
@@ -159,3 +160,18 @@ def test_very_short_sequence():
     seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
     seqdup.add_read(view_from_sequence("ACT"))
     assert seqdup.sequence_counts() == {"ACT": 1}
+
+
+def test_non_iupac_warning():
+    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    with pytest.warns(UserWarning):
+        seqdup.add_read(view_from_sequence("KKK"))
+
+
+def test_valid_does_not_warn_for_n():
+    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        seqdup.add_read(view_from_sequence("ACGTN"))
+    # N does lead to a sample not being loaded.
+    assert seqdup.sampled_sequences == 1
