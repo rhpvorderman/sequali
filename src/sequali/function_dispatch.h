@@ -89,13 +89,13 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
     const uint8_t *encoded_cursor = encoded_sequence;
     const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i));
     __m128i first_upper_shuffle = _mm_setr_epi8(
-        0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7, 0xff);
+        0, -1, 1, -1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, 7, -1);
     __m128i first_lower_shuffle = _mm_setr_epi8(
-        0xff, 0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7);
+        -1, 0, -1, 1, -1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, 7);
     __m128i second_upper_shuffle = _mm_setr_epi8(
-        8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15, 0xff);
+        8, -1, 9, -1, 10, -1, 11, -1, 12, -1, 13, -1, 14, -1, 15, -1);
     __m128i second_lower_shuffle = _mm_setr_epi8(
-        0xff, 8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15);
+        -1, 8, -1, 9, -1, 10, -1, 11, -1, 12, -1, 13, -1, 14, -1, 15);
     __m128i nuc_lookup_vec = _mm_lddqu_si128((__m128i *)nuc_lookup);
     /* Work on 16 encoded characters at the time resulting in 32 decoded characters 
        Examples are given for 8 encoded characters A until H to keep it readable.
@@ -107,7 +107,7 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
                      |00|AB|00|CD|00|EF|00|GH|
         Merge with or resulting into (X stands for garbage)
                      |0A|XB|0C|XD|0E|XF|0G|XH|
-        Bitwise and with 0b1111 leads to:
+        Bitwise and with 0b1111 (15) leads to:
                      |0A|0B|0C|0D|0E|0F|0G|0H|
         We can use the resulting 4-bit integers as indexes for the shuffle of 
         the nucleotide lookup. */
@@ -118,7 +118,7 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
         __m128i first_lower = _mm_shuffle_epi8(encoded, first_lower_shuffle);
         __m128i shifted_first_upper = _mm_srli_epi64(first_upper, 4);
         __m128i first_merged = _mm_or_si128(shifted_first_upper, first_lower);
-        __m128i first_indexes = _mm_and_si128(first_merged, _mm_set1_epi8(0b1111));
+        __m128i first_indexes = _mm_and_si128(first_merged, _mm_set1_epi8(15));
         __m128i first_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, first_indexes);
         _mm_storeu_si128((__m128i *)dest_cursor, first_nucleotides);
 
@@ -126,7 +126,7 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
         __m128i second_lower = _mm_shuffle_epi8(encoded, second_lower_shuffle);
         __m128i shifted_second_upper = _mm_srli_epi64(second_upper, 4);
         __m128i second_merged = _mm_or_si128(shifted_second_upper, second_lower);
-        __m128i second_indexes = _mm_and_si128(second_merged, _mm_set1_epi8(0b1111));
+        __m128i second_indexes = _mm_and_si128(second_merged, _mm_set1_epi8(15));
         __m128i second_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, second_indexes);
         _mm_storeu_si128((__m128i *)(dest_cursor + 16), second_nucleotides);
 
@@ -294,16 +294,16 @@ static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
      * shifted by 4. This results in a vector were all bytes are shifted 
      * 6, 4, 2, 0. 
     */
-    __m256i alternate_byte_select = _mm256_set1_epi16(0xff00);
-    __m256i alternate_word_select = _mm256_set1_epi32(0xffff0000);
+    __m256i alternate_byte_select = _mm256_set1_epi16(0x00ff);
+    __m256i alternate_word_select = _mm256_set1_epi32(0x0000ffff);
     __m256i first_shift = _mm256_blendv_epi8(
-        _mm256_slli_epi16(twobit_vec, 2), 
         twobit_vec,
+        _mm256_slli_epi16(twobit_vec, 2), 
         alternate_byte_select
     );
     __m256i twobit_shifted_vec = _mm256_blendv_epi8(
-        _mm256_slli_epi16(first_shift, 4), 
         first_shift,
+        _mm256_slli_epi16(first_shift, 4), 
         alternate_word_select
     );
     /* Now the groups of four need to be bitwise ORred together. Due to the 

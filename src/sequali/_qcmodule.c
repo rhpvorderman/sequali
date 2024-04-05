@@ -1531,8 +1531,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i all1 = _mm_set1_epi8(1);
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
-            // This will make all the nucleotides uppercase.
-            nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
+            // 32 is the lowercase bit. Turning it off makes everything uppercase.
+            nucleotides = _mm_andnot_si128(_mm_set1_epi8(32), nucleotides);
             __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
             __m128i a_positions = _mm_and_si128(a_nucs, all1);
             a_counts = _mm_add_epi8(a_counts, a_positions);
@@ -2910,7 +2910,7 @@ static PyTypeObject PerTileQuality_Type = {
 static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
     static uint8_t nucs[4] = {'A', 'C', 'G', 'T'};
     for (size_t i=k; i>0; i-=1) {
-        size_t nuc = kmer & 0b11;
+        size_t nuc = kmer & 3; // 3 == 0b11
         sequence[i - 1] = nucs[nuc];
         kmer >>= 2;
     }
