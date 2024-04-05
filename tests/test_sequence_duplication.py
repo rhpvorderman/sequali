@@ -152,3 +152,10 @@ def test_sequence_duplication_all_fragments(sequence, result):
     seqdup.add_read(view_from_sequence(sequence))
     seq_counts = seqdup.sequence_counts()
     assert seq_counts == result
+
+
+def test_very_short_sequence():
+    # With 32 byte load this will overflow the used memory.
+    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    seqdup.add_read(view_from_sequence("ACT"))
+    assert seqdup.sequence_counts() == {"ACT": 1}
