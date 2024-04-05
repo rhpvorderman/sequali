@@ -3,3 +3,4 @@ exclude tox.ini
 prune tests/
 prune .github/
 prune scripts/
+include src/sequali/*.h
