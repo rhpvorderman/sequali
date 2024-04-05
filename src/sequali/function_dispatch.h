@@ -37,10 +37,18 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define COMPILER_HAS_OPTIMIZE GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize)
 
 #if defined(__x86_64__) || defined(_M_X64)
-#define BUILD_IS_X86_64 1
-#include "immintrin.h"
+#if defined (__x86_64__)
+#define BUILD_IS_X86_64 __x86_64__
+#endif 
+#if defined (_M_X64)
+#define BUILD_IS_X86_64 _M_X64
+#endif 
 #else 
 #define BUILD_IS_X86_64 0
+#endif
+
+#if BUILD_IS_X86_64
+#include "immintrin.h"
 #endif
 
 #include <stdint.h>
