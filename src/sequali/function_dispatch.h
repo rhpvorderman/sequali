@@ -257,7 +257,17 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
 #if COMPILER_HAS_TARGET && BUILD_IS_x86_64
 __attribute__((__target__("avx2")))
 static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
-   __m256i seq_vec_raw = _mm256_lddqu_si256((__m256i *)sequence);
+    /* By using a load mask, at most 3 extra bytes are loaded. Given that a 
+       sequence in sequali always ends with \n+\n this should not trigger invalid 
+       memory access.*/
+   __m256i load_mask = _mm256_cmpgt_epi32(
+        _mm256_add_epi32(
+            _mm256_set1_epi32((k + 3) / 4),
+            _mm256_setr_epi32(0, -1, -2, -3, -4, -5, -6, -7)
+        ), 
+        _mm256_setzero_si256()
+    );
+   __m256i seq_vec_raw = _mm256_maskload_epi32((int *)sequence, load_mask);
     /* Use only the last 3 bits to create indices from 0-15. A,C,G and T are 
         distinct in the last 3 bits. This will yield results for any 
         input. The non-ACGT check is performed at the end of the function.
