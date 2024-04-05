@@ -89,10 +89,8 @@ jobs:
           distro: ${{ matrix.distro }}
           install: |
             apt-get update -q -y
-            apt-get install -q -y python3 python3-pip gcc
-          run: |
-            python3 -m pip install -U setuptools pip wheel tox
-            tox
+            apt-get install -q -y python3 python3-pip gcc tox python3-setuptools git
+          run: tox
 
   deploy:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
