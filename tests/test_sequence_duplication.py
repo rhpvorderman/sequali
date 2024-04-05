@@ -164,7 +164,7 @@ def test_very_short_sequence():
 
 def test_non_iupac_warning():
     seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match="KKK"):
         seqdup.add_read(view_from_sequence("KKK"))
 
 

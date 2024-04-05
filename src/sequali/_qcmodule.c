@@ -3114,12 +3114,14 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         Sequence_duplication_insert_hash(self, hash);
     }
     if (warn_unknown) {
+        PyObject *culprit = PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL);
         PyErr_WarnFormat(
             PyExc_UserWarning, 
             1,
             "Sequence contains a chacter that is not A, C, G, T or N: %R", 
-            PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL)
+            culprit
         );
+        Py_DECREF(culprit);
     }
     self->total_fragments += fragments;
     return 0;
