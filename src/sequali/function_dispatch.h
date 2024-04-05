@@ -33,8 +33,8 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define CLANG_COMPILER_HAS(attribute) 0
 #endif 
 
-#define COMPILER_HAS_TARGET GCC_AT_LEAST(4, 8) || CLANG_COMPILER_HAS(__target__)
-#define COMPILER_HAS_OPTIMIZE GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize)
+#define COMPILER_HAS_TARGET (GCC_AT_LEAST(4, 8) || CLANG_COMPILER_HAS(__target__))
+#define COMPILER_HAS_OPTIMIZE (GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize))
 
 #if defined(__x86_64__) || defined(_M_X64)
 #define BUILD_IS_X86_64 1
