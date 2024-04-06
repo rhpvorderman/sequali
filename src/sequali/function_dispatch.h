@@ -77,7 +77,7 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
     }
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_x86_64
+#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
@@ -254,7 +254,7 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
     return revcomp_kmer;
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_x86_64
+#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
 __attribute__((__target__("avx2")))
 static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
     /* By using a load mask, at most 3 extra bytes are loaded. Given that a 
