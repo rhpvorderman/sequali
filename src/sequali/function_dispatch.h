@@ -366,23 +366,22 @@ static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
 
         )
     );
-    /* XOR with all 1s. If all characters are ACGT this should result in 0. */
-    int not_all_characters_acgt = _mm256_movemask_epi8(_mm256_xor_si256(ACGT_vec, _mm256_set1_epi8(-1))); 
-    if (not_all_characters_acgt) {
-        __m256i N_vec = _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('N'));
-        int not_all_characters_acgtn = _mm256_movemask_epi8(_mm256_xor_si256(
-            _mm256_or_si256(ACGT_vec, N_vec), _mm256_set1_epi8(-1)
-        ));
-        if (not_all_characters_acgtn) {
-            return TWOBIT_UNKNOWN_CHAR;
+    /* Bitwise not of ACGT_vec should be all 0. */
+    int all_characters_acgt = _mm256_testc_si256(ACGT_vec, _mm256_set1_epi8(-1)); 
+    if (all_characters_acgt) {
+        uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
+        if (revcomp_kmer < kmer) {
+            return revcomp_kmer;
         }
+        return kmer;
+    }
+    __m256i N_vec = _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('N'));
+    int all_characters_acgtn = _mm256_testc_si256(
+        _mm256_or_si256(ACGT_vec, N_vec), _mm256_set1_epi8(-1));
+    if (all_characters_acgtn) {
         return TWOBIT_N_CHAR;
     }
-    uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
-    if (revcomp_kmer < kmer) {
-        return revcomp_kmer;
-    }
-    return kmer;
+    return TWOBIT_UNKNOWN_CHAR;    
 }
 
 static int64_t (*sequence_to_canonical_kmer)(uint8_t *sequence, uint64_t k);
