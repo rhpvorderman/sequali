@@ -9,6 +9,8 @@ Changelog
 
 version 0.7.0-dev
 -----------------
++ Graph fonts are made a little bigger. Graphs now respond to zooming in and
+  out on the web page.
 + Enable building on ARM platforms such as M1 macintosh and Aarch64.
 + Speedup the overrepresentated sequences module by adding an AVX2 k-mer
   construction algorithm.
