@@ -78,11 +78,18 @@ QUALITY_COLORS = [
 COLOR_GREEN = "#33cc33"
 COLOR_RED = "#ff0000"
 
+COMMON_GRAPH_STYLE_OPTIONS = dict(
+    font_family="sans-serif",
+    label_font_size=12,
+    major_label_font_size=12,
+    value_label_font_size=12,
+)
+
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=QUALITY_COLORS,
-                                               font_family="sans-serif")
+                                               **COMMON_GRAPH_STYLE_OPTIONS)
 ONE_SERIE_STYLE = pygal.style.DefaultStyle(colors=("#33cc33",),  # Green
-                                           font_family="sans-serif")
-MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle(font_family="sans-serif")
+                                           **COMMON_GRAPH_STYLE_OPTIONS)
+MULTIPLE_SERIES_STYLE = pygal.style.DefaultStyle(**COMMON_GRAPH_STYLE_OPTIONS)
 
 DEFAULT_FRACTION_THRESHOLD = 0.0001
 DEFAULT_MIN_THRESHOLD = 100
@@ -418,7 +425,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             range=(0.0, 50.0),
             style=pygal.style.DefaultStyle(
                 colors=["#000000"] * 12,
-                font_family="sans-serif",
+                **COMMON_GRAPH_STYLE_OPTIONS,
             ),
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
@@ -650,7 +657,7 @@ class PerPositionBaseContent(ReportModule):
         black = "#000000"
         style = style_class(
             colors=(green, dark_green, blue, dark_blue, black),
-            font_family="sans-serif"
+            **COMMON_GRAPH_STYLE_OPTIONS
         )
         plot = pygal.StackedLine(
             title="Base content",
@@ -952,7 +959,7 @@ class PerTileQualityReport(ReportModule):
         yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
         style = pygal.style.Style(
             colors=(yellow, red) + style_colors,
-            font_family="sans-serif",
+            **COMMON_GRAPH_STYLE_OPTIONS,
         )
         scatter_plot = pygal.Line(
             title="Deviation from geometric mean in phred units.",
@@ -1512,7 +1519,7 @@ class NanoStatsReport(ReportModule):
             style=pygal.style.DefaultStyle(
                 # Use blue and red colors to accommodate colorblind people.
                 colors=(QUALITY_COLORS[-3], QUALITY_COLORS[1], QUALITY_COLORS[1]),
-                font_family="sans-serif",
+                **COMMON_GRAPH_STYLE_OPTIONS,
             ),
             x_labels=[str(i) for i in range(0, 800, 10)] + [">800"],
             x_labels_major_every=10,
