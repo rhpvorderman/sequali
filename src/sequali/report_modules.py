@@ -80,9 +80,11 @@ COLOR_RED = "#ff0000"
 
 COMMON_GRAPH_STYLE_OPTIONS = dict(
     font_family="sans-serif",
-    label_font_size=12,
-    major_label_font_size=12,
-    value_label_font_size=12,
+    label_font_size=14,
+    major_label_font_size=14,
+    value_label_font_size=14,
+    title_font_size=18,
+    legend_font_size=16,
 )
 
 QUALITY_DISTRIBUTION_STYLE = pygal.style.Style(colors=QUALITY_COLORS,
@@ -97,7 +99,9 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
-    width=1200,
+    width=1250,
+    height=700,
+    explicit_size=True,
     disable_xml_declaration=True,
     js=[],  # Script is globally downloaded once
 )
@@ -188,7 +192,7 @@ def label_settings(x_labels: Sequence[str]) -> Dict[str, Any]:
     # separately.
     simple_x_labels = [label.split("-")[0] for label in x_labels]
     if simple_x_labels and len(simple_x_labels[-1]) > 4:
-        rotation = 30
+        rotation = 45
     else:
         rotation = 0
     return dict(
@@ -1034,7 +1038,7 @@ class DuplicationCounts(ReportModule):
             x_labels=list(self.estimated_duplication_fractions.keys()),
             x_title="Duplication counts",
             y_title="Percentage of total",
-            x_label_rotation=30,
+            x_label_rotation=45,
             style=ONE_SERIE_STYLE,
             **COMMON_GRAPH_OPTIONS
         )
