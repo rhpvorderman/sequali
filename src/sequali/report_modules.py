@@ -1598,8 +1598,13 @@ def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
 
 
 def write_html_report(report_modules: Iterable[ReportModule],
-                      html: str,
-                      filename: str):
+                      html: str):
+    for mod in report_modules:
+        if isinstance(mod, Meta):
+            filename = mod.filename
+            break
+    else:
+        raise RuntimeError("No filename found in metadata")
     default_config = pygal.Config()
     pygal_script_uri = default_config.js[0].lstrip('/')
     with open(html, "wt", encoding="utf-8") as html_file:
