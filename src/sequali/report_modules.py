@@ -108,7 +108,12 @@ COMMON_GRAPH_OPTIONS = dict(
 
 
 def html_header(header: str, level: int):
-    return f'<h{level} id="{header.lower().replace(" ", "_")}">{header}</h{level}>'
+    html_id = header.lower().replace(" ", "-")
+    return f"""
+        <h{level} id="{html_id}">
+            <a class="headerlink" href="#{html_id}">{header}</a>
+        </h{level}>
+    """
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:

@@ -4,6 +4,15 @@ body {
     margin: auto;
 }
 
+a.headerlink {
+    text-decoration: none;
+    color: black;
+}
+
+a.headerlink:hover {
+    text-decoration: underline;
+}
+
 header {
     font-size: 90%;
     font-style: italic;
