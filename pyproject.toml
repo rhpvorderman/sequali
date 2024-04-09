@@ -54,7 +54,9 @@ sequali = [
     'py.typed',
     'contaminants/*',
     'adapters/*',
-    'style/*'
+    'style/*',
+    'pygal.js/README.md',
+    'pygal.js/2.0.x/*'
 ]
 [project.urls]
 "Documentation" = "https://sequali.readthedocs.io"

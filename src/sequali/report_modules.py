@@ -46,6 +46,9 @@ from .util import fasta_parser
 
 SEQUALI_REPORT_CSS = Path(__file__).parent / "style" / "sequali_report.css"
 SEQUALI_REPORT_CSS_CONTENT = SEQUALI_REPORT_CSS.read_text(encoding="utf-8")
+SEQUALI_REPORT_JS = (Path(__file__).parent / "pygal.js" / "2.0.x" /
+                     "pygal-tooltips.min.js")
+SEQUALI_REPORT_JS_CONTENT = SEQUALI_REPORT_JS.read_text()
 
 PHRED_INDEX_TO_ERROR_RATE = [
     sum(10 ** (-p / 10) for p in range(start * 4, start * 4 + 4)) / 4
@@ -1644,8 +1647,6 @@ def write_html_report(report_modules: Iterable[ReportModule],
             break
     else:
         raise RuntimeError("No filename found in metadata")
-    default_config = pygal.Config()
-    pygal_script_uri = default_config.js[0].lstrip('/')
     content_division = io.StringIO()
     content_division.write(f'<div class="content">{html_header("Sequali report", 1)}')
     for module in report_modules:
@@ -1659,7 +1660,9 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <!DOCTYPE html>
             <html lang="en">
             <head>
-                <script src="https://{pygal_script_uri}"></script>
+                <script>
+                    {SEQUALI_REPORT_JS_CONTENT}
+                </script>
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}
                 </style>
