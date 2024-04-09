@@ -142,7 +142,7 @@ def create_toc(content: str):
                     for i in range(current_level - header_level):
                         toc.write("</ul>")
                 current_level = header_level
-            toc.write(f'<li><a href="#{id}">{header}</a></li>')
+            toc.write(f'<li><a class="toclink" href="#{id}">{header}</a></li>')
     if current_level > 0:
         for i in range(current_level):
             toc.write("</ul>")

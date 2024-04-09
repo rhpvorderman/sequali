@@ -3,12 +3,12 @@ body {
     width:100%;
 }
 
-a.headerlink {
+a.headerlink, a.toclink {
     text-decoration: none;
     color: black;
 }
 
-a.headerlink:hover {
+a.headerlink:hover, a.toclink:hover {
     text-decoration: underline;
 }
 
