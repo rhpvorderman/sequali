@@ -19,13 +19,14 @@ a.headerlink:hover {
     width: 318px;
     position: fixed;
     overflow: auto;
-    background-color: AliceBlue;
-
+    background-color: #F8F8F8;
+    border-style: none double none none;
+    border-color: DarkGrey;
 }
 
 .content {
     margin-left: 350px;
-    padding: 1px 16px;
+    padding: 1px 32px;
     max-width:1300px;
 }
 
