@@ -54,7 +54,7 @@ sequali = [
     'py.typed',
     'contaminants/*',
     'adapters/*',
-    'style/*',
+    'static/*',
     'pygal.js/README.md',
     'pygal.js/2.0.x/*'
 ]

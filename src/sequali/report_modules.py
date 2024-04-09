@@ -44,10 +44,13 @@ from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
     create_sequence_index, identify_sequence, reverse_complement
 from .util import fasta_parser
 
-SEQUALI_REPORT_CSS = Path(__file__).parent / "style" / "sequali_report.css"
+SEQUALI_REPORT_CSS = Path(__file__).parent / "static" / "sequali_report.css"
 SEQUALI_REPORT_CSS_CONTENT = SEQUALI_REPORT_CSS.read_text(encoding="utf-8")
 SEQUALI_REPORT_JS = (Path(__file__).parent / "pygal.js" / "2.0.x" /
                      "pygal-tooltips.min.js")
+SEQUALI_DOWNLOAD_SVG_JS = (Path(__file__).parent / "static" /
+                           "svg_to_download_link.js")
+SEQUALI_DOWNLOAD_SVG_JS_CONTENT = SEQUALI_DOWNLOAD_SVG_JS.read_text()
 SEQUALI_REPORT_JS_CONTENT = SEQUALI_REPORT_JS.read_text()
 
 PHRED_INDEX_TO_ERROR_RATE = [
@@ -147,6 +150,25 @@ def create_toc(content: str):
         for i in range(current_level):
             toc.write("</ul>")
     return toc.getvalue()
+
+
+def figurize_plot(plot: pygal.Graph):
+    svg_unicode = plot.render(is_unicode=True)
+    svg_tree: xml.etree.ElementTree.Element = (
+        xml.etree.ElementTree.fromstring(svg_unicode))
+    svg_id = svg_tree.get("id")
+    title: str = plot.config.title
+    filename = title.lower().replace(" ", "_") + ".svg"
+    return f"""
+        <figure>
+            {svg_unicode}
+            <figcaption>
+                <script>
+                document.write(svgToDownloadLink("{svg_id}", "{filename}"));
+                </script>
+            </figcaption>
+        </figure>
+    """
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
@@ -370,7 +392,7 @@ class SequenceLengthDistribution(ReportModule):
     q95: int
     q99: int
 
-    def plot(self) -> str:
+    def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
             title="Sequence length distribution",
             x_title="sequence length",
@@ -380,7 +402,7 @@ class SequenceLengthDistribution(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("Length", label_values(self.counts, self.length_ranges))
-        return plot.render(is_unicode=True)
+        return plot
 
     def distribution_table(self):
         if len({self.q1, self.q5, self.q10, self.q25, self.q50,
@@ -404,7 +426,7 @@ class SequenceLengthDistribution(ReportModule):
         return f"""
             {html_header("Sequence length distribution", 1)}
             <p>{self.distribution_table()}</p>
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
     @classmethod
@@ -462,7 +484,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
     percentiles: List[Tuple[str, List[float]]]
 
-    def plot(self) -> str:
+    def plot(self) -> pygal.Graph:
         plot = pygal.Line(
             title="Per position quality percentiles",
             show_dots=False,
@@ -488,7 +510,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                  stroke_style={"dasharray": '3,3'})
         plot.add("bottom 1%", label_values(percentiles["bottom 1%"], self.x_labels),
                  stroke_style={"dasharray": '1,2'})
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self):
         return f"""
@@ -498,7 +520,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             highest percentiles to indicate the spread. Since the graph is
             based on the sampled categories, rather than exact phreds, it is
             an approximation.</p>
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
     @classmethod
@@ -597,7 +619,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
                 quality_distribution[offset][cat_index] = nuc_fraction
         return cls(x_labels, quality_distribution)
 
-    def plot(self) -> str:
+    def plot(self) -> pygal.Graph:
         plot = pygal.StackedBar(
             title="Per base quality distribution",
             style=QUALITY_DISTRIBUTION_STYLE,
@@ -613,12 +635,12 @@ class PerBaseQualityScoreDistribution(ReportModule):
             serie_filled = sum(serie) > 0.0
             plot.add(name, label_values(serie, self.x_labels),
                      show_dots=serie_filled)
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self):
         return f"""
             {html_header("Per position quality score distribution", 1)}
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
 
@@ -627,7 +649,7 @@ class PerSequenceAverageQualityScores(ReportModule):
     average_quality_counts: Sequence[int]
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
 
-    def plot(self) -> str:
+    def plot(self) -> pygal.Graph:
         maximum_score = 0
         for i, count in enumerate(self.average_quality_counts):
             if count > 0:
@@ -651,13 +673,13 @@ class PerSequenceAverageQualityScores(ReportModule):
                                  for score in self.average_quality_counts]
 
         plot.add("", percentage_scores[:maximum_score])
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self) -> str:
         return f"""
             {html_header("Per sequence average quality scores", 1)}
             <p>{self.quality_scores_table()}</p>
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
     def quality_scores_table(self) -> str:
@@ -695,7 +717,7 @@ class PerPositionBaseContent(ReportModule):
     G: Sequence[float]
     T: Sequence[float]
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         style_class = pygal.style.Style
         green = COLOR_GREEN
         dark_green = "#228B22"  # ForestGreen
@@ -721,12 +743,12 @@ class PerPositionBaseContent(ReportModule):
         plot.add("C", label_values(self.C, self.x_labels))
         plot.add("A", label_values(self.A, self.x_labels))
         plot.add("T", label_values(self.T, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self) -> str:
         return f"""
              {html_header("Per position base content", 1)}
-             <figure>{self.plot()}</figure>
+             {figurize_plot(self.plot())}
         """
 
     @classmethod
@@ -779,7 +801,7 @@ class PerPositionNContent(ReportModule):
             n_fractions
         )
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
             title="Per position N content",
             dots_size=1,
@@ -792,12 +814,12 @@ class PerPositionNContent(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("N", label_values(self.n_content, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self) -> str:
         return f"""
             {html_header("Per position N content", 1)}
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
 
@@ -808,7 +830,7 @@ class PerSequenceGCContent(ReportModule):
     x_labels: Sequence[str] = tuple(str(x) for x in range(101))
     smoothened_x_labels: Sequence[str] = tuple(str(x) for x in range(0, 101, 2))
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
             title="Per sequence GC content",
             x_labels=self.x_labels,
@@ -820,7 +842,7 @@ class PerSequenceGCContent(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("", self.gc_content_counts)
-        return plot.render(is_unicode=True)
+        return plot
 
     def smoothened_plot(self):
         plot = pygal.Line(
@@ -835,7 +857,7 @@ class PerSequenceGCContent(ReportModule):
             **COMMON_GRAPH_OPTIONS,
         )
         plot.add("", self.smoothened_gc_content_counts)
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self) -> str:
         return f"""
@@ -849,8 +871,8 @@ class PerSequenceGCContent(ReportModule):
             even categories will be twice as high, which creates a spike. The
             smoothened plot is provided to give a clearer picture in this case.
             </p>
-            <figure>{self.plot()}</figure>
-            <figure>{self.smoothened_plot()}</figure>
+            {figurize_plot(self.plot())}
+            {figurize_plot(self.smoothened_plot())}
         """
 
     @classmethod
@@ -870,7 +892,7 @@ class AdapterContent(ReportModule):
     x_labels: Sequence[str]
     adapter_content: Sequence[Tuple[str, Sequence[float]]]
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         plot = pygal.Line(
             title="Adapter content (%)",
             range=(0.0, 100.0),
@@ -889,7 +911,7 @@ class AdapterContent(ReportModule):
                              reverse=True)
         for label, content in adapter_content:
             plot.add(label, label_values(content, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self):
         return f"""
@@ -908,7 +930,7 @@ class AdapterContent(ReportModule):
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.</p>
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """  # noqa: E501
 
     @classmethod
@@ -1000,7 +1022,7 @@ class PerTileQualityReport(ReportModule):
             skipped_reason=ptq.skipped_reason,
         )
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         style_colors = MULTIPLE_SERIES_STYLE.colors
         red = "#FF0000"
         yellow = "#FFD700"  # actually 'Gold' which is darker and more visible.
@@ -1041,7 +1063,7 @@ class PerTileQualityReport(ReportModule):
                               zip(tile_phreds, self.x_labels)]
             scatter_plot.add(str(tile), cleaned_phreds)
 
-        return scatter_plot.render(is_unicode=True)
+        return scatter_plot
 
     def to_html(self) -> str:
         header = html_header("Per tile quality", 1)
@@ -1060,7 +1082,7 @@ class PerTileQualityReport(ReportModule):
                 {", ".join(self.tiles_2x_errors)}</p>
             <p>Tiles with more than 10 times the average error:
                 {", ".join(self.tiles_10x_errors)}</p>
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
 
@@ -1075,7 +1097,7 @@ class DuplicationCounts(ReportModule):
     fingerprint_front_sequence_offset: int
     fingerprint_back_sequence_offset: int
 
-    def plot(self):
+    def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
             title="Duplication levels (%)",
             x_labels=list(self.estimated_duplication_fractions.keys()),
@@ -1088,7 +1110,7 @@ class DuplicationCounts(ReportModule):
         plot.add("",
                  [100 * fraction for fraction in
                   self.estimated_duplication_fractions.values()])
-        return plot.render(is_unicode=True)
+        return plot
 
     def to_html(self):
         first_part = f"""
@@ -1141,7 +1163,7 @@ class DuplicationCounts(ReportModule):
         return f"""
             {html_header("Duplication percentages", 1)}
             {first_part}
-            <figure>{self.plot()}</figure>
+            {figurize_plot(self.plot())}
         """
 
     @staticmethod
@@ -1482,7 +1504,7 @@ class NanoStatsReport(ReportModule):
             **COMMON_GRAPH_OPTIONS
         )
         plot.add("", label_values(self.time_bases, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def time_reads_plot(self):
         plot = pygal.Bar(
@@ -1494,7 +1516,7 @@ class NanoStatsReport(ReportModule):
             **COMMON_GRAPH_OPTIONS
         )
         plot.add("", label_values(self.time_reads, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def time_active_channels_plot(self):
         plot = pygal.Bar(
@@ -1506,7 +1528,7 @@ class NanoStatsReport(ReportModule):
             **COMMON_GRAPH_OPTIONS
         )
         plot.add("", label_values(self.time_active_channels, self.x_labels))
-        return plot.render(is_unicode=True)
+        return plot
 
     def time_quality_distribution_plot(self):
         plot = pygal.StackedBar(
@@ -1524,7 +1546,7 @@ class NanoStatsReport(ReportModule):
             serie_filled = sum(serie) > 0.0
             plot.add(name, label_values(serie, self.x_labels),
                      show_dots=serie_filled)
-        return plot.render(is_unicode=True)
+        return plot
 
     def channel_plot(self):
         plot = pygal.XY(
@@ -1542,7 +1564,7 @@ class NanoStatsReport(ReportModule):
             serie.append(dict(value=(base_yield/1_000_000, quality),
                               label=str(channel)))
         plot.add(None, serie)
-        return plot.render(is_unicode=True)
+        return plot
 
     def translocation_section(self):
         transl_speeds = self.translocation_speed
@@ -1581,7 +1603,7 @@ class NanoStatsReport(ReportModule):
         <p>Percentage of reads within accepted bounds: {within_bounds_frac:.2%}</p>
         <p>Percentage of reads that are too slow: {too_slow_frac:.2%}</p>
         <p>Percentage of reads that are too fast: {too_fast_frac:.2%}</p>
-        <figure>{plot.render(is_unicode=True)}</figure>
+        {figurize_plot(plot)}
         """
 
     def to_html(self) -> str:
@@ -1593,15 +1615,15 @@ class NanoStatsReport(ReportModule):
         return f"""
         {html_header("Nanopore time series", 1)}
         {html_header("Base counts over time", 2)}
-        <figure>{self.time_bases_plot()}</figure>
+        {figurize_plot(self.time_bases_plot())}
         {html_header("Read counts over time", 2)}
-        <figure>{self.time_reads_plot()}</figure>
+        {figurize_plot(self.time_reads_plot())}
         {html_header("Active channels over time", 2)}
-        <figure>{self.time_active_channels_plot()}</figure>
+        {figurize_plot(self.time_active_channels_plot())}
         {html_header("Quality distribution over time", 2)}
-        <figure>{self.time_quality_distribution_plot()}</figure>
+        {figurize_plot(self.time_quality_distribution_plot())}
         {html_header("Per channel base yield versus quality", 2)}
-        <figure>{self.channel_plot()}</figure>
+        {figurize_plot(self.channel_plot())}
         {self.translocation_section()}
         """
 
@@ -1663,6 +1685,9 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <head>
                 <script>
                     {SEQUALI_REPORT_JS_CONTENT}
+                </script>
+                <script>
+                    {SEQUALI_DOWNLOAD_SVG_JS_CONTENT}
                 </script>
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}

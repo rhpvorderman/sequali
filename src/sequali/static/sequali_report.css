@@ -16,6 +16,11 @@ h2 {
     margin-bottom: 1em;
 }
 
+figcaption {
+    font-size: 0.8em;
+    font-style: italic;
+}
+
 a.headerlink, a.toclink {
     text-decoration: none;
     color: black;
