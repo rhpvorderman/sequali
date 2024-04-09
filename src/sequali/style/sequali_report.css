@@ -26,7 +26,7 @@ a.headerlink:hover {
 .content {
     margin-left: 350px;
     padding: 1px 16px;
-    width: auto;
+    max-width:1300px;
 }
 
 header {
@@ -40,6 +40,7 @@ header {
     font-style: italic;
 }
 figure {
+    max-width:1250px;
 }
 
 table {

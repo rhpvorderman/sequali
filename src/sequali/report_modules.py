@@ -103,7 +103,6 @@ COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
     width=1250,
     height=700,
-    explicit_size=True,
     disable_xml_declaration=True,
     js=[],  # Script is globally downloaded once
 )
