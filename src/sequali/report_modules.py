@@ -135,7 +135,7 @@ def create_toc(content: str):
             if header_level != current_level:
                 if header_level > current_level:
                     for i in range(header_level - current_level):
-                        toc.write("<ul>")
+                        toc.write('<ul class="toc_list">')
                 else:
                     for i in range(current_level - header_level):
                         toc.write("</ul>")
@@ -1648,7 +1648,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
     default_config = pygal.Config()
     pygal_script_uri = default_config.js[0].lstrip('/')
     content_division = io.StringIO()
-    content_division.write(f'<div id="content">{html_header("Sequali report", 1)}')
+    content_division.write(f'<div class="content">{html_header("Sequali report", 1)}')
     for module in report_modules:
         content_division.write(module.to_html())
     content_division.write("</div>")
@@ -1667,16 +1667,21 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
-            <header><p>
-                Report created by Sequali. Please visit the
-                <a href="https://github.com/rhpvorderman/sequali">homepage</a>
-                for bug reports and feature requests.
-            </p></header>
+            <body>
         """)
-        # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
-        html_file.write(toc)
+
+        html_file.write(f"""<div class="toc"><h2>Table of contents</h2>{toc}""")
+        html_file.write(f"""
+        <h2>Links</h2>
+        <ul>
+            <li><a href="https://sequali.readthedocs.io">Documentation</a></li>
+            <li><a href="https://github.com/rhpvorderman/sequali">Github repository</a></li>
+            <li><a href="https://github.com/rhpvorderman/sequali/issues">Bug tracker</a></li>
+        </ul>
+        """)
+        html_file.write('</div>')
         html_file.write(content)
-        html_file.write("</html>")
+        html_file.write("</body></html>")
 
 
 def qc_metrics_modules(metrics: QCMetrics,

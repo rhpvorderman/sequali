@@ -9,6 +9,8 @@ Changelog
 
 version 0.7.0-dev
 -----------------
++ A sidebar with a table of contents is added to the report for easier
+  navigation.
 + Graph fonts are made a little bigger. Graphs now respond to zooming in and
   out on the web page.
 + Enable building on ARM platforms such as M1 macintosh and Aarch64.
