@@ -9,6 +9,8 @@ Changelog
 
 version 0.7.0-dev
 -----------------
++ The javascript file for the tooltip highlighting is now embedded in the
+  html file so no internet access is needed for the functionality.
 + A sidebar with a table of contents is added to the report for easier
   navigation.
 + Graph fonts are made a little bigger. Graphs now respond to zooming in and
