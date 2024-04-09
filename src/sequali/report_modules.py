@@ -107,6 +107,10 @@ COMMON_GRAPH_OPTIONS = dict(
 )
 
 
+def html_header(header: str, level: int):
+    return f'<h{level} id="{header.lower().replace(" ", "_")}">{header}</h{level}>'
+
+
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
     size = length // parts
     remainder = length % parts
@@ -270,7 +274,7 @@ class Summary(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <h2>Summary</h2>
+            {html_header("Summary", 2)}
             <table>
             <tr><td>Mean length</td><td style="text-align:right;">
                 {self.mean_length:,.2f}</td><td></td></tr>
@@ -359,7 +363,7 @@ class SequenceLengthDistribution(ReportModule):
 
     def to_html(self):
         return f"""
-            <h2>Sequence length distribution</h2>
+            {html_header("Sequence length distribution", 2)}
             <p>{self.distribution_table()}</p>
             <figure>{self.plot()}</figure>
         """
@@ -449,7 +453,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 
     def to_html(self):
         return f"""
-            <h2>Per position quality percentiles</h2>
+            {html_header("Per position quality percentiles", 2)}
             <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
@@ -574,7 +578,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 
     def to_html(self):
         return f"""
-            <h2>Per position quality score distribution</h2>
+            {html_header("Per position quality score distribution", 2)}
             <figure>{self.plot()}</figure>
         """
 
@@ -612,7 +616,7 @@ class PerSequenceAverageQualityScores(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <h2>Per sequence average quality scores</h2>
+            {html_header("Per sequence average quality scores", 2)}
             <p>{self.quality_scores_table()}</p>
             <figure>{self.plot()}</figure>
         """
@@ -682,7 +686,7 @@ class PerPositionBaseContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-             <h2>Per position base content</h2>
+             {html_header("Per position base content", 2)}
              <figure>{self.plot()}</figure>
         """
 
@@ -753,7 +757,7 @@ class PerPositionNContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <h2>Per position N content</h2>
+            {html_header("Per position N content", 2)}
             <figure>{self.plot()}</figure>
         """
 
@@ -796,7 +800,7 @@ class PerSequenceGCContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            <h2>Per sequence GC content</h2>
+            {html_header("Per sequence GC content", 2)}
             <p class="explanation">
             For short reads with fixed size (i.e. Illumina) the plot will
             look very spiky due to the GC content calculation: GC bases / all
@@ -850,7 +854,7 @@ class AdapterContent(ReportModule):
 
     def to_html(self):
         return f"""
-            <h2>Adapter content</h2>
+            {html_header("Adapter content", 2)}
             <p class="explanation">Only adapters that are present more than 0.1%
             are shown. Given the 12&#8239;bp
             length of the sequences used to estimate the content, values below this
@@ -1001,7 +1005,7 @@ class PerTileQualityReport(ReportModule):
         return scatter_plot.render(is_unicode=True)
 
     def to_html(self) -> str:
-        header = "<h2>Per tile quality</h2>"
+        header = html_header("Per tile quality", 2)
         if self.skipped_reason:
             return header + (f"Per tile quality skipped. Reason: "
                              f"{self.skipped_reason}.")
@@ -1096,7 +1100,7 @@ class DuplicationCounts(ReportModule):
         </p>
         """
         return f"""
-            <h2>Duplication percentages</h2>
+            {html_header("Duplication percentages", 2)}
             {first_part}
             <figure>{self.plot()}</figure>
         """
@@ -1209,7 +1213,7 @@ class OverRepresentedSequences(ReportModule):
                    sampled_sequences=d["sampled_sequences"])  # type: ignore
 
     def to_html(self) -> str:
-        header = "<h2>Overrepresented sequences</h2>"
+        header = html_header("Overrepresented sequences", 2)
         if len(self.overrepresented_sequences) == 0:
             return header + "No overrepresented sequences."
         content = io.StringIO()
@@ -1504,8 +1508,8 @@ class NanoStatsReport(ReportModule):
     def translocation_section(self):
         transl_speeds = self.translocation_speed
         if sum(transl_speeds) == 0:
-            return """
-            <h2>translocation speeds</h2>
+            return f"""
+            {html_header("translocation speeds", 2)}
             Duration information not available.
             """
         too_slow = transl_speeds[:35] + [0] * 55
@@ -1534,7 +1538,7 @@ class NanoStatsReport(ReportModule):
         plot.add("too slow", too_slow)
         plot.add("too fast", too_fast)
         return f"""
-        <h2>translocation speeds</h2>
+        {html_header("translocation speeds", 2)}
         <p>Percentage of reads within accepted bounds: {within_bounds_frac:.2%}</p>
         <p>Percentage of reads that are too slow: {too_slow_frac:.2%}</p>
         <p>Percentage of reads that are too fast: {too_fast_frac:.2%}</p>
@@ -1544,20 +1548,20 @@ class NanoStatsReport(ReportModule):
     def to_html(self) -> str:
         if self.skipped_reason:
             return f"""
-            <h2>Nanopore time series</h2>
+            {html_header("Nanopore time series", 2)}
             Skipped: {self.skipped_reason}
             """
         return f"""
-        <h2>Nanopore time series</h2>
-        <h3>Base counts over time</h3>
+        {html_header("Nanopore time series", 2)}
+        {html_header("Base counts over time", 3)}
         <figure>{self.time_bases_plot()}</figure>
-        <h3>Read counts over time</h3>
+        {html_header("Read counts over time", 3)}
         <figure>{self.time_reads_plot()}</figure>
-        <h3>Active channels over time</h3>
+        {html_header("Active channels over time", 3)}
         <figure>{self.time_active_channels_plot()}</figure>
-        <h3>Quality distribution over time</h3>
+        {html_header("Quality distribution over time", 3)}
         <figure>{self.time_quality_distribution_plot()}</figure>
-        <h2>Per channel base yield versus quality<h2>
+        {html_header("Per channel base yield versus quality", 2)}
         <figure>{self.channel_plot()}</figure>
         {self.translocation_section()}
         """
@@ -1624,7 +1628,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
-            <h1>Sequali report</h1>
+            {html_header("Sequali report", 1)}
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
         for module in report_modules:
