@@ -3,6 +3,19 @@ body {
     width:100%;
 }
 
+/* Use h2 header settings for h1 etc. to have more understated headers. */
+h1 {
+    font-size: 1.5em;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+}
+
+h2 {
+    font-size: 1.17em;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
 a.headerlink, a.toclink {
     text-decoration: none;
     color: black;
