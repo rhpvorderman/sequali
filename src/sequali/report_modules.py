@@ -17,12 +17,14 @@
 import array
 import collections
 import dataclasses
+import html
 import io
 import math
 import os
 import sys
 import time
 import typing
+import xml.etree.ElementTree
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
@@ -114,6 +116,35 @@ def html_header(header: str, level: int):
             <a class="headerlink" href="#{html_id}">{header}</a>
         </h{level}>
     """
+
+
+def create_toc(content: str):
+    toc = io.StringIO()
+    toc.write('<ul class="toc_list">')
+    root = xml.etree.ElementTree.fromstring(content)
+    current_level = 1
+    for element in root.iter():  # type: xml.etree.ElementTree.Element
+        tag = element.tag
+        if tag.startswith("h") and len(tag) == 2 and tag[1].isdecimal():
+            header_level = int(tag[1])
+            reference_element = element.find("a")
+            if reference_element is None:
+                raise RuntimeError("Header format error. Can't create toc.")
+            header = reference_element.text
+            id = element.get("id")
+            if header_level != current_level:
+                if header_level > current_level:
+                    for i in range(header_level - current_level):
+                        toc.write("<ul>")
+                else:
+                    for i in range(current_level - header_level):
+                        toc.write("</ul>")
+                current_level = header_level
+            toc.write(f'<li><a href="#{id}">{header}</a></li>')
+    if current_level > 0:
+        for i in range(current_level):
+            toc.write("</ul>")
+    return toc.getvalue()
 
 
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
@@ -635,7 +666,7 @@ class PerSequenceAverageQualityScores(ReportModule):
             table.write(
                 f"""
                 <tr>
-                    <td>&gt=Q{i}</td>
+                    <td>{html.escape(">=Q")}{i}</td>
                     <td style="text-align:right;">
                         {sum(self.average_quality_counts[i:]):,}
                     </td>
@@ -873,7 +904,7 @@ class AdapterContent(ReportModule):
             used by your kit.</p>
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
-            the last 11 base pairs.
+            the last 11 base pairs.</p>
             <figure>{self.plot()}</figure>
         """  # noqa: E501
 
@@ -1290,7 +1321,7 @@ class OverRepresentedSequences(ReportModule):
                     <td style="text-align:center;font-family:monospace;">
                         {item.revcomp_sequence}</td>
                     <td>({item.most_matches}/{item.max_matches})</td>
-                    <td>{item.best_match}</td></tr>""")
+                    <td>{html.escape(item.best_match)}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
 
@@ -1616,6 +1647,14 @@ def write_html_report(report_modules: Iterable[ReportModule],
         raise RuntimeError("No filename found in metadata")
     default_config = pygal.Config()
     pygal_script_uri = default_config.js[0].lstrip('/')
+    content_division = io.StringIO()
+    content_division.write(f'<div id="content">{html_header("Sequali report", 1)}')
+    for module in report_modules:
+        content_division.write(module.to_html())
+    content_division.write("</div>")
+    content = content_division.getvalue()
+    toc = create_toc(content)
+
     with open(html, "wt", encoding="utf-8") as html_file:
         html_file.write(f"""
             <!DOCTYPE html>
@@ -1633,11 +1672,10 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <a href="https://github.com/rhpvorderman/sequali">homepage</a>
                 for bug reports and feature requests.
             </p></header>
-            {html_header("Sequali report", 1)}
         """)
         # size: {os.stat(filename).st_size / (1024 ** 3):.2f}GiB<br>
-        for module in report_modules:
-            html_file.write(module.to_html())
+        html_file.write(toc)
+        html_file.write(content)
         html_file.write("</html>")
 
 
