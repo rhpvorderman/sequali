@@ -1673,12 +1673,14 @@ def write_html_report(report_modules: Iterable[ReportModule],
         """)
 
         html_file.write(f"""<div class="toc"><h2>Table of contents</h2>{toc}""")
-        html_file.write(f"""
+        html_file.write("""
         <h2>Links</h2>
         <ul>
             <li><a href="https://sequali.readthedocs.io">Documentation</a></li>
-            <li><a href="https://github.com/rhpvorderman/sequali">Github repository</a></li>
-            <li><a href="https://github.com/rhpvorderman/sequali/issues">Bug tracker</a></li>
+            <li><a href="https://github.com/rhpvorderman/sequali"
+                >Github repository</a></li>
+            <li><a href="https://github.com/rhpvorderman/sequali/issues"
+                >Bug tracker</a></li>
         </ul>
         """)
         html_file.write('</div>')
