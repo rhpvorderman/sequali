@@ -9,8 +9,15 @@ Changelog
 
 version 0.7.0-dev
 -----------------
++ Image files can now be saved as SVG files.
++ The javascript file for the tooltip highlighting is now embedded in the
+  html file so no internet access is needed for the functionality.
++ A sidebar with a table of contents is added to the report for easier
+  navigation.
++ Graph fonts are made a little bigger. Graphs now respond to zooming in and
+  out on the web page.
 + Enable building on ARM platforms such as M1 macintosh and Aarch64.
-+ Speedup the overrepresentated sequences module by adding an AVX2 k-mer
++ Speedup the overrepresented sequences module by adding an AVX2 k-mer
   construction algorithm.
 
 version 0.6.0

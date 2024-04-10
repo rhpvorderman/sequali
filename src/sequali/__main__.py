@@ -232,7 +232,7 @@ def main() -> None:
         json_dict = report_modules_to_dict(report_modules)
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
         json.dump(json_dict, json_file, indent=0)
-    write_html_report(report_modules, args.html, filename)
+    write_html_report(report_modules, args.html)
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -252,5 +252,4 @@ def sequali_report():
         output = ".".join(in_json.split(".")[:-1]) + ".html"
     with open(in_json) as j:
         json_data = json.load(j)
-    write_html_report(dict_to_report_modules(json_data), output,
-                      output.rstrip(".html"))
+    write_html_report(dict_to_report_modules(json_data), output)
