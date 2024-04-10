@@ -1,0 +1,3 @@
+[submodule "src/sequali/pygal.js"]
+	path = src/sequali/pygal.js
+	url = https://github.com/kozea/pygal.js.git

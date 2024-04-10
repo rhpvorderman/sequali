@@ -19,19 +19,17 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 #include "structmember.h"
-#include "stdbool.h"
 
+#include "stdbool.h"
 #include "math.h"
+
+#include "function_dispatch.h"
 #include "score_to_error_rate.h"
 #include "murmur3.h"
 #include "wanghash.h"
 
 #ifdef __SSE2__
 #include "emmintrin.h"
-#endif
-
-#ifdef __SSSE3__
-#include "tmmintrin.h"
 #endif
 
 #if (PY_VERSION_HEX < 0x03090000)
@@ -111,44 +109,57 @@ unsigned_decimal_integer_from_string(const uint8_t *string, size_t length)
 #define ASCII_MASK_8BYTE 0x8080808080808080ULL
 #define ASCII_MASK_1BYTE 0x80
 
+static inline int string_is_ascii_fallback(const char *string, size_t length)
+{
+    size_t all_chars = 0;
+    for (size_t i=0; i<length; i++) {
+        all_chars |= string[i];
+    }
+    return !(all_chars & ASCII_MASK_1BYTE);
+}
+
 /**
  * @brief Check if a string of given length only contains ASCII characters.
  *
  * @param string A char pointer to the start of the string.
- * @param length The length of the string. This funtion does not check for 
+ * @param length The length of the string. This funtion does not check for
  *               terminating NULL bytes.
  * @returns 1 if the string is ASCII-only, 0 otherwise.
  */
 static int
-string_is_ascii(const char * string, size_t length) {
-    // By performing bitwise OR on all characters in 8-byte chunks (16-byte 
-    // with SSE2) we can
-    // determine ASCII status in a non-branching (except the loops) fashion.
-    uint64_t all_chars = 0;
-    const char *cursor = string;
-    const char *string_end_ptr = string + length;
-    const char *string_8b_end_ptr = string_end_ptr - sizeof(uint64_t); 
-    int non_ascii_in_vec = 0;
-    #ifdef __SSE2__
-    const char *string_16b_end_ptr = string_end_ptr - sizeof(__m128i);
-    __m128i vec_all_chars = _mm_setzero_si128();
-    while (cursor < string_16b_end_ptr) {
-        __m128i loaded_chars = _mm_loadu_si128((__m128i *)cursor);
-        vec_all_chars = _mm_or_si128(loaded_chars, vec_all_chars);
-        cursor += sizeof(__m128i);
+string_is_ascii(const char *string, size_t length)
+{
+    if (length < sizeof(size_t)) {
+        return string_is_ascii_fallback(string, length);
     }
-    non_ascii_in_vec = _mm_movemask_epi8(vec_all_chars);
-    #endif
-
-    while (cursor < string_8b_end_ptr) {
-        all_chars |= *(uint64_t *)cursor;
-        cursor += sizeof(uint64_t);
+    size_t number_of_chunks = length / sizeof(size_t);
+    size_t *chunks = (size_t *)string;
+    size_t number_of_unrolls = number_of_chunks / 4;
+    size_t remaining_chunks = number_of_chunks - (number_of_unrolls * 4);
+    size_t *chunk_ptr = chunks;
+    size_t all_chars0 = 0;
+    size_t all_chars1 = 0;
+    size_t all_chars2 = 0;
+    size_t all_chars3 = 0;
+    for (size_t i=0; i < number_of_unrolls; i++) {
+        /* Performing indepedent OR calculations allows the compiler to use
+           vectors. It also allows out of order execution. */
+        all_chars0 |= chunk_ptr[0];
+        all_chars1 |= chunk_ptr[1];
+        all_chars2 |= chunk_ptr[2];
+        all_chars3 |= chunk_ptr[3];
+        chunk_ptr += 4;
     }
-    while (cursor < string_end_ptr) {
-        all_chars |= *cursor;
-        cursor += 1;
+    size_t all_chars = all_chars0 | all_chars1 | all_chars2 | all_chars3;
+    for (size_t i=0; i<remaining_chunks; i++) {
+        all_chars |= chunk_ptr[i];
     }
-    return !(non_ascii_in_vec + (all_chars & ASCII_MASK_8BYTE));
+    /* Load the last few bytes left in a single integer for fast operations.
+       There is some overlap here with the work done before, but for a simple
+       ascii check this does not matter. */
+    size_t last_chunk = *(size_t *)(string + length - sizeof(size_t));
+    all_chars |= last_chunk;
+    return !(all_chars & ASCII_MASK_8BYTE);
 }
 
 /***
@@ -1054,121 +1065,6 @@ struct BamRecordHeader {
     int32_t tlen;
 };
 
-static void 
-decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
-{
-    /* Reuse a trick from sam_internal.h in htslib. Have a table to lookup 
-       two characters simultaneously.*/
-    static const char code2base[512] =
-        "===A=C=M=G=R=S=V=T=W=Y=H=K=D=B=N"
-        "A=AAACAMAGARASAVATAWAYAHAKADABAN"
-        "C=CACCCMCGCRCSCVCTCWCYCHCKCDCBCN"
-        "M=MAMCMMMGMRMSMVMTMWMYMHMKMDMBMN"
-        "G=GAGCGMGGGRGSGVGTGWGYGHGKGDGBGN"
-        "R=RARCRMRGRRRSRVRTRWRYRHRKRDRBRN"
-        "S=SASCSMSGSRSSSVSTSWSYSHSKSDSBSN"
-        "V=VAVCVMVGVRVSVVVTVWVYVHVKVDVBVN"
-        "T=TATCTMTGTRTSTVTTTWTYTHTKTDTBTN"
-        "W=WAWCWMWGWRWSWVWTWWWYWHWKWDWBWN"
-        "Y=YAYCYMYGYRYSYVYTYWYYYHYKYDYBYN"
-        "H=HAHCHMHGHRHSHVHTHWHYHHHKHDHBHN"
-        "K=KAKCKMKGKRKSKVKTKWKYKHKKKDKBKN"
-        "D=DADCDMDGDRDSDVDTDWDYDHDKDDDBDN"
-        "B=BABCBMBGBRBSBVBTBWBYBHBKBDBBBN"
-        "N=NANCNMNGNRNSNVNTNWNYNHNKNDNBNN";
-    static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
-    const uint8_t *dest_end_ptr = dest + length;
-    uint8_t *dest_cursor = dest;
-    const uint8_t *encoded_cursor = encoded_sequence;
-    #ifdef __SSSE3__
-    const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i));
-    __m128i first_upper_shuffle = _mm_setr_epi8(
-        0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7, 0xff);
-    __m128i first_lower_shuffle = _mm_setr_epi8(
-        0xff, 0, 0xff, 1, 0xff, 2, 0xff, 3, 0xff, 4, 0xff, 5, 0xff, 6, 0xff, 7);
-    __m128i second_upper_shuffle = _mm_setr_epi8(
-        8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15, 0xff);
-    __m128i second_lower_shuffle = _mm_setr_epi8(
-        0xff, 8, 0xff, 9, 0xff, 10, 0xff, 11, 0xff, 12, 0xff, 13, 0xff, 14, 0xff, 15);
-    __m128i nuc_lookup_vec = _mm_lddqu_si128((__m128i *)nuc_lookup);
-    /* Work on 16 encoded characters at the time resulting in 32 decoded characters 
-       Examples are given for 8 encoded characters A until H to keep it readable.
-        Encoded stored as |AB|CD|EF|GH|
-        Shuffle into |AB|00|CD|00|EF|00|GH|00| and 
-                     |00|AB|00|CD|00|EF|00|GH| 
-        Shift upper to the right resulting into
-                     |0A|B0|0C|D0|0E|F0|0G|H0| and 
-                     |00|AB|00|CD|00|EF|00|GH|
-        Merge with or resulting into (X stands for garbage)
-                     |0A|XB|0C|XD|0E|XF|0G|XH|
-        Bitwise and with 0b1111 leads to:
-                     |0A|0B|0C|0D|0E|0F|0G|0H|
-        We can use the resulting 4-bit integers as indexes for the shuffle of 
-        the nucleotide lookup. */
-    while (dest_cursor < dest_vec_end_ptr) {
-        __m128i encoded = _mm_lddqu_si128((__m128i *)encoded_cursor);
-
-        __m128i first_upper = _mm_shuffle_epi8(encoded, first_upper_shuffle);
-        __m128i first_lower = _mm_shuffle_epi8(encoded, first_lower_shuffle);
-        __m128i shifted_first_upper = _mm_srli_epi64(first_upper, 4);
-        __m128i first_merged = _mm_or_si128(shifted_first_upper, first_lower);
-        __m128i first_indexes = _mm_and_si128(first_merged, _mm_set1_epi8(0b1111));
-        __m128i first_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, first_indexes);
-        _mm_storeu_si128((__m128i *)dest_cursor, first_nucleotides);
-
-        __m128i second_upper = _mm_shuffle_epi8(encoded, second_upper_shuffle);
-        __m128i second_lower = _mm_shuffle_epi8(encoded, second_lower_shuffle);
-        __m128i shifted_second_upper = _mm_srli_epi64(second_upper, 4);
-        __m128i second_merged = _mm_or_si128(shifted_second_upper, second_lower);
-        __m128i second_indexes = _mm_and_si128(second_merged, _mm_set1_epi8(0b1111));
-        __m128i second_nucleotides = _mm_shuffle_epi8(nuc_lookup_vec, second_indexes);
-        _mm_storeu_si128((__m128i *)(dest_cursor + 16), second_nucleotides);
-
-        encoded_cursor += sizeof(__m128i);
-        dest_cursor += 2 * sizeof(__m128i);
-    }
-    #endif
-    /* Do two at the time until it gets to the last even address. */
-    const uint8_t *dest_end_ptr_twoatatime = dest + (length & (~1ULL));
-    while (dest_cursor < dest_end_ptr_twoatatime) {
-        /* According to htslib, size_t cast helps the optimizer. 
-           Code confirmed to indeed run faster. */
-        memcpy(dest_cursor, code2base + ((size_t)*encoded_cursor * 2), 2);
-        dest_cursor += 2;
-        encoded_cursor += 1;
-    }
-    assert((dest_end_ptr - dest_cursor) < 2);
-    if (dest_cursor != dest_end_ptr) {
-        /* There is a single encoded nuc left */
-        uint8_t encoded_nucs = *encoded_cursor;
-        uint8_t upper_nuc_index = encoded_nucs >> 4;
-        dest_cursor[0] = nuc_lookup[upper_nuc_index];
-    }
-}
-
-static void 
-decode_bam_qualities(uint8_t *dest, const uint8_t *encoded_qualities, size_t length) 
-{
-    const uint8_t *end_ptr = encoded_qualities + length;
-    const uint8_t *cursor = encoded_qualities;
-    uint8_t *dest_cursor = dest; 
-    #ifdef __SSE2__
-    const uint8_t *vec_end_ptr = end_ptr - sizeof(__m128i);
-    while (cursor < vec_end_ptr) {
-        __m128i quals = _mm_loadu_si128((__m128i *)cursor);
-        __m128i phreds = _mm_add_epi8(quals, _mm_set1_epi8(33));
-        _mm_storeu_si128((__m128i *)dest_cursor, phreds);
-        cursor += sizeof(__m128i);
-        dest_cursor += sizeof(__m128i);
-    }
-    #endif
-    while (cursor < end_ptr) {
-        *dest_cursor = *cursor + 33; 
-        cursor += 1;
-        dest_cursor += 1;    
-    }
-}
-
 static int
 bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length, struct FastqMeta *meta)
 {
@@ -1648,8 +1544,8 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         register __m128i all1 = _mm_set1_epi8(1);
         for (size_t i=0; i<iterations; i++) {
             __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
-            // This will make all the nucleotides uppercase.
-            nucleotides = _mm_and_si128(nucleotides, _mm_set1_epi8(223)); 
+            // 32 is the lowercase bit. Turning it off makes everything uppercase.
+            nucleotides = _mm_andnot_si128(_mm_set1_epi8(32), nucleotides);
             __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
             __m128i a_positions = _mm_and_si128(a_nucs, all1);
             a_counts = _mm_add_epi8(a_counts, a_positions);
@@ -3022,89 +2918,12 @@ static PyTypeObject PerTileQuality_Type = {
  * TWOBIT CONVERSIONS *
  **********************/
 
-/* To be used in the sequence duplication part */
-
-static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
-// Control characters
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-// Interpunction numbers etc
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
-//  P, Q, R, S, T, U, V, W, X, Y, Z,  
-    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
-//  p, q, r, s, t, u, v, w, x, y, z, 
-    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 
-};
-
-#define TWOBIT_UNKNOWN_CHAR -1
-#define TWOBIT_N_CHAR -2 
-#define TWOBIT_SUCCESS 0
-
-static uint64_t reverse_complement_kmer(uint64_t kmer, uint64_t k) {
-    // Invert all the bits, with 0,1,2,3 == A,C,G,T this automatically is the
-    // complement. 
-    uint64_t comp = ~kmer; 
-    // Progressively swap all the twobits inplace.
-    uint64_t revcomp = (comp << 32) | (comp >> 32);
-    revcomp = ((revcomp & 0xFFFF0000FFFF0000ULL) >> 16) | 
-              ((revcomp & 0x0000FFFF0000FFFFULL) << 16);
-    revcomp = ((revcomp & 0xFF00FF00FF00FF00ULL) >> 8) | 
-              ((revcomp & 0x00FF00FF00FF00FFULL) << 8);
-    revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) | 
-              ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
-    revcomp = ((revcomp & 0xCCCCCCCCCCCCCCCCULL) >> 2) | 
-              ((revcomp & 0x3333333333333333ULL) << 2);
-    // If k < 32, the empty twobit slots will have ended up at the least 
-    // significant bits. Use a shift to move them to the highest bits again.
-    return revcomp >> (64 - (k *2));
-}
-
-static int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
-    uint64_t kmer = 0;
-    size_t all_nucs = 0;
-    Py_ssize_t i=0;
-    Py_ssize_t vector_end = k - 4;
-    for (i=0; i<vector_end; i+=4) {
-        size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
-        size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i+1]];
-        size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[sequence[i+2]];
-        size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[sequence[i+3]];
-        all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3);
-        uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
-        kmer <<= 8;
-        kmer |= kchunk;
-    }
-    for (i=i; i<(Py_ssize_t)k; i++) {
-        size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
-        all_nucs |= nuc;
-        kmer <<= 2;
-        kmer |= nuc;
-    }
-    if (all_nucs > 3) {
-        if (all_nucs & 4) {
-            return TWOBIT_UNKNOWN_CHAR;
-        }
-        if (all_nucs & 8) {
-            return TWOBIT_N_CHAR;
-        }
-    }
-    uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
-    // If k is uneven there can be no ambiguity
-    if (revcomp_kmer > kmer) {
-        return kmer;
-    }
-    return revcomp_kmer;
-}
+/* Most functions moved to function_dispatch.h */
 
 static void kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence) {
     static uint8_t nucs[4] = {'A', 'C', 'G', 'T'};
     for (size_t i=k; i>0; i-=1) {
-        size_t nuc = kmer & 0b11;
+        size_t nuc = kmer & 3; // 3 == 0b11
         sequence[i - 1] = nucs[nuc];
         kmer >>= 2;
     }
@@ -3308,12 +3127,14 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         Sequence_duplication_insert_hash(self, hash);
     }
     if (warn_unknown) {
+        PyObject *culprit = PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL);
         PyErr_WarnFormat(
             PyExc_UserWarning, 
             1,
             "Sequence contains a chacter that is not A, C, G, T or N: %R", 
-            PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL)
+            culprit
         );
+        Py_DECREF(culprit);
     }
     self->total_fragments += fragments;
     return 0;

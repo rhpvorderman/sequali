@@ -1,0 +1,97 @@
+body {
+    font-family: sans;
+    width:100%;
+}
+
+/* Use h2 header settings for h1 etc. to have more understated headers. */
+h1 {
+    font-size: 1.5em;
+    margin-top: 0.83em;
+    margin-bottom: 0.83em;
+}
+
+h2 {
+    font-size: 1.17em;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+figcaption {
+    font-size: 0.8em;
+    font-style: italic;
+}
+
+a.headerlink {
+    text-decoration: none;
+    color: black;
+}
+
+a.headerlink:hover {
+    text-decoration: underline;
+}
+
+/* Make sure toclinks remain blue. Having already visited a chapter is not
+   really informative. */
+a.toclink:visited {
+    color: blue;
+}
+
+.toc {
+    margin: 0;
+    padding: 16px;
+    height: 100%;
+    width: 318px;
+    position: fixed;
+    overflow: auto;
+    background-color: #F8F8F8;
+    border-style: none double none none;
+    border-color: DarkGrey;
+}
+
+.content {
+    margin-left: 350px;
+    padding: 1px 32px;
+    max-width:1300px;
+}
+
+header {
+    font-size: 90%;
+    font-style: italic;
+    background-color: AliceBlue;
+}
+
+.explanation {
+    font-size: 90%;
+    font-style: italic;
+}
+figure {
+    max-width:1250px;
+}
+
+table {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+th, td {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+th {
+    background-color: dimgray;
+    color: white;
+}
+
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+tr:nth-child(odd) {
+    background-color: #f9f9f9;
+}
+
+/* tr: hover should be after tr:nth-child otherwise only it will only work
+   half of the time. */
+tr:hover {
+    background-color: darkseagreen;
+}
