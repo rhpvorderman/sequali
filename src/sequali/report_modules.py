@@ -289,6 +289,7 @@ class Meta(ReportModule):
 
     def to_html(self) -> str:
         return f"""
+        {html_header("Metadata", 1)}
         <table>
             <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
             <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
@@ -1648,7 +1649,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
     else:
         raise RuntimeError("No filename found in metadata")
     content_division = io.StringIO()
-    content_division.write(f'<div class="content">{html_header("Sequali report", 1)}')
+    content_division.write('<div class="content">')
     for module in report_modules:
         content_division.write(module.to_html())
     content_division.write("</div>")
@@ -1672,7 +1673,12 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <body>
         """)
 
-        html_file.write(f"""<div class="toc"><h2>Table of contents</h2>{toc}""")
+        html_file.write(f"""
+        <div class="toc">
+        {html_header("Sequali report", 1)}
+        <h2>Table of contents</h2>
+        {toc}
+        """)
         html_file.write("""
         <h2>Links</h2>
         <ul>
