@@ -21,13 +21,19 @@ figcaption {
     font-style: italic;
 }
 
-a.headerlink, a.toclink {
+a.headerlink {
     text-decoration: none;
     color: black;
 }
 
-a.headerlink:hover, a.toclink:hover {
+a.headerlink:hover {
     text-decoration: underline;
+}
+
+/* Make sure toclinks remain blue. Having already visited a chapter is not
+   really informative. */
+a.toclink:visited {
+    color: blue;
 }
 
 .toc {
