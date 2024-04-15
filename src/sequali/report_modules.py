@@ -425,7 +425,7 @@ class SequenceLengthDistribution(ReportModule):
     def to_html(self):
         return f"""
             {html_header("Sequence length distribution", 1)}
-            <p>{self.distribution_table()}</p>
+            {self.distribution_table()}
             {figurize_plot(self.plot())}
         """
 
@@ -678,7 +678,7 @@ class PerSequenceAverageQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             {html_header("Per sequence average quality scores", 1)}
-            <p>{self.quality_scores_table()}</p>
+            {self.quality_scores_table()}
             {figurize_plot(self.plot())}
         """
 
@@ -1121,7 +1121,6 @@ class DuplicationCounts(ReportModule):
         estimate the duplication rate. See
         <a href="https://sequali.readthedocs.io/#duplication-estimation-module">
         the documentation</a> for a complete explanation.</p>
-        <p>
         <table>
             <tr>
                 <td>Fingerprint front sequence length</td>
@@ -1158,7 +1157,6 @@ class DuplicationCounts(ReportModule):
                 <td style="text-align:right;">{self.remaining_fraction:.2%}</td>
             </tr>
             </table>
-        </p>
         """
         return f"""
             {html_header("Duplication percentages", 1)}
