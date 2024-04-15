@@ -1683,6 +1683,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <!DOCTYPE html>
             <html lang="en">
             <head>
+                <meta charset="utf-8">
                 <script>
                     {SEQUALI_REPORT_JS_CONTENT}
                 </script>
@@ -1692,7 +1693,6 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}
                 </style>
-                <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <body>
