@@ -9,6 +9,7 @@ Changelog
 
 version 0.8.0-dev
 -----------------
++ Fix a small visual bug in the report sidebar.
 + PyGAL report htmls are now fully HTML5 compliant. HTML5 validation has been
   made a part of the integration testing.
 

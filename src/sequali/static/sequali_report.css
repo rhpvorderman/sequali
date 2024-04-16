@@ -1,6 +1,7 @@
 body {
     font-family: sans;
     width:100%;
+    margin: 0px;
 }
 
 /* Use h2 header settings for h1 etc. to have more understated headers. */
