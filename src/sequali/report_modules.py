@@ -140,10 +140,10 @@ def create_toc(content: str):
             if header_level != current_level:
                 if header_level > current_level:
                     for i in range(header_level - current_level):
-                        toc.write('<ul class="toc_list">')
+                        toc.write('<li><ul class="toc_list">')
                 else:
                     for i in range(current_level - header_level):
-                        toc.write("</ul>")
+                        toc.write("</ul></li>")
                 current_level = header_level
             toc.write(f'<li><a class="toclink" href="#{id}">{header}</a></li>')
     if current_level > 0:
