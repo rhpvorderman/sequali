@@ -152,8 +152,51 @@ def create_toc(content: str):
     return toc.getvalue()
 
 
+def make_series_unique(svg: str) -> str:
+    """
+    Processes a PyGAL SVG to have unique serie IDs to fix
+    https://github.com/Kozea/pygal/issues/563.
+    """
+    # TODO: Remove this once a fix is released in PyGAL and the PyGAL
+    # requirement is updated.
+    svg_element: xml.etree.ElementTree.Element = xml.etree.ElementTree.fromstring(svg)
+    if not svg_element.tag.endswith("svg"):
+        raise ValueError("This is not a svg xml")
+    namespace = svg_element.tag.rstrip("svg")
+    xml.etree.ElementTree.register_namespace("", namespace.strip("{}"))
+    chart_id = svg_element.attrib["id"]
+    for element in svg_element.iter():
+        if not element.tag == f"{namespace}g":
+            continue
+        id = element.get("id")
+        # Find activate-serie elements and append chart-id to their name to
+        # make them unique.
+        if id and id.startswith("activate-serie"):
+            element.set("id", f"{id}-{chart_id}")
+            continue
+
+        # Individual series have a class attribute serie-<NUMBER> format.
+        # Append the chart_id to make these unique.
+        cls = element.get("class")
+        if cls and "serie-" in cls:
+            classifiers = cls.split()
+            for classifier in classifiers:
+                if classifier.startswith("serie-"):
+                    to_replace = classifier
+                    break
+            else:  # No break
+                raise RuntimeError("serie classifier should exist")
+            classifiers.remove(to_replace)
+            new_classifier = f"{to_replace}-{chart_id}"
+            classifiers.append(new_classifier)
+            element.set("class", " ".join(classifiers))
+    return xml.etree.ElementTree.tostring(
+        svg_element, encoding="unicode", method="xml")
+
+
 def figurize_plot(plot: pygal.Graph):
     svg_unicode = plot.render(is_unicode=True)
+    svg_unicode = make_series_unique(svg_unicode)
     svg_tree: xml.etree.ElementTree.Element = (
         xml.etree.ElementTree.fromstring(svg_unicode))
     svg_id = svg_tree.get("id")
