@@ -13,3 +13,16 @@ function svgToDownloadLink(element_id, image_name) {
     link.href = "data:image/svg+xml;base64," + svg_data_base64;
     return link.outerHTML;
 };
+
+function base64ToBytes(base64) {
+  const binString = atob(base64);
+  return Uint8Array.from(binString, (m) => m.codePointAt(0));
+}
+
+function decode_base64_gzip(data_string) {
+    let data = new Blob(base64ToBytes(data_string));    
+    let decompressor = new DecompressionStream("gzip");
+    let decompressed_stream = data.stream().pipeThrough(decompressor);
+    const decoder = new TextDecoder();
+    return decoder.decode(text_data);
+}

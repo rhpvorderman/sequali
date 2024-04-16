@@ -15,8 +15,10 @@
 # along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 import array
+import base64
 import collections
 import dataclasses
+import gzip
 import html
 import io
 import math
@@ -353,8 +355,16 @@ class Meta(ReportModule):
         return cls(__version__, report_generated, filename, filesize)
 
     def to_html(self) -> str:
+        random_text = "RANDOM_TEXT"
+        compressed_text = base64.b64encode(
+            gzip.compress(random_text.encode("utf-8"), mtime=0)).decode("ascii")
         return f"""
         {html_header("Metadata", 1)}
+        <script>
+            let data123 = "{compressed_text}";
+            let decompressed_text = decode_base64_gzip(data123);
+            document.write(decompressed_text);
+        </script>
         <table>
             <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
             <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
