@@ -28,6 +28,9 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
+# Add reports to the root so they can be referenced
+html_extra_path = ['reports']
+
 html_theme_options = dict(
     display_version=True,
 )
