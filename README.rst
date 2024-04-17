@@ -51,7 +51,7 @@ Features:
 
 Example reports:
 
-+ `GM24385_1.fastq.gz <https://github.com/rhpvorderman/sequali/files/14725146/GM24385_1.fastq.gz.html.zip>`_;
++ `GM24385_1.fastq.gz <https://sequali.readthedocs.io/en/latest/GM24385_1.fastq.gz.html>`_;
   HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. `Sequence file download <https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/UCSC_Ultralong_OxfordNanopore_Promethion/GM24385_1.fastq.gz>`_.
 
 .. introduction end
