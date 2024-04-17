@@ -22,6 +22,7 @@ jobs:
           - docs
           - lint
           - pedantic_compile
+          - html5validator
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -49,14 +50,14 @@ jobs:
         os: ["ubuntu-latest"]
         include:
           # Macos X86
-          - os: "macos-13"
+          - os: "macos-latest"
             python-version: "3.8"
-          - os: "macos-13"
+          - os: "macos-latest"
             python-version: "3.12"
           # Macos ARM m1
-          - os: "macos-latest"
-            python-version: "3.8"
-          - os: "macos-latest"
+          - os: "macos-14"
+            python-version: "3.10"
+          - os: "macos-14"
             python-version: "3.12"
           - os: "windows-latest"
             python-version: "3.8"
@@ -97,12 +98,12 @@ jobs:
   deploy:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     runs-on: ${{ matrix.os }}
-    needs: [package-checks, test]
+    needs: [package-checks, test, test-arch]
     strategy:
       matrix:
         os:
           - ubuntu-latest
-          - macos-13
+          - macos-14
           - macos-latest
           - windows-latest
         cibw_archs_linux: ["x86_64"]

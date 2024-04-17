@@ -140,10 +140,10 @@ def create_toc(content: str):
             if header_level != current_level:
                 if header_level > current_level:
                     for i in range(header_level - current_level):
-                        toc.write('<ul class="toc_list">')
+                        toc.write('<li><ul class="toc_list">')
                 else:
                     for i in range(current_level - header_level):
-                        toc.write("</ul>")
+                        toc.write("</ul></li>")
                 current_level = header_level
             toc.write(f'<li><a class="toclink" href="#{id}">{header}</a></li>')
     if current_level > 0:
@@ -152,8 +152,51 @@ def create_toc(content: str):
     return toc.getvalue()
 
 
+def make_series_unique(svg: str) -> str:
+    """
+    Processes a PyGAL SVG to have unique serie IDs to fix
+    https://github.com/Kozea/pygal/issues/563.
+    """
+    # TODO: Remove this once a fix is released in PyGAL and the PyGAL
+    # requirement is updated.
+    svg_element: xml.etree.ElementTree.Element = xml.etree.ElementTree.fromstring(svg)
+    if not svg_element.tag.endswith("svg"):
+        raise ValueError("This is not a svg xml")
+    namespace = svg_element.tag.rstrip("svg")
+    xml.etree.ElementTree.register_namespace("", namespace.strip("{}"))
+    chart_id = svg_element.attrib["id"]
+    for element in svg_element.iter():
+        if not element.tag == f"{namespace}g":
+            continue
+        id = element.get("id")
+        # Find activate-serie elements and append chart-id to their name to
+        # make them unique.
+        if id and id.startswith("activate-serie"):
+            element.set("id", f"{id}-{chart_id}")
+            continue
+
+        # Individual series have a class attribute serie-<NUMBER> format.
+        # Append the chart_id to make these unique.
+        cls = element.get("class")
+        if cls and "serie-" in cls:
+            classifiers = cls.split()
+            for classifier in classifiers:
+                if classifier.startswith("serie-"):
+                    to_replace = classifier
+                    break
+            else:  # No break
+                raise RuntimeError("serie classifier should exist")
+            classifiers.remove(to_replace)
+            new_classifier = f"{to_replace}-{chart_id}"
+            classifiers.append(new_classifier)
+            element.set("class", " ".join(classifiers))
+    return xml.etree.ElementTree.tostring(
+        svg_element, encoding="unicode", method="xml")
+
+
 def figurize_plot(plot: pygal.Graph):
     svg_unicode = plot.render(is_unicode=True)
+    svg_unicode = make_series_unique(svg_unicode)
     svg_tree: xml.etree.ElementTree.Element = (
         xml.etree.ElementTree.fromstring(svg_unicode))
     svg_id = svg_tree.get("id")
@@ -425,7 +468,7 @@ class SequenceLengthDistribution(ReportModule):
     def to_html(self):
         return f"""
             {html_header("Sequence length distribution", 1)}
-            <p>{self.distribution_table()}</p>
+            {self.distribution_table()}
             {figurize_plot(self.plot())}
         """
 
@@ -678,7 +721,7 @@ class PerSequenceAverageQualityScores(ReportModule):
     def to_html(self) -> str:
         return f"""
             {html_header("Per sequence average quality scores", 1)}
-            <p>{self.quality_scores_table()}</p>
+            {self.quality_scores_table()}
             {figurize_plot(self.plot())}
         """
 
@@ -1121,7 +1164,6 @@ class DuplicationCounts(ReportModule):
         estimate the duplication rate. See
         <a href="https://sequali.readthedocs.io/#duplication-estimation-module">
         the documentation</a> for a complete explanation.</p>
-        <p>
         <table>
             <tr>
                 <td>Fingerprint front sequence length</td>
@@ -1158,7 +1200,6 @@ class DuplicationCounts(ReportModule):
                 <td style="text-align:right;">{self.remaining_fraction:.2%}</td>
             </tr>
             </table>
-        </p>
         """
         return f"""
             {html_header("Duplication percentages", 1)}
@@ -1683,6 +1724,7 @@ def write_html_report(report_modules: Iterable[ReportModule],
             <!DOCTYPE html>
             <html lang="en">
             <head>
+                <meta charset="utf-8">
                 <script>
                     {SEQUALI_REPORT_JS_CONTENT}
                 </script>
@@ -1692,7 +1734,6 @@ def write_html_report(report_modules: Iterable[ReportModule],
                 <style>
                     {SEQUALI_REPORT_CSS_CONTENT}
                 </style>
-                <meta charset="utf-8">
                 <title>{os.path.basename(filename)}: Sequali Report</title>
             </head>
             <body>
