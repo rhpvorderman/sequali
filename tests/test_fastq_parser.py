@@ -103,3 +103,32 @@ def test_small_initial_buffer(initial_buffersize):
     fileobj = io.BytesIO(COMPLETE_RECORD)
     parser = FastqParser(fileobj, initial_buffersize=initial_buffersize)
     assert len(list(parser)) == 1
+
+
+@pytest.mark.parametrize("number_of_records", [i for i in range(1, 101)])
+def test_fastq_record_array_read(number_of_records):
+    with open(DATA / "100_illumina_adapters.fastq", "rb") as fileobj:
+        parser = FastqParser(fileobj)
+        record_array = parser.read(number_of_records)
+        second_record_array = parser.read(100)
+        third_record_array = parser.read(100)
+    assert len(record_array) == number_of_records
+    assert len(second_record_array) == 100 - number_of_records
+    assert second_record_array.obj.count(b'\n') == (100 - number_of_records) * 4
+    assert len(third_record_array) == 0
+    assert third_record_array.obj == b""
+
+
+@pytest.mark.parametrize("buffer_size", [128, 256, 512, 1024, 2048, 128 * 1024])
+def test_fastq_record_array_read_buffersizes(buffer_size):
+    with open(DATA / "100_illumina_adapters.fastq", "rb") as fileobj:
+        parser = FastqParser(fileobj, buffer_size)
+        record_array = parser.read(20)
+        second_record_array = parser.read(70)
+        third_record_array = parser.read(50)
+    assert len(record_array) == 20
+    assert len(second_record_array) == 70
+    assert len(third_record_array) == 10
+    assert record_array.obj.count(b"\n") >= 20 * 4
+    assert second_record_array.obj.count(b"\n") >= 70 * 4
+    assert third_record_array.obj.count(b"\n") == 10 * 4
