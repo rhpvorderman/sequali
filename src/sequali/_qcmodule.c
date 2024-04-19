@@ -49,6 +49,16 @@ static PyTypeObject *PythonArray;  // array.array
  * Utils *
  *********/
 
+static inline void non_temporal_prefetch(void *address)
+{
+    #ifdef __SSE2__
+    _mm_prefetch(address, _MM_HINT_NTA);
+    #else 
+    /* no-op for non-x86 architectures*/
+    return;
+    #endif
+}
+
 static PyObject *
 PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize) 
 {
@@ -1471,16 +1481,25 @@ QCMetrics_flush_staging(QCMetrics *self) {
     uint64_t *base_counts = (uint64_t *)self->base_counts;
     uint16_t *staging_base_counts = (uint16_t *)self->staging_base_counts;
     size_t number_of_base_slots = self->max_length * NUC_TABLE_SIZE;
+    /* base counts is only updated once every 65535 times. So make sure it 
+       does not pollute the cache and use non temporal prefetching. The 
+       same goes for phred counts.
+    */
+    non_temporal_prefetch(base_counts);
     for (size_t i=0; i < number_of_base_slots; i++) {
         base_counts[i] += staging_base_counts[i];
+        /* Fetch the next 64 byte cache line non-temporal. */
+        non_temporal_prefetch(base_counts + i + 8);
     }
     memset(staging_base_counts, 0, number_of_base_slots * sizeof(uint16_t));
 
     uint64_t *phred_counts = (uint64_t *)self->phred_counts;
     uint16_t *staging_phred_counts = (uint16_t *)self->staging_phred_counts;
     size_t number_of_phred_slots = self->max_length * PHRED_TABLE_SIZE;
+    non_temporal_prefetch(phred_counts);
     for (size_t i=0; i < number_of_phred_slots; i++) {
         phred_counts[i] += staging_phred_counts[i];
+        non_temporal_prefetch(phred_counts + i + 8);
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
