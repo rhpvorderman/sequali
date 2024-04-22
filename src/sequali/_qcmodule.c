@@ -645,6 +645,97 @@ FastqRecordArrayView_CheckExact(void *obj) {
     return Py_TYPE(obj) == &FastqRecordArrayView_Type;
 }
 
+/**
+ * @brief Compare two FASTQ record names to see if they are mates.
+ * 
+ * They are mates if their IDs are the same. The ID is the part before the 
+ * first whitespace. If the last symbol of both IDs is a '1' or '2' it is 
+ * ignored to allow 'record/1' and 'record/2' to match.
+ * 
+ * @param name1 Pointer to the first name
+ * @param name2 Pointer to the second name
+ * @param name2_length The length of the second name
+ */
+static inline bool 
+fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length) {
+    /* strcspn will return the length of the string of non of the complement 
+       characters is found, so name1_length is not necessary as a parameter.*/
+    size_t id_length = strcspn(name1, " \t\n");
+    if (name2_length < id_length) {
+        return false;
+    }  
+    if (name2_length > id_length) {
+        char id2_sep = name2[id_length];
+        if (!(id2_sep == ' ' || id2_sep == '\t' || id2_sep == '\n')) {
+            return false;
+        }
+    }
+    /* Make sure /1 and /2 endings are ignored. */
+    char id1_last_char = name1[id_length - 1];
+    if (id1_last_char == '1' || id1_last_char == '2') {
+        char id2_last_char = name2[id_length -1];
+        if (id2_last_char == '1' || id2_last_char == '2') {
+            id_length -= 1;
+        }
+    }
+    return memcmp(name1, name2, id_length) == 0;
+}
+
+PyDoc_STRVAR(FastqRecordArrayView_is_mate__doc__,
+"is_mate($self, other, /)\n"
+"--\n"
+"\n"
+"Check if the record IDs in this array view match with those in other.\n"
+"\n"
+"  other\n"
+"    Another FastqRecordArrayView object.\n"
+);
+
+#define FastqRecordArrayView_is_mate_method METH_O
+static PyObject *
+FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
+{
+    if (!FastqRecordArrayView_CheckExact(other_obj)) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "other must be of type FastqRecordArrayView, got %s",
+            Py_TYPE(other_obj)->tp_name
+        );
+        return NULL;
+    }
+    FastqRecordArrayView *other = (FastqRecordArrayView *)other_obj;
+    Py_ssize_t length = Py_SIZE(self);
+    if (length != Py_SIZE(other)) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "other is not the same length as this record array view. "
+            "This length: %zd, other length: %zd",
+            length, 
+            Py_SIZE(other)
+        );
+        return NULL;
+    }
+    struct FastqMeta *self_records = self->records;
+    struct FastqMeta *other_records = other->records;
+    for (Py_ssize_t i=0; i<length; i++) {
+        struct FastqMeta *record1 = self_records + i;
+        struct FastqMeta *record2 = other_records + i;
+        char *name1 = (char *)record1->record_start + 1;
+        char *name2 = (char *)record2->record_start + 1;
+        size_t name2_length = record2->name_length;
+        if (!fastq_names_are_mates(name1, name2, name2_length)) {
+            Py_RETURN_FALSE;
+        }
+    }
+    Py_RETURN_TRUE;
+}
+
+static PyMethodDef FastqRecordArrayView_methods[] = {
+    {"is_mate", (PyCFunction)FastqRecordArrayView_is_mate, 
+     FastqRecordArrayView_is_mate_method, FastqRecordArrayView_is_mate__doc__},
+    {NULL},
+};
+
 static PySequenceMethods FastqRecordArrayView_sequence_methods = {
     .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
     .sq_length = (lenfunc)FastqRecordArrayView__length__,
@@ -664,6 +755,7 @@ static PyTypeObject FastqRecordArrayView_Type = {
     .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
     .tp_new = FastqRecordArrayView__new__,
     .tp_members = FastqRecordArrayView_members,
+    .tp_methods = FastqRecordArrayView_methods,
 };
 
 
