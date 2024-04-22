@@ -591,6 +591,7 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
     FastqRecordArrayView *record_array = 
         (FastqRecordArrayView *)
         FastqRecordArrayView_FromPointerSizeAndObject(NULL, number_of_items, obj);
+    Py_DECREF(obj);  // Reference count increased by 1 by previous function.
     if (record_array == NULL) {
         Py_DECREF(obj); 
         return NULL;
@@ -645,6 +646,97 @@ FastqRecordArrayView_CheckExact(void *obj) {
     return Py_TYPE(obj) == &FastqRecordArrayView_Type;
 }
 
+/**
+ * @brief Compare two FASTQ record names to see if they are mates.
+ * 
+ * They are mates if their IDs are the same. The ID is the part before the 
+ * first whitespace. If the last symbol of both IDs is a '1' or '2' it is 
+ * ignored to allow 'record/1' and 'record/2' to match.
+ * 
+ * @param name1 Pointer to the first name
+ * @param name2 Pointer to the second name
+ * @param name2_length The length of the second name
+ */
+static inline bool 
+fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length) {
+    /* strcspn will return the length of the string if none of the complement 
+       characters is found, so name1_length is not necessary as a parameter.*/
+    size_t id_length = strcspn(name1, " \t\n");
+    if (name2_length < id_length) {
+        return false;
+    }  
+    if (name2_length > id_length) {
+        char id2_sep = name2[id_length];
+        if (!(id2_sep == ' ' || id2_sep == '\t' || id2_sep == '\n')) {
+            return false;
+        }
+    }
+    /* Make sure /1 and /2 endings are ignored. */
+    char id1_last_char = name1[id_length - 1];
+    if (id1_last_char == '1' || id1_last_char == '2') {
+        char id2_last_char = name2[id_length -1];
+        if (id2_last_char == '1' || id2_last_char == '2') {
+            id_length -= 1;
+        }
+    }
+    return memcmp(name1, name2, id_length) == 0;
+}
+
+PyDoc_STRVAR(FastqRecordArrayView_is_mate__doc__,
+"is_mate($self, other, /)\n"
+"--\n"
+"\n"
+"Check if the record IDs in this array view match with those in other.\n"
+"\n"
+"  other\n"
+"    Another FastqRecordArrayView object.\n"
+);
+
+#define FastqRecordArrayView_is_mate_method METH_O
+static PyObject *
+FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
+{
+    if (!FastqRecordArrayView_CheckExact(other_obj)) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "other must be of type FastqRecordArrayView, got %s",
+            Py_TYPE(other_obj)->tp_name
+        );
+        return NULL;
+    }
+    FastqRecordArrayView *other = (FastqRecordArrayView *)other_obj;
+    Py_ssize_t length = Py_SIZE(self);
+    if (length != Py_SIZE(other)) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "other is not the same length as this record array view. "
+            "This length: %zd, other length: %zd",
+            length, 
+            Py_SIZE(other)
+        );
+        return NULL;
+    }
+    struct FastqMeta *self_records = self->records;
+    struct FastqMeta *other_records = other->records;
+    for (Py_ssize_t i=0; i<length; i++) {
+        struct FastqMeta *record1 = self_records + i;
+        struct FastqMeta *record2 = other_records + i;
+        char *name1 = (char *)record1->record_start + 1;
+        char *name2 = (char *)record2->record_start + 1;
+        size_t name2_length = record2->name_length;
+        if (!fastq_names_are_mates(name1, name2, name2_length)) {
+            Py_RETURN_FALSE;
+        }
+    }
+    Py_RETURN_TRUE;
+}
+
+static PyMethodDef FastqRecordArrayView_methods[] = {
+    {"is_mate", (PyCFunction)FastqRecordArrayView_is_mate, 
+     FastqRecordArrayView_is_mate_method, FastqRecordArrayView_is_mate__doc__},
+    {NULL},
+};
+
 static PySequenceMethods FastqRecordArrayView_sequence_methods = {
     .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
     .sq_length = (lenfunc)FastqRecordArrayView__length__,
@@ -664,6 +756,7 @@ static PyTypeObject FastqRecordArrayView_Type = {
     .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
     .tp_new = FastqRecordArrayView__new__,
     .tp_members = FastqRecordArrayView_members,
+    .tp_methods = FastqRecordArrayView_methods,
 };
 
 
@@ -735,39 +828,65 @@ FastqParser__iter__(PyObject *self)
     return self;
 }
 
+static inline bool 
+buffer_contains_fastq(const uint8_t *buffer, size_t buffer_size)
+{
+    const uint8_t *buffer_end = buffer + buffer_size;
+    const uint8_t *buffer_pos = buffer;
+    /* Four newlines should be present in a FASTQ record. */
+    for (size_t i=0; i<4;i++) { 
+        buffer_pos = memchr(buffer_pos, '\n', buffer_end - buffer_pos);
+        if (buffer_pos == NULL) {
+            return false;
+        }
+        /* Skip the found newline */
+        buffer_pos += 1;
+    }
+    return true;
+}
+
 static PyObject *
-FastqParser__next__(FastqParser *self) 
+FastqParser_create_record_array(FastqParser *self, size_t min_records, size_t max_records)
 {
     uint8_t *record_start = self->record_start;
     uint8_t *buffer_end = self->buffer_end;
     size_t parsed_records = 0;
     PyObject *new_buffer_obj = NULL;
-    while (parsed_records == 0) {
+    while (parsed_records < min_records) {
         size_t leftover_size = buffer_end - record_start;
         size_t read_in_size;
-        if (leftover_size >= self->read_in_size) {
-        	// A FASTQ record does not fit, enlarge the buffer
-            read_in_size = self->read_in_size;
-        } else {
-        	// Fill up the buffer up to read_in_size
-        	read_in_size = self->read_in_size - leftover_size;
-        }
-        Py_ssize_t new_buffer_size = leftover_size + read_in_size;
+        size_t read_in_offset;
+        Py_ssize_t new_buffer_size;
+        size_t record_start_offset;
         if (new_buffer_obj == NULL) {
+            /* On the first loop create a new buffer and initialize it with 
+               the leftover from the last run of the function. */
+            new_buffer_size = self->read_in_size;
             new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
             if (new_buffer_obj == NULL) {
                 return NULL;
             }
             memcpy(PyBytes_AS_STRING(new_buffer_obj), record_start, leftover_size);
+        	read_in_size = new_buffer_size - leftover_size;
+            read_in_offset = leftover_size;
+            record_start_offset = 0;
         } else {
+            /* On subsequent loops, enlarge the buffer until the minimum 
+               amount of records fits. */
+            uint8_t *old_start = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+            record_start_offset = record_start - old_start;
+            size_t old_size = buffer_end - old_start;
+            new_buffer_size = old_size + self->read_in_size;
             if (_PyBytes_Resize(&new_buffer_obj, new_buffer_size) == -1) {
                 return NULL;
             }
+            read_in_size = self->read_in_size;
+            read_in_offset = old_size; 
         }
         uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
 
         PyObject *remaining_space_view = PyMemoryView_FromMemory(
-            (char *)new_buffer + leftover_size, read_in_size, PyBUF_WRITE);
+            (char *)new_buffer + read_in_offset, read_in_size, PyBUF_WRITE);
         if (remaining_space_view == NULL) {
             return NULL;
         }
@@ -784,7 +903,7 @@ FastqParser__next__(FastqParser *self)
             return NULL;
         }
         Py_DECREF(read_bytes_obj);
-        Py_ssize_t actual_buffer_size = leftover_size + read_bytes;
+        Py_ssize_t actual_buffer_size = read_in_offset + read_bytes;
         if (actual_buffer_size < new_buffer_size) {
             if (_PyBytes_Resize(&new_buffer_obj, actual_buffer_size) == -1) {
                 return NULL;
@@ -792,9 +911,9 @@ FastqParser__next__(FastqParser *self)
         }
         new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
         new_buffer_size = actual_buffer_size;
-        if (!string_is_ascii((char *)new_buffer + leftover_size, read_bytes)) {
+        if (!string_is_ascii((char *)new_buffer + read_in_offset, read_bytes)) {
             Py_ssize_t pos;
-            for (pos=leftover_size; pos<new_buffer_size; pos+=1) {
+            for (pos=read_in_offset; pos<new_buffer_size; pos+=1) {
                 if (new_buffer[pos] & ASCII_MASK_1BYTE) {
                     break;
                 }
@@ -808,23 +927,30 @@ FastqParser__next__(FastqParser *self)
         }
 
         if (new_buffer_size == 0) {
-            // Entire file is read
-            PyErr_SetNone(PyExc_StopIteration);
-            Py_DECREF(new_buffer_obj);
-            return NULL;
+            // Entire file is read.
+            break;
         } else if (read_bytes == 0) {
-            // Incomplete record at the end of file;
-            PyErr_Format(
-                PyExc_EOFError,
-                "Incomplete record at the end of file %s", 
-                new_buffer);
-            Py_DECREF(new_buffer_obj);
-            return NULL;
+            if (!buffer_contains_fastq(new_buffer, new_buffer_size)) {
+                // Incomplete record at the end of file;
+                PyErr_Format(
+                    PyExc_EOFError,
+                    "Incomplete record at the end of file %s", 
+                    new_buffer);
+                Py_DECREF(new_buffer_obj);
+                return NULL;
+            }
+            if (parsed_records) {
+                /* min_records not yet reached, but file contains no more
+                   records */
+                break;
+            }
+            /* At this point, there are still valid FASTQ records in the buffer 
+               but these have not been parsed yet.*/
         }
-        record_start = new_buffer;
-        buffer_end = record_start + new_buffer_size;
+        record_start = new_buffer + record_start_offset;
+        buffer_end = new_buffer + new_buffer_size;
 
-        while (1) {
+        while (parsed_records < max_records) {
             if (record_start + 2 >= buffer_end) {
                 break;
             }
@@ -906,14 +1032,63 @@ FastqParser__next__(FastqParser *self)
             record_start = qualities_end + 1;
         }
     }
+    /* Save the current buffer object so any leftovers can be reused at the 
+       next invocation. */
     PyObject *tmp = self->buffer_obj;
     self->buffer_obj = new_buffer_obj;
     Py_DECREF(tmp);
+    /* Save record start and buffer end for next invocation. */
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     return FastqRecordArrayView_FromPointerSizeAndObject(
         self->meta_buffer, parsed_records, new_buffer_obj);
 }
+
+static PyObject * 
+FastqParser__next__(FastqParser *self)
+{
+    PyObject *ret = FastqParser_create_record_array(self, 1, SIZE_MAX);
+    if ((ret != NULL) && (Py_SIZE(ret) == 0)) {
+        PyErr_SetNone(PyExc_StopIteration);
+        Py_DECREF(ret);
+        return NULL;
+    }
+    return ret;
+}
+
+
+PyDoc_STRVAR(FastqParser_read__doc__,
+"read($self, number_of_records, /)\n"
+"--\n"
+"\n"
+"Read a number of records into a count array.\n"
+"\n"
+"  Number_of_records\n"
+"    Number_of_records that should be attempted to read.\n"
+);
+
+#define FastqParser_read_method METH_O
+
+static PyObject *
+FastqParser_read(FastqParser *self, PyObject *number_of_records_obj) 
+{
+    Py_ssize_t number_of_records = PyLong_AsSsize_t(number_of_records_obj);
+    if (number_of_records < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "number_of_records should be greater than 1, got %zd",
+            number_of_records
+        );
+        return NULL; 
+    }
+    return FastqParser_create_record_array(self, number_of_records, number_of_records);
+}
+
+static PyMethodDef FastqParser_methods[] = {
+    {"read", (PyCFunction)FastqParser_read, FastqParser_read_method, 
+     FastqParser_read__doc__},
+    {NULL},
+};
 
 PyTypeObject FastqParser_Type = {
     .tp_name = "_qc.FastqParser",
@@ -922,6 +1097,7 @@ PyTypeObject FastqParser_Type = {
     .tp_new = FastqParser__new__,
     .tp_iter = (iternextfunc)FastqParser__iter__,
     .tp_iternext = (iternextfunc)FastqParser__next__,
+    .tp_methods = FastqParser_methods,
 };
 
 /**************
