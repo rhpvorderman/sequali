@@ -58,10 +58,16 @@ def argument_parser() -> argparse.ArgumentParser:
                         nargs="?",
                         help="Second FASTQ file for Illumina paired-end reads."
                         )
-    parser.add_argument("--json",
+    parser.add_argument("--json", "--json1",
                         help="JSON output file. default: '<input>.json'.")
-    parser.add_argument("--html",
+    parser.add_argument("--html", "--html1",
                         help="HTML output file. default: '<input>.html'.")
+    parser.add_argument("--json2",
+                        help="JSON output file for paired FASTQ. "
+                             "default: '<input_reverse>.json'")
+    parser.add_argument("--html2",
+                        help="HTML output file for paired FASTQ. "
+                             "default: '<input_reverse>.html'.")
     parser.add_argument("--outdir", "--dir", metavar="OUTDIR",
                         help="Output directory for the report files. default: "
                              "current working directory.",
@@ -238,10 +244,143 @@ def single_read_pipeline(args: argparse.Namespace):
     write_html_report(report_modules, args.html)
 
 
+def paired_end_read_pipeline(args: argparse.Namespace):
+    fraction_threshold = args.overrepresentation_threshold_fraction
+    max_threshold = args.overrepresentation_max_threshold
+    # if max_threshold is set it needs to be lower than min threshold
+    min_threshold = min(args.overrepresentation_min_threshold, max_threshold)
+
+    metrics1 = QCMetrics()
+    metrics2 = QCMetrics()
+    per_tile_quality1 = PerTileQuality()
+    per_tile_quality2 = PerTileQuality()
+    nanostats1 = NanoStats()
+    nanostats2 = NanoStats()
+    sequence_duplication1 = SequenceDuplication(
+        max_unique_fragments=args.overrepresentation_max_unique_fragments,
+        fragment_length=args.overrepresentation_fragment_length,
+        sample_every=args.overrepresentation_sample_every
+    )
+    sequence_duplication2 = SequenceDuplication(
+        max_unique_fragments=args.overrepresentation_max_unique_fragments,
+        fragment_length=args.overrepresentation_fragment_length,
+        sample_every=args.overrepresentation_sample_every
+    )
+    dedup_estimator = DedupEstimator(
+        max_stored_fingerprints=args.duplication_max_stored_fingerprints,
+        front_sequence_length=args.fingerprint_front_length,
+        front_sequence_offset=args.fingerprint_front_offset,
+        back_sequence_length=args.fingerprint_back_length,
+        back_sequence_offset=args.fingerprint_back_offset,
+    )
+    # Only illumina has paired-end reads
+    adapters = list(adapters_from_file(args.adapter_file, "illumina"))
+    adapter_counter1 = AdapterCounter(adapter.sequence for adapter in adapters)
+    adapter_counter2 = AdapterCounter(adapter.sequence for adapter in adapters)
+
+    filename: str = args.input
+    threads = args.threads
+    if threads < 1:
+        raise ValueError(f"Threads must be greater than 1, got {threads}.")
+    with (open(args.input, "rb") as raw1, open(args.input_reverse, "rb") as raw2):
+        progress1 = ProgressUpdater(raw1)
+        progress2 = ProgressUpdater(raw2)
+        with (xopen.xopen(raw1, "rb", threads=threads - 1) as file1,
+              xopen.xopen(raw2, mode="rb", threads=threads -1) as file2):
+            if (
+                    args.input.endswith(".bam") or
+                    args.input_reverse.endswith(".bam") or
+                    (hasattr(file1, "peek") and file1.peek(4)[:4] == b"BAM\1") or
+                    (hasattr(file2, "peek") and file2.peek(4)[:4] == b"BAM\1")
+            ):
+                raise RuntimeError("BAM Files are not supported in paired-end "
+                                   "mode.")
+            reader1 = FastqParser(file1)
+            reader2 = FastqParser(file2)
+
+            with progress1, progress2:
+                for record_array1 in reader1:
+                    record_array2 = reader2.read(len(record_array1))
+                    if len(record_array1) != len(record_array2):
+                        raise RuntimeError(
+                            f"FASTQ Files out of sync {args.input} has more "
+                            f"FASTQ records than {args.input_reverse}.")
+                    if not(record_array1.is_mate(record_array2)):
+                        raise RuntimeError("Mismatching names found!")
+                    metrics1.add_record_array(record_array1)
+                    per_tile_quality1.add_record_array(record_array1)
+                    adapter_counter1.add_record_array(record_array1)
+                    sequence_duplication1.add_record_array(record_array1)
+                    dedup_estimator.add_record_array(record_array1)
+                    nanostats1.add_record_array(record_array1)
+                    progress1.update(record_array1)
+                    metrics2.add_record_array(record_array2)
+                    per_tile_quality2.add_record_array(record_array2)
+                    adapter_counter2.add_record_array(record_array2)
+                    sequence_duplication2.add_record_array(record_array2)
+                    nanostats2.add_record_array(record_array2)
+                    progress2.update(record_array2)
+
+                if len(reader2.read(1)) > 0:
+                    raise RuntimeError(
+                        f"FASTQ Files out of sync {args.input_reverse} has "
+                        f"more FASTQ records than {args.input}.")
+    report_modules1 = calculate_stats(
+        args.input,
+        metrics1,
+        adapter_counter1,
+        per_tile_quality1,
+        sequence_duplication1,
+        dedup_estimator,
+        nanostats=nanostats1,
+        adapters=adapters,
+        fraction_threshold=fraction_threshold,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold)
+    report_modules2 = calculate_stats(
+        args.input_reverse,
+        metrics1,
+        adapter_counter2,
+        per_tile_quality2,
+        sequence_duplication2,
+        dedup_estimator,
+        nanostats=nanostats2,
+        adapters=adapters,
+        fraction_threshold=fraction_threshold,
+        min_threshold=min_threshold,
+        max_threshold=max_threshold)
+    if args.json is None:
+        args.json = os.path.basename(args.input) + ".json"
+    if args.html is None:
+        args.html = os.path.basename(args.input) + ".html"
+    if args.json2 is None:
+        args.json2 = os.path.basename(args.input_reverse)
+    if args.html2 is None:
+        args.html2 = os.path.basename(args.input_reverse) + ".html"
+    os.makedirs(args.outdir, exist_ok=True)
+    if not os.path.isabs(args.json):
+        args.json = os.path.join(args.outdir, args.json)
+    if not os.path.isabs(args.html):
+        args.html = os.path.join(args.outdir, args.html)
+    if not os.path.isabs(args.json2):
+        args.json2 = os.path.join(args.outdir, args.json2)
+    if not os.path.isabs(args.html2):
+        args.html2 = os.path.join(args.outdir, args.html2)
+    with open(args.json, "wt") as json_file:
+        json_dict = report_modules_to_dict(report_modules1)
+        # Indent=0 is ~40% smaller than indent=2 while still human-readable
+        json.dump(json_dict, json_file, indent=0)
+    with open(args.json2, "wt") as json_file2:
+        json_dict = report_modules_to_dict(report_modules2)
+        json.dump(json_dict, json_file2, indent=0)
+    write_html_report(report_modules1, args.html)
+    write_html_report(report_modules2, args.html2)
+
+
 def main() -> None:
     args = argument_parser().parse_args()
     if args.input_reverse:
-        pass
+        paired_end_read_pipeline(args)
     else:
         single_read_pipeline(args)
 
