@@ -659,7 +659,7 @@ FastqRecordArrayView_CheckExact(void *obj) {
  */
 static inline bool 
 fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length) {
-    /* strcspn will return the length of the string of non of the complement 
+    /* strcspn will return the length of the string if none of the complement 
        characters is found, so name1_length is not necessary as a parameter.*/
     size_t id_length = strcspn(name1, " \t\n");
     if (name2_length < id_length) {
