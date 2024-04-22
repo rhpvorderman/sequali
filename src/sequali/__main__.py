@@ -54,6 +54,10 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Input FASTQ or uBAM file. "
                              "The format is autodetected and compressed "
                              "formats are supported.")
+    parser.add_argument("input_reverse", metavar="INPUT_REVERSE",
+                        nargs="?",
+                        help="Second FASTQ file for Illumina paired-end reads."
+                        )
     parser.add_argument("--json",
                         help="JSON output file. default: '<input>.json'.")
     parser.add_argument("--html",
@@ -160,8 +164,7 @@ def argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = argument_parser().parse_args()
+def single_read_pipeline(args: argparse.Namespace):
     fraction_threshold = args.overrepresentation_threshold_fraction
     max_threshold = args.overrepresentation_max_threshold
     # if max_threshold is set it needs to be lower than min threshold
@@ -233,6 +236,14 @@ def main() -> None:
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
         json.dump(json_dict, json_file, indent=0)
     write_html_report(report_modules, args.html)
+
+
+def main() -> None:
+    args = argument_parser().parse_args()
+    if args.input_reverse:
+        pass
+    else:
+        single_read_pipeline(args)
 
 
 if __name__ == "__main__":  # pragma: no cover
