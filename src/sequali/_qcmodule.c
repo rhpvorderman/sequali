@@ -591,6 +591,7 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
     FastqRecordArrayView *record_array = 
         (FastqRecordArrayView *)
         FastqRecordArrayView_FromPointerSizeAndObject(NULL, number_of_items, obj);
+    Py_DECREF(obj);  // Reference count increased by 1 by previous function.
     if (record_array == NULL) {
         Py_DECREF(obj); 
         return NULL;
