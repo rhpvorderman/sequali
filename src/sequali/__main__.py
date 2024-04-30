@@ -354,7 +354,7 @@ def paired_end_read_pipeline(args: argparse.Namespace):
     if args.html is None:
         args.html = os.path.basename(args.input) + ".html"
     if args.json2 is None:
-        args.json2 = os.path.basename(args.input_reverse)
+        args.json2 = os.path.basename(args.input_reverse) + ".json"
     if args.html2 is None:
         args.html2 = os.path.basename(args.input_reverse) + ".html"
     os.makedirs(args.outdir, exist_ok=True)
