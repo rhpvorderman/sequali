@@ -1028,7 +1028,7 @@ class PerTileQualityReport(ReportModule):
         tile_counts = ptq.get_tile_counts()
         for tile, summed_errors, counts in tile_counts:
             range_averages = [
-                sum(summed_errors[start:stop]) / sum(counts[start:stop])
+                sum(summed_errors[start:stop]) / max(sum(counts[start:stop]), 1)
                 for start, stop in data_ranges]
             range_phreds = []
             for i, average in enumerate(range_averages):
