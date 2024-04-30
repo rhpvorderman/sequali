@@ -44,7 +44,7 @@ from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
 from .util import (ProgressUpdater, guess_sequencing_technology_from_bam_header,
-                   guess_sequencing_technology_from_file)
+                   guess_sequencing_technology_from_file, sequence_names_match)
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -306,6 +306,10 @@ def paired_end_read_pipeline(args: argparse.Namespace):
                             f"FASTQ Files out of sync {args.input} has more "
                             f"FASTQ records than {args.input_reverse}.")
                     if not(record_array1.is_mate(record_array2)):
+                        for r1, r2 in zip(iter(record_array1), iter(record_array2)):
+                            if not sequence_names_match(r1.name(), r2.name()):
+                                raise RuntimeError(
+                                    f"Mismatching names found! {r1.name()} {r2.name()}")
                         raise RuntimeError("Mismatching names found!")
                     metrics1.add_record_array(record_array1)
                     per_tile_quality1.add_record_array(record_array1)
