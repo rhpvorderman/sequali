@@ -266,10 +266,10 @@ def main() -> None:
                                         f"Mismatching names found! {r1.name()} "
                                         f"{r2.name()}")
                             raise RuntimeError("Mismatching names found!")
-                        metrics2.add_record_array(record_array2)
-                        per_tile_quality2.add_record_array(record_array2)
-                        adapter_counter2.add_record_array(record_array2)
-                        sequence_duplication2.add_record_array(record_array2)
+                        metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                        per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                        adapter_counter2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                        sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                         progress2.update(record_array2)
                 if paired and len(reader2.read(1)) > 0:
                     raise RuntimeError(
