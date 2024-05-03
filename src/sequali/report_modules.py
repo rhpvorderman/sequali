@@ -1821,6 +1821,12 @@ def calculate_stats(
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
         adapters: List[Adapter],
+        filename_reverse: Optional[str] = None,
+        metrics_reverse: Optional[QCMetrics] = None,
+        adapter_counter_reverse: Optional[AdapterCounter] = None,
+        per_tile_quality_reverse: Optional[PerTileQuality] = None,
+        sequence_duplication_reverse: Optional[SequenceDuplication] = None,
+        nanostats_reverse: Optional[NanoStats] = None,
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
@@ -1831,7 +1837,7 @@ def calculate_stats(
         data_ranges = list(logarithmic_ranges(max_length))
     else:
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
-    return [
+    modules = [
         Meta.from_filepath(filename),
         *qc_metrics_modules(metrics, data_ranges),
         AdapterContent.from_adapter_counter_adapters_and_ranges(
@@ -1847,3 +1853,24 @@ def calculate_stats(
         ),
         NanoStatsReport.from_nanostats(nanostats)
     ]
+    if (metrics_reverse and adapter_counter_reverse
+            and per_tile_quality_reverse and sequence_duplication_reverse):
+        max_length_reverse = metrics_reverse.max_length
+        if max_length_reverse > 500:
+            data_ranges_reverse = list(logarithmic_ranges(max_length_reverse))
+        else:
+            data_ranges_reverse = list(
+                equidistant_ranges(max_length_reverse, graph_resolution))
+        modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse))
+        modules.append(AdapterContent.from_adapter_counter_adapters_and_ranges(
+            adapter_counter_reverse, adapters, data_ranges_reverse
+        ))
+        PerTileQualityReport.from_per_tile_quality_and_ranges(
+            per_tile_quality_reverse, data_ranges_reverse),
+        modules.append(OverRepresentedSequences.from_sequence_duplication(
+            sequence_duplication_reverse,
+            fraction_threshold=fraction_threshold,
+            min_threshold=min_threshold,
+            max_threshold=max_threshold,
+        ))
+    return modules

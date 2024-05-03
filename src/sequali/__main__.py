@@ -63,12 +63,6 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="JSON output file. default: '<input>.json'.")
     parser.add_argument("--html", "--html1",
                         help="HTML output file. default: '<input>.html'.")
-    parser.add_argument("--json2",
-                        help="JSON output file for paired FASTQ. "
-                             "default: '<input_reverse>.json'")
-    parser.add_argument("--html2",
-                        help="HTML output file for paired FASTQ. "
-                             "default: '<input_reverse>.html'.")
     parser.add_argument("--outdir", "--dir", metavar="OUTDIR",
                         help="Output directory for the report files. default: "
                              "current working directory.",
@@ -202,13 +196,15 @@ def main() -> None:
     if paired:
         metrics2 = QCMetrics()
         per_tile_quality2 = PerTileQuality()
-        nanostats2 = NanoStats()
         sequence_duplication2 = SequenceDuplication(
             max_unique_fragments=args.overrepresentation_max_unique_fragments,
             fragment_length=args.overrepresentation_fragment_length,
             sample_every=args.overrepresentation_sample_every
         )
-
+    else:
+        metrics2 = None
+        per_tile_quality2 = None
+        sequence_duplication2 = None
     with contextlib.ExitStack() as raw_context:
         raw1 = open(args.input, "rb")
         raw_context.enter_context(raw1)
@@ -240,7 +236,8 @@ def main() -> None:
             if paired:
                 adapter_counter2 = AdapterCounter(
                     adapter.sequence for adapter in adapters)
-
+            else:
+                adapter_counter2 = None
             with contextlib.ExitStack() as progress_context:
                 progress_context.enter_context(progress1)
                 if paired:
@@ -266,19 +263,19 @@ def main() -> None:
                                 if not sequence_names_match(r1.name(),
                                                             r2.name()):
                                     raise RuntimeError(
-                                        f"Mismatching names found! {r1.name()} {r2.name()}")
+                                        f"Mismatching names found! {r1.name()} "
+                                        f"{r2.name()}")
                             raise RuntimeError("Mismatching names found!")
                         metrics2.add_record_array(record_array2)
                         per_tile_quality2.add_record_array(record_array2)
                         adapter_counter2.add_record_array(record_array2)
                         sequence_duplication2.add_record_array(record_array2)
-                        nanostats2.add_record_array(record_array2)
                         progress2.update(record_array2)
                 if paired and len(reader2.read(1)) > 0:
                     raise RuntimeError(
                         f"FASTQ Files out of sync {args.input_reverse} has "
                         f"more FASTQ records than {args.input}.")
-    report_modules1 = calculate_stats(
+    report_modules = calculate_stats(
         args.input,
         metrics1,
         adapter_counter1,
@@ -286,6 +283,11 @@ def main() -> None:
         sequence_duplication1,
         dedup_estimator,
         nanostats=nanostats1,
+        filename_reverse=args.input_reverse,
+        metrics_reverse=metrics2,
+        adapter_counter_reverse=adapter_counter2,
+        per_tile_quality_reverse=per_tile_quality2,
+        sequence_duplication_reverse=sequence_duplication2,
         adapters=adapters,
         fraction_threshold=fraction_threshold,
         min_threshold=min_threshold,
@@ -300,42 +302,10 @@ def main() -> None:
     if not os.path.isabs(args.html):
         args.html = os.path.join(args.outdir, args.html)
     with open(args.json, "wt") as json_file:
-        json_dict = report_modules_to_dict(report_modules1)
+        json_dict = report_modules_to_dict(report_modules)
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
         json.dump(json_dict, json_file, indent=0)
-    write_html_report(report_modules1, args.html)
-
-    if not paired:
-        return
-
-    report_modules2 = calculate_stats(
-        args.input_reverse,
-        metrics1,
-        adapter_counter2,
-        per_tile_quality2,
-        sequence_duplication2,
-        dedup_estimator,
-        nanostats=nanostats2,
-        adapters=adapters,
-        fraction_threshold=fraction_threshold,
-        min_threshold=min_threshold,
-        max_threshold=max_threshold)
-
-    if args.json2 is None:
-        args.json2 = os.path.basename(args.input_reverse) + ".json"
-    if args.html2 is None:
-        args.html2 = os.path.basename(args.input_reverse) + ".html"
-
-    if not os.path.isabs(args.json2):
-        args.json2 = os.path.join(args.outdir, args.json2)
-    if not os.path.isabs(args.html2):
-        args.html2 = os.path.join(args.outdir, args.html2)
-
-    with open(args.json2, "wt") as json_file2:
-        json_dict = report_modules_to_dict(report_modules2)
-        json.dump(json_dict, json_file2, indent=0)
-
-    write_html_report(report_modules2, args.html2)
+    write_html_report(report_modules, args.html)
 
 
 if __name__ == "__main__":  # pragma: no cover
