@@ -339,28 +339,61 @@ class Meta(ReportModule):
     report_generated: str
     filename: str
     filesize: int
+    filename_read2: Optional[str]
+    filesize_read2: Optional[int]
 
     @classmethod
-    def from_filepath(cls, filepath):
+    def from_filepath(cls, filepath: str, filepath_read2: Optional[str] = None):
         filename = os.path.basename(filepath)
         try:
-            filesize = os.stat(filepath).st_size
+            filesize = os.path.getsize(filepath)
         except OSError:
             filesize = 0
+        if filepath_read2:
+            filename_read2 = os.path.basename(filepath_read2)
+            try:
+                filesize_read2 = os.path.getsize(filepath_read2)
+            except OSError:
+                filesize_read2 = 0
+        else:
+            filename_read2 = None
+            filesize_read2 = None
         timestamp = time.time()
         time_struct = time.localtime(timestamp)
         report_generated = time.strftime("%Y-%m-%d %H:%M:%S%z", time_struct)
-        return cls(__version__, report_generated, filename, filesize)
+        return cls(__version__, report_generated, filename, filesize,
+                   filename_read2, filesize_read2)
 
     def to_html(self) -> str:
+        content = io.StringIO()
+        content.write(html_header("Metadata", 1))
+        content.write(f"""
+            <table>
+            <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
+            <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
+        """)
+        if self.filename_read2 is not None and self.filesize_read2 is not None:
+            content.write(f"""
+                <tr>
+                    <td>Filename</td>
+                    <td><code>{self.filename_read2}</code></td>
+                </tr>
+                <tr>
+                    <td>Filesize</td>
+                    <td>{self.filesize_read2 / (1024 ** 3):.2f} GiB</td>
+                </tr>
+            """)
+        content.write(f"""
+            <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
+            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
+            </table>
+        """)
         return f"""
         {html_header("Metadata", 1)}
         <table>
             <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
             <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
-            <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
-            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
-        </table>
+
         """
 
 
@@ -1838,7 +1871,7 @@ def calculate_stats(
     else:
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     modules = [
-        Meta.from_filepath(filename),
+        Meta.from_filepath(filename, filename_reverse),
         *qc_metrics_modules(metrics, data_ranges),
         AdapterContent.from_adapter_counter_adapters_and_ranges(
             adapter_counter, adapters, data_ranges),
