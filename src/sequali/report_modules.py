@@ -113,6 +113,10 @@ COMMON_GRAPH_OPTIONS = dict(
     js=[],  # Script is globally downloaded once
 )
 
+READ1 = "Read 1"
+READ2 = "Read 2"
+NOT_OF_PAIR = None
+
 
 def html_header(header: str, level: int):
     html_id = header.lower().replace(" ", "-")
@@ -402,6 +406,7 @@ class Summary(ReportModule):
     q20_bases: int
     total_gc_bases: int
     total_n_bases: int
+    read_pair_info: Optional[str] = None
 
     def to_html(self) -> str:
         return f"""
@@ -461,6 +466,7 @@ class SequenceLengthDistribution(ReportModule):
     q90: int
     q95: int
     q99: int
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
@@ -503,7 +509,8 @@ class SequenceLengthDistribution(ReportModule):
     def from_base_count_tables(cls,
                                base_count_tables: array.ArrayType,
                                total_sequences: int,
-                               data_ranges: Sequence[Tuple[int, int]]):
+                               data_ranges: Sequence[Tuple[int, int]],
+                               read_pair_info: Optional[str] = None):
         max_length = len(base_count_tables) // NUMBER_OF_NUCS
         # use bytes constructor to initialize to 0
         sequence_lengths = array.array("Q", bytes(8 * (max_length + 1)))
@@ -546,13 +553,14 @@ class SequenceLengthDistribution(ReportModule):
                 break
 
         return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
-                   *percentile_lengths)
+                   *percentile_lengths, read_pair_info=read_pair_info)  # type: ignore
 
 
 @dataclasses.dataclass
 class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
     percentiles: List[Tuple[str, List[float]]]
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Line(
@@ -594,7 +602,10 @@ class PerPositionMeanQualityAndSpread(ReportModule):
         """
 
     @classmethod
-    def from_phred_table_and_labels(cls, phred_tables: array.ArrayType, x_labels):
+    def from_phred_table_and_labels(cls,
+                                    phred_tables: array.ArrayType,
+                                    x_labels,
+                                    read_pair_info: Optional[str] = None):
         percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
         percentile_fractions = [i / 100 for i in percentiles]
         total_tables = len(phred_tables) // NUMBER_OF_PHREDS
@@ -660,7 +671,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
         ]
         return cls(
             x_labels=x_labels,
-            percentiles=graph_series
+            percentiles=graph_series,
+            read_pair_info=read_pair_info,
             )
 
 
@@ -668,10 +680,13 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 class PerBaseQualityScoreDistribution(ReportModule):
     x_labels: Sequence[str]
     series: Sequence[Sequence[float]]
+    read_pair_info: Optional[str] = None
 
     @classmethod
     def from_phred_count_table_and_labels(
-            cls, phred_tables: array.ArrayType, x_labels: Sequence[str]):
+            cls, phred_tables: array.ArrayType, x_labels: Sequence[str],
+            read_pair_info: Optional[str] = None
+    ):
         total_tables = len(x_labels)
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
@@ -687,7 +702,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
                     continue
                 nuc_fraction = phred_count / total_nucs
                 quality_distribution[offset][cat_index] = nuc_fraction
-        return cls(x_labels, quality_distribution)
+        return cls(x_labels, quality_distribution, read_pair_info=read_pair_info)
 
     def plot(self) -> pygal.Graph:
         plot = pygal.StackedBar(
@@ -718,6 +733,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 class PerSequenceAverageQualityScores(ReportModule):
     average_quality_counts: Sequence[int]
     x_labels: Tuple[str, ...] = tuple(str(x) for x in range(PHRED_MAX + 1))
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         maximum_score = 0
@@ -775,8 +791,9 @@ class PerSequenceAverageQualityScores(ReportModule):
         return table.getvalue()
 
     @classmethod
-    def from_qc_metrics(cls, metrics: QCMetrics):
-        return cls(list(metrics.phred_scores()))
+    def from_qc_metrics(cls, metrics: QCMetrics,
+                        read_pair_info: Optional[str] = None):
+        return cls(list(metrics.phred_scores()), read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
@@ -786,6 +803,7 @@ class PerPositionBaseContent(ReportModule):
     C: Sequence[float]
     G: Sequence[float]
     T: Sequence[float]
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         style_class = pygal.style.Style
@@ -824,7 +842,9 @@ class PerPositionBaseContent(ReportModule):
     @classmethod
     def from_base_count_tables_and_labels(cls,
                                           base_count_tables: array.ArrayType,
-                                          labels: Sequence[str]):
+                                          labels: Sequence[str],
+                                          read_pair_info: Optional[str] = None,
+                                          ):
         total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         base_fractions = [
             [0.0 for _ in range(total_tables)]
@@ -846,7 +866,8 @@ class PerPositionBaseContent(ReportModule):
             A=base_fractions[A],
             C=base_fractions[C],
             G=base_fractions[G],
-            T=base_fractions[T]
+            T=base_fractions[T],
+            read_pair_info=read_pair_info,
         )
 
 
@@ -854,10 +875,13 @@ class PerPositionBaseContent(ReportModule):
 class PerPositionNContent(ReportModule):
     x_labels: Sequence[str]
     n_content: Sequence[float]
+    read_pair_info: Optional[str] = None
 
     @classmethod
     def from_base_count_tables_and_labels(
-            cls, base_count_tables: array.ArrayType, labels: Sequence[str]):
+            cls, base_count_tables: array.ArrayType, labels: Sequence[str],
+            read_pair_info: Optional[str] = None,
+    ):
         total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         n_fractions = [0.0 for _ in range(total_tables)]
         for index, table in enumerate(
@@ -868,7 +892,8 @@ class PerPositionNContent(ReportModule):
             n_fractions[index] = table[N] / total_bases
         return cls(
             labels,
-            n_fractions
+            n_fractions,
+            read_pair_info,
         )
 
     def plot(self) -> pygal.Graph:
@@ -899,6 +924,7 @@ class PerSequenceGCContent(ReportModule):
     smoothened_gc_content_counts: Sequence[int]
     x_labels: Sequence[str] = tuple(str(x) for x in range(101))
     smoothened_x_labels: Sequence[str] = tuple(str(x) for x in range(0, 101, 2))
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
@@ -946,7 +972,7 @@ class PerSequenceGCContent(ReportModule):
         """
 
     @classmethod
-    def from_qc_metrics(cls, metrics: QCMetrics):
+    def from_qc_metrics(cls, metrics: QCMetrics, read_pair_info: Optional[str] = None):
         gc_content = list(metrics.gc_content())
         smoothened_gc_content = []
         gc_content_iter = iter(gc_content)
@@ -954,13 +980,14 @@ class PerSequenceGCContent(ReportModule):
             smoothened_gc_content.append(next(gc_content_iter) + next(gc_content_iter))
         # Append the last 100% category.
         smoothened_gc_content.append(next(gc_content_iter))
-        return cls(gc_content, smoothened_gc_content)
+        return cls(gc_content, smoothened_gc_content, read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
 class AdapterContent(ReportModule):
     x_labels: Sequence[str]
     adapter_content: Sequence[Tuple[str, Sequence[float]]]
+    read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Line(
@@ -1006,7 +1033,9 @@ class AdapterContent(ReportModule):
     @classmethod
     def from_adapter_counter_adapters_and_ranges(
             cls, adapter_counter: AdapterCounter, adapters: Sequence[Adapter],
-            data_ranges: Sequence[Tuple[int, int]]):
+            data_ranges: Sequence[Tuple[int, int]],
+            read_pair_info: Optional[str] = None,
+    ):
 
         def accumulate_counts(counts: Iterable[int]) -> List[int]:
             total = 0
@@ -1034,7 +1063,8 @@ class AdapterContent(ReportModule):
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
         return cls(stringify_ranges(data_ranges),
-                   list(zip(adapter_names, all_adapters)))
+                   list(zip(adapter_names, all_adapters)),
+                   read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
@@ -1044,10 +1074,13 @@ class PerTileQualityReport(ReportModule):
     tiles_2x_errors: Sequence[str]
     tiles_10x_errors: Sequence[str]
     skipped_reason: Optional[str]
+    read_pair_info: Optional[str] = None
 
     @classmethod
     def from_per_tile_quality_and_ranges(
-            cls, ptq: PerTileQuality, data_ranges: Sequence[Tuple[int, int]]):
+            cls, ptq: PerTileQuality, data_ranges: Sequence[Tuple[int, int]],
+            read_pair_info: Optional[str] = None,
+    ):
         if ptq.skipped_reason:
             return cls([], [], [], [], ptq.skipped_reason)
         average_phreds = []
@@ -1090,6 +1123,7 @@ class PerTileQualityReport(ReportModule):
             tiles_2x_errors=tiles_2x_errors,
             tiles_10x_errors=tiles_10x_errors,
             skipped_reason=ptq.skipped_reason,
+            read_pair_info=read_pair_info,
         )
 
     def plot(self) -> pygal.Graph:
@@ -1317,6 +1351,7 @@ class OverRepresentedSequences(ReportModule):
     total_fragments: int
     total_sequences: int
     sampled_sequences: int
+    read_pair_info: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {"overrepresented_sequences":
@@ -1339,7 +1374,8 @@ class OverRepresentedSequences(ReportModule):
                    sequence_length=d["sequence_length"],
                    total_fragments=d["total_fragments"],
                    total_sequences=d["total_sequences"],
-                   sampled_sequences=d["sampled_sequences"])  # type: ignore
+                   sampled_sequences=d["sampled_sequences"],
+                   read_pair_info=d["read_pair_info"])  # type: ignore
 
     def to_html(self) -> str:
         header = html_header("Overrepresented sequences", 1)
@@ -1425,6 +1461,7 @@ class OverRepresentedSequences(ReportModule):
             fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
             min_threshold: int = DEFAULT_MIN_THRESHOLD,
             max_threshold: int = DEFAULT_MAX_THRESHOLD,
+            read_pair_info: Optional[str] = None,
     ):
         overrepresented_sequences = seqdup.overrepresented_sequences(
             fraction_threshold,
@@ -1453,7 +1490,8 @@ class OverRepresentedSequences(ReportModule):
                    seqdup.fragment_length,
                    seqdup.total_fragments,
                    seqdup.number_of_sequences,
-                   seqdup.sampled_sequences)
+                   seqdup.sampled_sequences,
+                   read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
@@ -1718,8 +1756,14 @@ CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
 
 
 def report_modules_to_dict(report_modules: Iterable[ReportModule]):
+    def get_name(module: ReportModule) -> str:
+        class_name = CLASS_TO_NAME[type(module)]
+        if hasattr(module, "read_pair_info"):
+            if module.read_pair_info == READ2:
+                class_name += "_read2"
+        return class_name
     return {
-        CLASS_TO_NAME[type(module)]: module.to_dict()
+        get_name(module): module.to_dict()
         for module in report_modules
     }
 
@@ -1788,7 +1832,8 @@ def write_html_report(report_modules: Iterable[ReportModule],
 
 
 def qc_metrics_modules(metrics: QCMetrics,
-                       data_ranges: Sequence[Tuple[int, int]]
+                       data_ranges: Sequence[Tuple[int, int]],
+                       read_pair_info: Optional[str] = None,
                        ) -> List[ReportModule]:
     base_count_tables = metrics.base_count_table()
     phred_count_table = metrics.phred_count_table()
@@ -1823,19 +1868,23 @@ def qc_metrics_modules(metrics: QCMetrics,
             q20_bases=sum(summary_phreds[5:]),
             q20_reads=q20_reads,
             total_gc_bases=total_gc_bases,
-            total_n_bases=summary_bases[N]),
+            total_n_bases=summary_bases[N],
+            read_pair_info=read_pair_info),
         SequenceLengthDistribution.from_base_count_tables(
-            base_count_tables, total_reads, data_ranges),
+            base_count_tables, total_reads, data_ranges,
+            read_pair_info=read_pair_info),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
-            aggregated_phred_matrix, x_labels),
+            aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
         PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
-           aggregated_phred_matrix, x_labels),
-        PerSequenceAverageQualityScores.from_qc_metrics(metrics),
+           aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
+        PerSequenceAverageQualityScores.from_qc_metrics(
+            metrics, read_pair_info=read_pair_info),
         PerPositionBaseContent.from_base_count_tables_and_labels(
-            aggregrated_base_matrix, x_labels),
+            aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
         PerPositionNContent.from_base_count_tables_and_labels(
-            aggregrated_base_matrix, x_labels),
-        PerSequenceGCContent.from_qc_metrics(metrics),
+            aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
+        PerSequenceGCContent.from_qc_metrics(
+            metrics, read_pair_info=read_pair_info),
     ]
 
 
@@ -1853,12 +1902,12 @@ def calculate_stats(
         adapter_counter_reverse: Optional[AdapterCounter] = None,
         per_tile_quality_reverse: Optional[PerTileQuality] = None,
         sequence_duplication_reverse: Optional[SequenceDuplication] = None,
-        nanostats_reverse: Optional[NanoStats] = None,
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
         max_threshold: int = DEFAULT_MAX_THRESHOLD,
 ) -> List[ReportModule]:
+    read_pair_info1 = READ1 if filename_reverse else None
     max_length = metrics.max_length
     if max_length > 500:
         data_ranges = list(logarithmic_ranges(max_length))
@@ -1866,17 +1915,18 @@ def calculate_stats(
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     modules = [
         Meta.from_filepath(filename, filename_reverse),
-        *qc_metrics_modules(metrics, data_ranges),
+        *qc_metrics_modules(metrics, data_ranges, read_pair_info=read_pair_info1),
         AdapterContent.from_adapter_counter_adapters_and_ranges(
-            adapter_counter, adapters, data_ranges),
+            adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1),
         PerTileQualityReport.from_per_tile_quality_and_ranges(
-            per_tile_quality, data_ranges),
+            per_tile_quality, data_ranges, read_pair_info=read_pair_info1),
         DuplicationCounts.from_dedup_estimator(dedup_estimator),
         OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication,
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
-            max_threshold=max_threshold
+            max_threshold=max_threshold,
+            read_pair_info=read_pair_info1,
         ),
         NanoStatsReport.from_nanostats(nanostats)
     ]
@@ -1888,16 +1938,20 @@ def calculate_stats(
         else:
             data_ranges_reverse = list(
                 equidistant_ranges(max_length_reverse, graph_resolution))
-        modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse))
+        modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse,
+                                          read_pair_info=READ2))
         modules.append(AdapterContent.from_adapter_counter_adapters_and_ranges(
-            adapter_counter_reverse, adapters, data_ranges_reverse
+            adapter_counter_reverse, adapters, data_ranges_reverse,
+            read_pair_info=READ2,
         ))
         PerTileQualityReport.from_per_tile_quality_and_ranges(
-            per_tile_quality_reverse, data_ranges_reverse),
+            per_tile_quality_reverse, data_ranges_reverse,
+            read_pair_info=READ2),
         modules.append(OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication_reverse,
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
             max_threshold=max_threshold,
+            read_pair_info=READ2,
         ))
     return modules
