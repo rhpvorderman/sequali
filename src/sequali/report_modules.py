@@ -388,13 +388,7 @@ class Meta(ReportModule):
             <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
             </table>
         """)
-        return f"""
-        {html_header("Metadata", 1)}
-        <table>
-            <tr><td>Filename</td><td><code>{self.filename}</code></td></tr>
-            <tr><td>Filesize</td><td>{self.filesize / (1024 ** 3):.2f} GiB</td></tr>
-
-        """
+        return content.getvalue()
 
 
 @dataclasses.dataclass
