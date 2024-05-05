@@ -20,11 +20,9 @@ import json
 import os
 import sys
 
-import xopen
 
 from ._qc import (
     AdapterCounter,
-    BamParser,
     DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
@@ -34,7 +32,6 @@ from ._qc import (
     DEFAULT_MAX_UNIQUE_FRAGMENTS,
     DEFAULT_UNIQUE_SAMPLE_EVERY,
     DedupEstimator,
-    FastqParser,
     NanoStats,
     PerTileQuality,
     QCMetrics,
@@ -44,8 +41,7 @@ from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
 from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
-from .util import (ProgressUpdater, guess_sequencing_technology_from_bam_header,
-                   guess_sequencing_technology_from_file, sequence_names_match)
+from .util import NGSFile, sequence_names_match
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -205,76 +201,59 @@ def main() -> None:
         metrics2 = None
         per_tile_quality2 = None
         sequence_duplication2 = None
-    with contextlib.ExitStack() as raw_context:
-        raw1 = open(args.input, "rb")
-        raw_context.enter_context(raw1)
-        progress1 = ProgressUpdater(raw1)
+    with contextlib.ExitStack() as exit_stack:
+        reader1 = NGSFile(args.input)
+        exit_stack.enter_context(reader1)
         if paired:
-            raw2 = open(args.input_reverse, "rb")
-            raw_context.enter_context(raw2)
-            progress2 = ProgressUpdater(raw2)
-
-        with contextlib.ExitStack() as file_context:
-            file1 = xopen.xopen(raw1, "rb", threads=args.threads - 1)
-            file_context.enter_context(file1)
-            if args.input.endswith(".bam") or (
-                    hasattr(raw1, "peek") and raw1.peek(4)[:4] == b"BAM\1"):
-                reader1 = BamParser(file1)
-                seqtech = guess_sequencing_technology_from_bam_header(
-                    reader1.header)
-            else:
-                reader1 = FastqParser(file1)  # type: ignore
-                seqtech = guess_sequencing_technology_from_file(file1)  # type: ignore
-            if paired:
-                file2 = xopen.xopen(raw2, "rb", threads=args.threads - 1)
-                file_context.enter_context(file2)
-                reader2 = FastqParser(file2)
-                seqtech = "illumina"
-            adapters = list(adapters_from_file(args.adapter_file, seqtech))
-            adapter_counter1 = AdapterCounter(
+            reader2 = NGSFile(args.input_reverse)
+            exit_stack.enter_context(reader2)
+            if reader1.sequencing_technology != reader2.sequencing_technology:
+                raise RuntimeError(
+                    f"Mismatching sequencing technologies:\n"
+                    f"{reader1.filepath}: {reader1.sequencing_technology}\n"
+                    f"{reader2.filepath}: {reader2.sequencing_technology}\n")
+            if not (reader1.format == "FASTQ" and reader2.format == "FASTQ"):
+                raise RuntimeError("Paired end mode is only supported for "
+                                   "FASTQ files.")
+        adapters = list(adapters_from_file(args.adapter_file,
+                                           reader1.sequencing_technology))
+        adapter_counter1 = AdapterCounter(
+            adapter.sequence for adapter in adapters)
+        if paired:
+            adapter_counter2 = AdapterCounter(
                 adapter.sequence for adapter in adapters)
+        else:
+            adapter_counter2 = None
+        for record_array1 in reader1:
+            metrics1.add_record_array(record_array1)
+            per_tile_quality1.add_record_array(record_array1)
+            adapter_counter1.add_record_array(record_array1)
+            sequence_duplication1.add_record_array(record_array1)
+            dedup_estimator.add_record_array(record_array1)
+            nanostats1.add_record_array(record_array1)
             if paired:
-                adapter_counter2 = AdapterCounter(
-                    adapter.sequence for adapter in adapters)
-            else:
-                adapter_counter2 = None
-            with contextlib.ExitStack() as progress_context:
-                progress_context.enter_context(progress1)
-                if paired:
-                    progress_context.enter_context(progress2)
-
-                for record_array1 in reader1:
-                    metrics1.add_record_array(record_array1)
-                    per_tile_quality1.add_record_array(record_array1)
-                    adapter_counter1.add_record_array(record_array1)
-                    sequence_duplication1.add_record_array(record_array1)
-                    dedup_estimator.add_record_array(record_array1)
-                    nanostats1.add_record_array(record_array1)
-                    progress1.update(record_array1)
-                    if paired:
-                        record_array2 = reader2.read(len(record_array1))
-                        if len(record_array1) != len(record_array2):
-                            raise RuntimeError(
-                                f"FASTQ Files out of sync {args.input} has more "
-                                f"FASTQ records than {args.input_reverse}.")
-                        if not (record_array1.is_mate(record_array2)):
-                            for r1, r2 in zip(iter(record_array1),
-                                              iter(record_array2)):
-                                if not sequence_names_match(r1.name(),
-                                                            r2.name()):
-                                    raise RuntimeError(
-                                        f"Mismatching names found! {r1.name()} "
-                                        f"{r2.name()}")
-                            raise RuntimeError("Mismatching names found!")
-                        metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                        per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                        adapter_counter2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                        sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                        progress2.update(record_array2)
-                if paired and len(reader2.read(1)) > 0:
+                record_array2 = reader2.read(len(record_array1))
+                if len(record_array1) != len(record_array2):
                     raise RuntimeError(
-                        f"FASTQ Files out of sync {args.input_reverse} has "
-                        f"more FASTQ records than {args.input}.")
+                        f"FASTQ Files out of sync {args.input} has more "
+                        f"FASTQ records than {args.input_reverse}.")
+                if not (record_array1.is_mate(record_array2)):
+                    for r1, r2 in zip(iter(record_array1),
+                                      iter(record_array2)):
+                        if not sequence_names_match(r1.name(),
+                                                    r2.name()):
+                            raise RuntimeError(
+                                f"Mismatching names found! {r1.name()} "
+                                f"{r2.name()}")
+                    raise RuntimeError("Mismatching names found!")
+                metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                adapter_counter2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+        if paired and len(reader2.read(1)) > 0:
+            raise RuntimeError(
+                f"FASTQ Files out of sync {args.input_reverse} has "
+                f"more FASTQ records than {args.input}.")
     report_modules = calculate_stats(
         args.input,
         metrics1,
