@@ -4552,6 +4552,84 @@ static PyTypeObject NanoStats_Type = {
     .tp_members = NanoStats_members,
 };
 
+/***********************
+ * INSERT SIZE METRICS * 
+ ***********************/
+
+#define INSERT_SIZE_MAX_ADAPTERS 10000
+
+static struct AdapterTableEntry {
+    uint64_t hash; 
+    uint8_t size; 
+    uint8_t adapter[31];
+};
+
+typedef struct _InsertSizeMetricsStruct {
+    PyObject_HEAD 
+    struct AdapterTableEntry *hash_table_read1;
+    struct AdapterTableEntry *hash_table_read2; 
+    size_t max_adapters;
+    size_t hash_table_size;
+    size_t hash_table_read1_entries;
+    size_t hash_table_read2_entries;
+    uint64_t *insert_sizes;
+    size_t insert_sizes_size; 
+} InsertSizeMetrics;
+
+static void
+InsertSizeMetrics_dealloc(InsertSizeMetrics *self) {
+    PyMem_Free(self->hash_table_read1);
+    PyMem_Free(self->hash_table_read2); 
+    PyMem_Free(self->insert_sizes);
+}
+
+static PyObject *
+InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
+{
+    Py_ssize_t max_adapters = INSERT_SIZE_MAX_ADAPTERS;
+    static char *format = "|n:InsertSizeMetrics.__new__";
+    static char **keywords = {"max_adapters", NULL};
+    if (!PyArg_ParseTupleAndKeywords(
+        args, kwargs, format, keywords, &max_adapters
+    )) {
+        return NULL;
+    }
+
+    if (max_adapters < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "max_adapters must be at least 1, got %zd", 
+            max_adapters
+        );
+        return NULL;
+    }
+
+    InsertSizeMetrics *self = PyObject_New(InsertSizeMetrics, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    size_t hash_table_bits = (size_t)(log2(max_adapters * 1.5) + 1);
+
+    self->max_adapters = max_adapters;
+    self->insert_sizes_size = 300;
+    self->hash_table_read1_entries = 0;
+    self->hash_table_read2_entries = 0;
+    self->hash_table_size = 1 << hash_table_bits; 
+    self->hash_table_read1 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->hash_table_read2 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->insert_sizes = PyMem_Calloc(self->insert_sizes_size, sizeof(uint64_t));
+
+    if (self->hash_table_read1 == NULL || self->hash_table_read2 == NULL || 
+            self->insert_sizes == NULL) {
+        /* Memory gets freed in the dealloc method. */
+        Py_DECREF(self);
+        return PyErr_NoMemory();
+    }
+    return (PyObject *)self;
+}
+
 /*************************
  * MODULE INITIALIZATION *
  *************************/
