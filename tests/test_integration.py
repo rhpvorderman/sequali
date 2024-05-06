@@ -179,6 +179,59 @@ def test_paired_end_sequences(tmp_path):
     assert "summary_read2" in json_data
 
 
+def test_paired_end_sequences_read1_shorter(tmp_path):
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R1_001_shortened.fastq.gz")
+    fastq2 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    assert error.match("R2_001.fastq.gz has more FASTQ records")
+
+
+def test_paired_end_sequences_read2_shorter(tmp_path):
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R1_001.fastq.gz")
+    fastq2 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001_shortened.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    assert error.match("R1_001.fastq.gz has more FASTQ records")
+
+
+def test_paired_end_sequence_bam_format_read1(tmp_path):
+    fastq1 = (
+        TEST_DATA /
+        "project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa.markDuplicates.bam"
+    )
+    fastq2 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    error.match("Paired end mode is only supported for FASTQ files")
+
+
+def test_paired_end_sequence_bam_format_read2(tmp_path):
+    fastq2 = (
+        TEST_DATA /
+        "project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa.markDuplicates.bam"
+    )
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    error.match("Paired end mode is only supported for FASTQ files")
+
+
+def test_paired_end_sequences_mismatching_sequencing_technologies(tmp_path):
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R1_001.fastq.gz")
+    fastq2 = (TEST_DATA / "simple.fastq")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    error.match("Mismatching sequencing technologies")
+    error.match("illumina")
+    error.match("None")
+
+
 def test_version_command(capsys):
     sys.argv = ["", "--version"]
     with pytest.raises(SystemExit):
