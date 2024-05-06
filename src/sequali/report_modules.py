@@ -1371,7 +1371,8 @@ class OverRepresentedSequences(ReportModule):
                 "sequence_length": self.sequence_length,
                 "total_fragments": self.total_fragments,
                 "total_sequences": self.total_sequences,
-                "sampled_sequences": self.sampled_sequences}
+                "sampled_sequences": self.sampled_sequences,
+                "read_pair_info": self.read_pair_info}
 
     def from_dict(cls, d: Dict[str, List[Dict[str, Any]]]):
         overrepresented_sequences = d["overrepresented_sequences"]
@@ -1779,8 +1780,8 @@ def report_modules_to_dict(report_modules: Iterable[ReportModule]):
 
 
 def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
-    return [NAME_TO_CLASS[name].from_dict(
-                NAME_TO_CLASS[name], class_dict)  # type: ignore
+    return [NAME_TO_CLASS[name.removesuffix("_read2")].from_dict(
+                NAME_TO_CLASS[name.removesuffix("_read2")], class_dict)  # type: ignore
             for name, class_dict in d.items()]
 
 
