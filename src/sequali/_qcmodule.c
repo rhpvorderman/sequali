@@ -3872,7 +3872,7 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
 }
 
 static int 
-DedupEstimator_add_paired_sequence_ptr(
+DedupEstimator_add_sequence_pair_ptr(
     DedupEstimator *self, 
     uint8_t *sequence1, 
     Py_ssize_t sequence_length1,
@@ -3999,7 +3999,7 @@ DedupEstimator_add_record_array_pair(DedupEstimator *self, PyObject *const *args
         uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
         size_t sequence_length1 = meta1->sequence_length; 
         size_t sequence_length2 = meta2->sequence_length; 
-        int ret = DedupEstimator_add_paired_sequence_ptr(
+        int ret = DedupEstimator_add_sequence_pair_ptr(
             self, sequence1, sequence_length1, sequence2, sequence_length2);
         if (ret != 0) {
             return NULL;
@@ -4043,6 +4043,51 @@ DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence)
 }
 
 
+PyDoc_STRVAR(DedupEstimator_add_sequence_pair__doc__,
+"add__paired_sequence($self, sequence1, sequence2, /)\n"
+"--\n"
+"\n"
+"Add a paired sequence to the deduplication estimator. \n"
+"\n"
+"  sequence1\n"
+"    An ASCII string.\n"
+"  sequence2\n"
+"    An ASCII string.\n"
+);
+
+#define DedupEstimator_add_sequence_pair_method METH_VARARGS
+
+static PyObject *
+DedupEstimator_add_sequence_pair(DedupEstimator *self, PyObject *args) 
+{
+    PyObject *sequence1_obj = NULL; 
+    PyObject *sequence2_obj = NULL; 
+    if (!PyArg_ParseTuple(args, "UU|:add_sequence_pair", &sequence1_obj, &sequence2_obj)) {
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    uint8_t *sequence1 = PyUnicode_DATA(sequence1_obj);
+    uint8_t *sequence2 = PyUnicode_DATA(sequence2_obj);
+    Py_ssize_t sequence1_length = PyUnicode_GET_LENGTH(sequence1_obj);
+    Py_ssize_t sequence2_length = PyUnicode_GET_LENGTH(sequence2_obj);
+    if (DedupEstimator_add_sequence_pair_ptr(
+        self, sequence1, sequence1_length, sequence2, sequence2_length) != 0) {
+            return NULL;
+        }
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(DedupEstimator_duplication_counts__doc__,
 "duplication_counts($self)\n"
 "--\n"
@@ -4085,6 +4130,9 @@ static PyMethodDef DedupEstimator_methods[] = {
      DedupEstimator_add_record_array_pair__doc__},
     {"add_sequence", (PyCFunction)DedupEstimator_add_sequence, 
      DedupEstimator_add_sequence_method, DedupEstimator_add_sequence__doc__},
+    {"add_sequence_pair", (PyCFunction)DedupEstimator_add_sequence_pair, 
+     DedupEstimator_add_sequence_pair_method, 
+     DedupEstimator_add_sequence_pair__doc__},
     {"duplication_counts", (PyCFunction)DedupEstimator_duplication_counts, 
      DedupEstimator_duplication_counts_method, DedupEstimator_duplication_counts__doc__},
     {NULL},

@@ -143,3 +143,47 @@ def test_dedup_estimator_offsets_and_lengths(
     for sequence in input_sequences:
         dedup_est.add_sequence(sequence)
     assert set(dedup_est.duplication_counts()) == result
+
+
+@pytest.mark.parametrize(
+    ["front_sequence_length",
+     "front_sequence_offset",
+     "back_sequence_length",
+     "back_sequence_offset",
+     "result"
+     ],
+    [
+        (8, 0, 8, 0, {1, }),
+        (0, 0, 6, 0, {1, }),
+        (1, 6, 1, 1, {6, }),
+        (2, 6, 1, 1, {3, }),
+        (2, 6, 2, 0, {2, 1, }),
+        (1, 0, 0, 0, {1, }),
+        (0, 0, 1, 7, {6, }),
+    ],
+)
+def test_dedup_estimator_offsets_and_lengths_paired(
+        front_sequence_length,
+        front_sequence_offset,
+        back_sequence_length,
+        back_sequence_offset,
+        result,
+):
+    input_sequence_pairs = [
+        ("123456AC", "TA123451"),
+        ("234561AC", "AA234561"),
+        ("345612AC", "TA345611"),
+        ("456123AG", "AA456121"),
+        ("561234AG", "TA561231"),
+        ("612345AG", "AA612341"),
+    ]
+    dedup_est = DedupEstimator(
+        front_sequence_offset=front_sequence_offset,
+        front_sequence_length=front_sequence_length,
+        back_sequence_length=back_sequence_length,
+        back_sequence_offset=back_sequence_offset,
+        max_stored_fingerprints=100,
+    )
+    for sequence1, sequence2 in input_sequence_pairs:
+        dedup_est.add_sequence_pair(sequence1, sequence2)
+    assert set(dedup_est.duplication_counts()) == result
