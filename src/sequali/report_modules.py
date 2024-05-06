@@ -381,11 +381,11 @@ class Meta(ReportModule):
         if self.filename_read2 is not None and self.filesize_read2 is not None:
             content.write(f"""
                 <tr>
-                    <td>Filename</td>
+                    <td>Filename read 2</td>
                     <td><code>{self.filename_read2}</code></td>
                 </tr>
                 <tr>
-                    <td>Filesize</td>
+                    <td>Filesize read 2</td>
                     <td>{self.filesize_read2 / (1024 ** 3):.2f} GiB</td>
                 </tr>
             """)
