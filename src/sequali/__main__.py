@@ -250,7 +250,6 @@ def main() -> None:
             per_tile_quality1.add_record_array(record_array1)
             adapter_counter1.add_record_array(record_array1)
             sequence_duplication1.add_record_array(record_array1)
-            dedup_estimator.add_record_array(record_array1)
             nanostats1.add_record_array(record_array1)
             if paired:
                 record_array2 = reader2.read(len(record_array1))
@@ -267,10 +266,13 @@ def main() -> None:
                                 f"Mismatching names found! {r1.name()} "
                                 f"{r2.name()}")
                     raise RuntimeError("Mismatching names found!")
+                dedup_estimator.add_record_array_pair(record_array1, record_array2)
                 metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 adapter_counter2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+            else:
+                dedup_estimator.add_record_array(record_array1)
         if paired and len(reader2.read(1)) > 0:
             raise RuntimeError(
                 f"FASTQ Files out of sync {args.input_reverse} has "
