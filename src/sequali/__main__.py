@@ -223,10 +223,10 @@ def main() -> None:
         per_tile_quality2 = None
         sequence_duplication2 = None
     with contextlib.ExitStack() as exit_stack:
-        reader1 = NGSFile(args.input)
+        reader1 = NGSFile(args.input, threads - 1)
         exit_stack.enter_context(reader1)
         if paired:
-            reader2 = NGSFile(args.input_reverse)
+            reader2 = NGSFile(args.input_reverse, threads - 1)
             exit_stack.enter_context(reader2)
             if reader1.sequencing_technology != reader2.sequencing_technology:
                 raise RuntimeError(
