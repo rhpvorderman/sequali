@@ -3871,6 +3871,40 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
     return DedupEstimator_add_fingerprint(self, fingerprint, fingerprint_length, seed);
 }
 
+static int 
+DedupEstimator_add_paired_sequence_ptr(
+    DedupEstimator *self, 
+    uint8_t *sequence1, 
+    Py_ssize_t sequence_length1,
+    uint8_t *sequence2, 
+    Py_ssize_t sequence_length2
+) 
+{
+    Py_ssize_t front_sequence_length = self->front_sequence_length;
+    Py_ssize_t back_sequence_length = self->back_sequence_length;
+    Py_ssize_t front_sequence_offset = self->front_sequence_offset;
+    Py_ssize_t back_sequence_offset = self->back_sequence_offset;
+    Py_ssize_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    uint64_t seed = (sequence_length1 + sequence_length2) >> 6;
+    
+    // Ensure not more sequence is taken than available. 
+    front_sequence_length = Py_MIN(front_sequence_length, sequence_length1);
+    // Ensure that the offset is not beyond the length of the sequence.
+    Py_ssize_t front_offset = Py_MIN(
+        front_sequence_offset, (sequence_length1 - front_sequence_length));
+    // Same guarantees for sequence 2.
+    back_sequence_length = Py_MIN(back_sequence_length, sequence_length2);
+    Py_ssize_t back_offset = Py_MIN(
+        back_sequence_offset, (sequence_length2 - back_sequence_length));
+    
+    memcpy(fingerprint, sequence1 + front_offset, front_sequence_length);
+    memcpy(fingerprint + front_sequence_length, sequence2 + back_offset, 
+           back_sequence_length);
+    return DedupEstimator_add_fingerprint(self, fingerprint, fingerprint_length, seed);
+}
+
+
 PyDoc_STRVAR(DedupEstimator_add_record_array__doc__,
 "add_record_array($self, record_array, /)\n"
 "--\n"
@@ -3899,6 +3933,75 @@ DedupEstimator_add_record_array(DedupEstimator *self, FastqRecordArrayView *reco
         uint8_t *sequence = meta->record_start + meta->sequence_offset;
         size_t sequence_length = meta->sequence_length;
         if (DedupEstimator_add_sequence_ptr(self, sequence, sequence_length) != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(DedupEstimator_add_record_array_pair__doc__,
+"add_record_array_pair($self, record_array1, record_array2 /)\n"
+"--\n"
+"\n"
+"Add a pair of record arrays to the deduplication estimator. \n"
+"\n"
+"  record_array1\n"
+"    A FastqRecordArrayView object. First of read pair.\n"
+"  record_array2\n"
+"    A FastqRecordArrayView object. Second of read pair.\n"
+);
+
+#define DedupEstimator_add_record_array_pair_method METH_FASTCALL
+
+static PyObject *
+DedupEstimator_add_record_array_pair(DedupEstimator *self, PyObject *const *args, Py_ssize_t nargs) 
+{
+    if (nargs != 2) {
+        PyErr_Format(PyExc_TypeError, 
+                     "Dedupestimatorr.add_record_array_pair() "
+                     "takes exactly two arguments (%zd given)", 
+                     nargs);
+    }
+    FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
+    FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
+    if (!FastqRecordArrayView_CheckExact(record_array1)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array1 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array1)->tp_name
+        );
+        return NULL;
+    }    
+    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array2 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array2)->tp_name
+        );
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array1);
+    if (Py_SIZE(record_array2) != number_of_records) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "record_array1 and record_array2 must be of the same size. "
+            "Got %zd and %zd respectively.", 
+            number_of_records, Py_SIZE(record_array2)
+        );
+    }
+    struct FastqMeta *records1 = record_array1->records;
+    struct FastqMeta *records2 = record_array2->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta1 = records1 + i;
+        struct FastqMeta *meta2 = records2 + i; 
+        uint8_t *sequence1 = meta1->record_start + meta1->sequence_offset;
+        uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
+        size_t sequence_length1 = meta1->sequence_length; 
+        size_t sequence_length2 = meta2->sequence_length; 
+        int ret = DedupEstimator_add_paired_sequence_ptr(
+            self, sequence1, sequence_length1, sequence2, sequence_length2);
+        if (ret != 0) {
             return NULL;
         }
     }
@@ -3977,6 +4080,9 @@ DedupEstimator_duplication_counts(DedupEstimator *self, PyObject *Py_UNUSED(igno
 static PyMethodDef DedupEstimator_methods[] = {
     {"add_record_array", (PyCFunction)DedupEstimator_add_record_array, 
      DedupEstimator_add_record_array_method, DedupEstimator_add_record_array__doc__},
+    {"add_record_array_pair", (PyCFunction)DedupEstimator_add_record_array_pair, 
+     DedupEstimator_add_record_array_pair_method, 
+     DedupEstimator_add_record_array_pair__doc__},
     {"add_sequence", (PyCFunction)DedupEstimator_add_sequence, 
      DedupEstimator_add_sequence_method, DedupEstimator_add_sequence__doc__},
     {"duplication_counts", (PyCFunction)DedupEstimator_duplication_counts, 
