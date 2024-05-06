@@ -4690,6 +4690,98 @@ InsertSizeMetrics_add_adapter(InsertSizeMetrics *self, uint8_t *adapter, size_t 
     }
 }
 
+static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
+// Control characters
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+// Interpunction numbers etc
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+//        A    B    C    D    E    F    G 
+    'N', 'T', 'N', 'G', 'N', 'N', 'N', 'C',
+//   H    I    J    K    L    M    N    O
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+//   P    Q    R    S    T    U    V    W
+    'N', 'N', 'N', 'N', 'A', 'A', 'N', 'N',
+//   X    Y    Z 
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+//        a    b    c    d    e    f    g 
+    'N', 'T', 'N', 'G', 'N', 'N', 'N', 'C',
+//   h    i    j    k    l    m    n    o
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+//   p    q    r    s    t    u    v    w
+    'N', 'N', 'N', 'N', 'A', 'A', 'N', 'N',
+//   x    y    z 
+    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+};
+
+static inline void 
+reverse_complement(uint8_t *dest, const uint8_t *src, size_t length) 
+{
+    size_t dest_index = length;
+    for (size_t src_index=0; src_index<length; src_index++) {
+        dest_index -= 1; 
+        dest[dest_index] = NUCLEOTIDE_REVERSE_COMPLEMENT[src[src_index]];
+    }
+}
+
+static size_t 
+hamming_distance(const uint8_t *restrict sequence1, 
+                 const uint8_t *restrict sequence2, 
+                 size_t length)
+{
+    size_t distance = 0;
+    for (size_t i=0; i<length; i++) {
+        if (sequence1[i] != sequence2[i]) {
+            distance += 1;
+        }
+    }
+    return distance;
+}
+/**
+ * @brief Determine insert size between sequences by calculating the overlap.
+ * 
+ * @return Py_ssize_t 0, when no overlap could be determined.
+ */
+static Py_ssize_t 
+calculate_insert_size(uint8_t *sequence1, 
+                     size_t sequence1_length, 
+                     uint8_t *sequence2, 
+                     size_t sequence2_length) 
+{
+    if (sequence2_length < 16 || sequence1_length < 16) {
+        return 0;
+    }
+    uint8_t seq_store[32];
+    reverse_complement(seq_store, sequence2, 16);
+    uint64_t start1 = ((uint64_t *)seq_store)[0];
+    uint64_t start2 = ((uint64_t *)seq_store)[1];
+    reverse_complement(seq_store + 16, sequence2 + sequence2_length - 16, 16);
+    uint64_t end1 = ((uint64_t *)seq_store[2]);
+    uint64_t end2 = ((uint64_t *)seq_store[3]);
+
+    size_t run_length = sequence1_length - 15;
+    for(size_t i=0; i<run_length; i++) {
+        uint64_t word1 = ((uint64_t *)(sequence1 + i))[0];
+        uint64_t word2 = ((uint64_t *)(sequence1 + i))[1];
+        if (end1 == word1 || end2 == word2) {
+            if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
+                return i + sequence2_length;
+            }
+        }
+        if (start1 == word1 || end2 == word2) {
+            if (hamming_distance(sequence1 + i, seq_store, 16) <= 1) {
+                return i + 16;
+            }
+        }
+    }
+    return 0;  // No matches found.
+}
+
 
 /*************************
  * MODULE INITIALIZATION *
