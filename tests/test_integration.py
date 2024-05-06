@@ -232,6 +232,17 @@ def test_paired_end_sequences_mismatching_sequencing_technologies(tmp_path):
     error.match("None")
 
 
+def test_paired_end_names_mismatching(tmp_path):
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R1_001_names_changed.fastq.gz")
+    fastq2 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    with pytest.raises(RuntimeError) as error:
+        main()
+    error.match("ismatching names")
+    error.match("D00360:76:C672MANXX:3:1101:5469:2124X 1:N:0:1")
+    error.match("D00360:76:C672MANXX:3:1101:5469:2124 2:N:0:1")
+
+
 def test_version_command(capsys):
     sys.argv = ["", "--version"]
     with pytest.raises(SystemExit):
