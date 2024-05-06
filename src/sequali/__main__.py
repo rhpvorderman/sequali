@@ -225,6 +225,7 @@ def main() -> None:
     with contextlib.ExitStack() as exit_stack:
         reader1 = NGSFile(args.input, threads - 1)
         exit_stack.enter_context(reader1)
+        seqtech = reader1.sequencing_technology
         if paired:
             reader2 = NGSFile(args.input_reverse, threads - 1)
             exit_stack.enter_context(reader2)
@@ -236,8 +237,8 @@ def main() -> None:
             if not (reader1.format == "FASTQ" and reader2.format == "FASTQ"):
                 raise RuntimeError("Paired end mode is only supported for "
                                    "FASTQ files.")
-        adapters = list(adapters_from_file(args.adapter_file,
-                                           reader1.sequencing_technology))
+            seqtech = "illumina"  # Paired end is always illumina
+        adapters = list(adapters_from_file(args.adapter_file, seqtech))
         adapter_counter1 = AdapterCounter(
             adapter.sequence for adapter in adapters)
         if paired:
