@@ -118,7 +118,9 @@ READ2 = "Read 2"
 NOT_OF_PAIR = None
 
 
-def html_header(header: str, level: int):
+def html_header(header: str, level: int, prefix: Optional[str] = None):
+    if prefix is not None:
+        header = f"{prefix}: {header}"
     html_id = header.lower().replace(" ", "-")
     return f"""
         <h{level} id="{html_id}">
@@ -410,7 +412,7 @@ class Summary(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            {html_header("Summary", 1)}
+            {html_header("Summary", 1, self.read_pair_info)}
             <table>
             <tr><td>Mean length</td><td style="text-align:right;">
                 {self.mean_length:,.2f}</td><td></td></tr>
@@ -500,7 +502,8 @@ class SequenceLengthDistribution(ReportModule):
 
     def to_html(self):
         return f"""
-            {html_header("Sequence length distribution", 1)}
+            {html_header("Sequence length distribution", 1,
+                         self.read_pair_info)}
             {self.distribution_table()}
             {figurize_plot(self.plot())}
         """
@@ -592,7 +595,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 
     def to_html(self):
         return f"""
-            {html_header("Per position quality percentiles", 1)}
+            {html_header("Per position quality percentiles", 1,
+                         self.read_pair_info)}
             <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
@@ -724,7 +728,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
 
     def to_html(self):
         return f"""
-            {html_header("Per position quality score distribution", 1)}
+            {html_header("Per position quality score distribution",
+                         1, self.read_pair_info)}
             {figurize_plot(self.plot())}
         """
 
@@ -763,7 +768,8 @@ class PerSequenceAverageQualityScores(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            {html_header("Per sequence average quality scores", 1)}
+            {html_header("Per sequence average quality scores", 1,
+                         self.read_pair_info)}
             {self.quality_scores_table()}
             {figurize_plot(self.plot())}
         """
@@ -835,7 +841,8 @@ class PerPositionBaseContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-             {html_header("Per position base content", 1)}
+             {html_header("Per position base content", 1,
+                          self.read_pair_info)}
              {figurize_plot(self.plot())}
         """
 
@@ -913,7 +920,8 @@ class PerPositionNContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            {html_header("Per position N content", 1)}
+            {html_header("Per position N content", 1,
+                         self.read_pair_info)}
             {figurize_plot(self.plot())}
         """
 
@@ -957,7 +965,8 @@ class PerSequenceGCContent(ReportModule):
 
     def to_html(self) -> str:
         return f"""
-            {html_header("Per sequence GC content", 1)}
+            {html_header("Per sequence GC content", 1,
+                         self.read_pair_info)}
             <p class="explanation">
             For short reads with fixed size (i.e. Illumina) the plot will
             look very spiky due to the GC content calculation: GC bases / all
@@ -1012,7 +1021,7 @@ class AdapterContent(ReportModule):
 
     def to_html(self):
         return f"""
-            {html_header("Adapter content", 1)}
+            {html_header("Adapter content", 1, self.read_pair_info)}
             <p class="explanation">Only adapters that are present more than 0.1%
             are shown. Given the 12&#8239;bp
             length of the sequences used to estimate the content, values below this
@@ -1170,7 +1179,7 @@ class PerTileQualityReport(ReportModule):
         return scatter_plot
 
     def to_html(self) -> str:
-        header = html_header("Per tile quality", 1)
+        header = html_header("Per tile quality", 1, self.read_pair_info)
         if self.skipped_reason:
             return header + (f"Per tile quality skipped. Reason: "
                              f"{self.skipped_reason}.")
@@ -1378,7 +1387,8 @@ class OverRepresentedSequences(ReportModule):
                    read_pair_info=d["read_pair_info"])  # type: ignore
 
     def to_html(self) -> str:
-        header = html_header("Overrepresented sequences", 1)
+        header = html_header("Overrepresented sequences", 1,
+                             self.read_pair_info)
         if len(self.overrepresented_sequences) == 0:
             return header + "No overrepresented sequences."
         content = io.StringIO()
