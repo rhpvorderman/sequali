@@ -260,7 +260,7 @@ def sequence_names_match(name1: str, name2: str):
     id1_last_char = id1[-1]
     id2_last_char = id2[-1]
     if (id1_last_char == "1" and id2_last_char == "2") or (
-            id1_last_char == "2" or id2_last_char == "1"):
+            id1_last_char == "2" and id2_last_char == "1"):
         # Do not compare the /1 or /2 part at the end of paired end reads.
         id1 = id1[:-1]
         id2 = id2[:-1]

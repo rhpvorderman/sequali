@@ -19,7 +19,7 @@ import pytest
 from sequali import FastqRecordArrayView, FastqRecordView
 
 
-@pytest.mark.parametrize(["forward", "reverse", "expected"], [
+NAME_MATCH_TESTS = [
     ("same", "same", True),
     ("same1", "same2", True),
     ("same with comments", "same different comments", True),
@@ -31,7 +31,10 @@ from sequali import FastqRecordArrayView, FastqRecordView
     ("same1", "same3", False),
     ("same2", "same1", True),
     ("same2", "same5", False),
-])
+]
+
+
+@pytest.mark.parametrize(["forward", "reverse", "expected"], NAME_MATCH_TESTS)
 def test_names_are_mates(forward: str, reverse: str, expected: bool):
     forward_record = FastqRecordView(forward, "A", "A")
     reverse_record = FastqRecordView(reverse, "A", "A")
