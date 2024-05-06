@@ -17,11 +17,22 @@
 import io
 import os
 import string
-from typing import Callable, Iterator, List, Optional, SupportsIndex, Tuple
+from typing import (
+    BinaryIO,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    SupportsIndex,
+    Tuple,
+    Union,
+)
 
 import tqdm
 
-from ._qc import FastqRecordArrayView
+import xopen
+
+from ._qc import BamParser, FastqParser, FastqRecordArrayView
 
 
 try:
@@ -30,7 +41,7 @@ except ImportError:
     _ThreadedGzipReader = None  # type: ignore
 
 
-class ProgressUpdater():
+class ProgressUpdater:
     """
     A simple wrapper to update the progressbar based on the parsed
     FastqRecordArrayView objects.
@@ -68,10 +79,13 @@ class ProgressUpdater():
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def close(self):
         # Do one last update to ensure the entire progress bar is full
         self.tqdm.update(self._get_position() - self.previous_file_pos)
         self.tqdm.close()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def update(self, record_array: FastqRecordArrayView):
         self.current_processed_bytes += len(record_array.obj)
@@ -80,6 +94,54 @@ class ProgressUpdater():
             current_position = self._get_position()
             self.tqdm.update(current_position - self.previous_file_pos)
             self.previous_file_pos = current_position
+
+
+class NGSFile:
+    filepath: str
+    raw: io.BufferedReader
+    file: BinaryIO
+    progress: ProgressUpdater
+    reader: Union[BamParser, FastqParser]
+    sequencing_technology: Optional[str]
+    format: str
+
+    def __init__(self, filepath: str, threads: int = 0):
+        self.filepath = filepath
+        self.raw = open(filepath, "rb")  # type: ignore
+        self.progress = ProgressUpdater(self.raw)
+        self.file = xopen.xopen(self.raw, "rb", threads=threads)
+        if filepath.endswith(".bam") or (
+                hasattr(self.file, "peek") and self.file.peek(4)[:4] == b"BAM\1"):
+            self.reader = BamParser(self.file)
+            self.sequencing_technology = \
+                guess_sequencing_technology_from_bam_header(self.reader.header)
+            self.format = "BAM"
+        else:
+            self.reader = FastqParser(self.file)
+            self.sequencing_technology = \
+                guess_sequencing_technology_from_file(self.file)  # type: ignore
+            self.format = "FASTQ"
+
+    def __iter__(self):
+        for record_array in self.reader:
+            self.progress.update(record_array)
+            yield record_array
+
+    def read(self, number_of_records: int):
+        record_array = self.reader.read(number_of_records)  # type: ignore
+        self.progress.update(record_array)
+        return record_array
+
+    def close(self):
+        self.progress.close()
+        self.file.close()
+        self.raw.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 def fasta_parser(fasta_file: str) -> Iterator[Tuple[str, str]]:
@@ -190,3 +252,16 @@ def guess_sequencing_technology_from_bam_header(bam_header: bytes):
                     elif value == "Illumina":
                         return "illumina"
     return None
+
+
+def sequence_names_match(name1: str, name2: str):
+    id1 = name1.split(maxsplit=1)[0]
+    id2 = name2.split(maxsplit=1)[0]
+    id1_last_char = id1[-1]
+    id2_last_char = id2[-1]
+    if (id1_last_char == "1" and id2_last_char == "2") or (
+            id1_last_char == "2" and id2_last_char == "1"):
+        # Do not compare the /1 or /2 part at the end of paired end reads.
+        id1 = id1[:-1]
+        id2 = id2[:-1]
+    return id1 == id2
