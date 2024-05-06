@@ -168,6 +168,17 @@ def test_nanopore_disparate_dates(tmp_path):
     assert fastq_json.exists()
 
 
+def test_paired_end_sequences(tmp_path):
+    fastq1 = (TEST_DATA / "LTB-A-BC001_S1_L003_R1_001.fastq.gz")
+    fastq2 = (TEST_DATA / "LTB-A-BC001_S1_L003_R2_001.fastq.gz")
+    sys.argv = ["", "--dir", str(tmp_path), str(fastq1), str(fastq2)]
+    main()
+    fastq_json = tmp_path / "LTB-A-BC001_S1_L003_R1_001.fastq.gz.json"
+    assert fastq_json.exists()
+    json_data = json.loads(fastq_json.read_text())
+    assert "summary_read2" in json_data
+
+
 def test_version_command(capsys):
     sys.argv = ["", "--version"]
     with pytest.raises(SystemExit):
