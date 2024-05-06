@@ -43,6 +43,9 @@ from .report_modules import (calculate_stats, dict_to_report_modules,
                              report_modules_to_dict, write_html_report)
 from .util import NGSFile, sequence_names_match
 
+DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET = 0
+DEFAULT_FINGERPRINT_FRONT_SEQUENCE_PAIRED_OFFSET = 0
+
 
 def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -139,19 +142,23 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"the sequence. "
                              f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH}.")
     parser.add_argument("--fingerprint-front-offset", type=int,
-                        default=DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET,
                         metavar="LENGTH",
                         help=f"Set the offset for the front part of the "
                              f"deduplication fingerprint. Useful for avoiding "
                              f"adapter sequences. "
-                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET}.")
+                             f"Default: {DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET} "
+                             f"for single end, "
+                             f"{DEFAULT_FINGERPRINT_FRONT_SEQUENCE_PAIRED_OFFSET} "
+                             f"for paired sequences.")
     parser.add_argument("--fingerprint-back-offset", type=int,
-                        default=DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
                         metavar="LENGTH",
                         help=f"Set the offset for the back part of the "
                              f"deduplication fingerprint. Useful for avoiding "
                              f"adapter sequences. "
-                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET}.")
+                             f"Default: {DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET} "
+                             f"for single end, "
+                             f"{DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET} "
+                             f"for paired sequences.")
     parser.add_argument("-t", "--threads", type=int, default=2,
                         help="Number of threads to use. If greater than one "
                              "an additional thread for gzip "
@@ -181,6 +188,20 @@ def main() -> None:
         fragment_length=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
     )
+    if paired:
+        if args.fingerprint_front_offset is None:
+            args.fingerprint_front_offset = (
+                DEFAULT_FINGERPRINT_FRONT_SEQUENCE_PAIRED_OFFSET)
+        if args.fingerprint_back_offset is None:
+            args.fingerprint_back_offset = (
+                DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET)
+    else:
+        if args.fingerprint_front_offset is None:
+            args.fingerprint_front_offset = (
+                DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET)
+        if args.fingerprint_back_offset is None:
+            args.fingerprint_back_offset = (
+                DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET)
     dedup_estimator = DedupEstimator(
         max_stored_fingerprints=args.duplication_max_stored_fingerprints,
         front_sequence_length=args.fingerprint_front_length,
