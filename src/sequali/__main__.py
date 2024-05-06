@@ -58,9 +58,9 @@ def argument_parser() -> argparse.ArgumentParser:
                         nargs="?",
                         help="Second FASTQ file for Illumina paired-end reads."
                         )
-    parser.add_argument("--json", "--json1",
+    parser.add_argument("--json",
                         help="JSON output file. default: '<input>.json'.")
-    parser.add_argument("--html", "--html1",
+    parser.add_argument("--html",
                         help="HTML output file. default: '<input>.html'.")
     parser.add_argument("--outdir", "--dir", metavar="OUTDIR",
                         help="Output directory for the report files. default: "
