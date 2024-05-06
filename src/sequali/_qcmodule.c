@@ -3809,31 +3809,12 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
     return 0;
 }
 
-static int 
-DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
-                               uint8_t *sequence, size_t sequence_length) 
+static int DedupEstimator_add_fingerprint(DedupEstimator *self, 
+                                          uint8_t *fingerprint, 
+                                          size_t fingerprint_length, 
+                                          uint64_t seed) 
 {
-
-    uint64_t hash;
-    size_t front_sequence_length = self->front_sequence_length;
-    size_t back_sequence_length = self->back_sequence_length;
-    size_t front_sequence_offset = self->front_sequence_offset;
-    size_t back_sequence_offset = self->back_sequence_offset;
-    size_t fingerprint_length = front_sequence_length + back_sequence_length;
-    uint8_t *fingerprint = self->fingerprint_store;
-    if (sequence_length <= fingerprint_length) {
-        hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
-    } else {
-        uint64_t seed = sequence_length >> 6;
-        size_t remainder = sequence_length - fingerprint_length;
-        size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
-        size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
-        memcpy(fingerprint, sequence + front_offset, front_sequence_length);
-        memcpy(fingerprint + front_sequence_length, 
-               sequence + sequence_length - (back_offset + back_sequence_length), 
-               back_sequence_length);
-        hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
-    }
+    uint64_t hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
     if (hash & ignore_mask) {
@@ -3864,6 +3845,30 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
         index &= index_mask;
     }
     return 0;
+}
+
+static int 
+DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
+                               uint8_t *sequence, size_t sequence_length) 
+{
+    size_t front_sequence_length = self->front_sequence_length;
+    size_t back_sequence_length = self->back_sequence_length;
+    size_t front_sequence_offset = self->front_sequence_offset;
+    size_t back_sequence_offset = self->back_sequence_offset;
+    size_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    if (sequence_length <= fingerprint_length) {
+        return DedupEstimator_add_fingerprint(self, sequence, sequence_length, 0);
+    } 
+    uint64_t seed = sequence_length >> 6;
+    size_t remainder = sequence_length - fingerprint_length;
+    size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
+    size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
+    memcpy(fingerprint, sequence + front_offset, front_sequence_length);
+    memcpy(fingerprint + front_sequence_length, 
+            sequence + sequence_length - (back_offset + back_sequence_length), 
+            back_sequence_length);
+    return DedupEstimator_add_fingerprint(self, fingerprint, fingerprint_length, seed);
 }
 
 PyDoc_STRVAR(DedupEstimator_add_record_array__doc__,
