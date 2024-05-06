@@ -9,6 +9,9 @@ Changelog
 
 version 0.8.0-dev
 -----------------
++ Both reads from paired-end reads are taken into consideration when
+  evaluating the duplication rate.
++ Support for paired-end reads added.
 + Minor performance improvement by providing a non-temporal cache hint in the
   QCMetrics module.
 
