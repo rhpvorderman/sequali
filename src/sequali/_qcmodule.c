@@ -4573,7 +4573,7 @@ typedef struct _InsertSizeMetricsStruct {
     size_t hash_table_read1_entries;
     size_t hash_table_read2_entries;
     uint64_t *insert_sizes;
-    size_t insert_sizes_size; 
+    size_t max_insert_size; 
 } InsertSizeMetrics;
 
 static void
@@ -4611,7 +4611,7 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     size_t hash_table_bits = (size_t)(log2(max_adapters * 1.5) + 1);
 
     self->max_adapters = max_adapters;
-    self->insert_sizes_size = 300;
+    self->max_insert_size = 300;
     self->hash_table_read1_entries = 0;
     self->hash_table_read2_entries = 0;
     self->hash_table_size = 1 << hash_table_bits; 
@@ -4619,7 +4619,7 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                                           sizeof(struct AdapterTableEntry));
     self->hash_table_read2 = PyMem_Calloc(self->hash_table_size, 
                                           sizeof(struct AdapterTableEntry));
-    self->insert_sizes = PyMem_Calloc(self->insert_sizes_size, sizeof(uint64_t));
+    self->insert_sizes = PyMem_Calloc(self->max_insert_size, sizeof(uint64_t));
 
     if (self->hash_table_read1 == NULL || self->hash_table_read2 == NULL || 
             self->insert_sizes == NULL) {
@@ -4629,6 +4629,25 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     return (PyObject *)self;
 }
+
+static int 
+InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
+{
+    if (new_size <= self->max_insert_size) {
+        return 0;
+    }
+    size_t old_size = self->max_insert_size;
+    size_t new_raw_size = sizeof(uint64_t) * new_size;
+    uint64_t *tmp = PyMem_Realloc(self->insert_sizes, new_raw_size);
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    memset(tmp + old_size, 0, (new_size - old_size) * sizeof(uint64_t));
+    self->max_insert_size = new_size;
+    return 0;
+}
+
 
 /*************************
  * MODULE INITIALIZATION *
