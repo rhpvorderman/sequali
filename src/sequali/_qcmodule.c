@@ -4557,11 +4557,13 @@ static PyTypeObject NanoStats_Type = {
  ***********************/
 
 #define INSERT_SIZE_MAX_ADAPTERS 10000
+#define MAX_ADAPTER_STORE_SIZE 31
 
-static struct AdapterTableEntry {
-    uint64_t hash; 
-    uint8_t size; 
-    uint8_t adapter[31];
+struct AdapterTableEntry {
+    uint64_t hash;
+    uint64_t adapter_count; 
+    uint8_t adapter_length; 
+    uint8_t adapter[MAX_ADAPTER_STORE_SIZE];
 };
 
 typedef struct _InsertSizeMetricsStruct {
@@ -4588,7 +4590,7 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     Py_ssize_t max_adapters = INSERT_SIZE_MAX_ADAPTERS;
     static char *format = "|n:InsertSizeMetrics.__new__";
-    static char **keywords = {"max_adapters", NULL};
+    static char *keywords[] = {"max_adapters", NULL};
     if (!PyArg_ParseTupleAndKeywords(
         args, kwargs, format, keywords, &max_adapters
     )) {
@@ -4646,6 +4648,46 @@ InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
     memset(tmp + old_size, 0, (new_size - old_size) * sizeof(uint64_t));
     self->max_insert_size = new_size;
     return 0;
+}
+
+static inline void 
+InsertSizeMetrics_add_adapter(InsertSizeMetrics *self, uint8_t *adapter, size_t adapter_length, bool read2)
+{
+    assert(adapter_length <= MAX_ADAPTER_STORE_SIZE);
+    uint64_t hash = MurmurHash3_x64_64(adapter, adapter_length, 0);
+    size_t hash_table_size = self->hash_table_size;
+    struct AdapterTableEntry *hash_table = self->hash_table_read1;
+    size_t *current_entries = &self->hash_table_read1_entries;
+    if (read2) {
+        hash_table = self->hash_table_read2;
+        current_entries = &self->hash_table_read2_entries;
+    }
+    bool hash_table_full = *current_entries == self->max_adapters;  
+
+    size_t hash_to_index_int = hash_table_size - 1;  // Works because size is a power of 2.
+    size_t index = hash & hash_to_index_int;
+    while (true) {
+        struct AdapterTableEntry *entry = hash_table + index; 
+        uint64_t current_hash = entry->hash; 
+        if (current_hash == hash) {
+            if (adapter_length == entry->adapter_length && 
+                memcmp(adapter, entry->adapter, adapter_length) == 0) {
+                entry->adapter_count += 1;
+                current_entries[0] += 1;
+                return;
+            }
+        }
+        else if (entry->adapter_count == 0) {
+            if (!hash_table_full) {
+                entry->adapter_length = adapter_length;
+                memcpy(entry->adapter, adapter, adapter_length);
+                entry->adapter_count = 1;
+            }
+            return;
+        } 
+        index += 1;
+        index &= hash_to_index_int;
+    }
 }
 
 
