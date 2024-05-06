@@ -1780,8 +1780,8 @@ def report_modules_to_dict(report_modules: Iterable[ReportModule]):
 
 
 def dict_to_report_modules(d: Dict[str, Dict[str, Any]]) -> List[ReportModule]:
-    return [NAME_TO_CLASS[name.removesuffix("_read2")].from_dict(
-                NAME_TO_CLASS[name.removesuffix("_read2")], class_dict)  # type: ignore
+    return [NAME_TO_CLASS[name.replace("_read2", "")].from_dict(
+                NAME_TO_CLASS[name.replace("_read2", "")], class_dict)  # type: ignore
             for name, class_dict in d.items()]
 
 
