@@ -4743,7 +4743,7 @@ hamming_distance(const uint8_t *restrict sequence1,
  * 
  * @return Py_ssize_t 0, when no overlap could be determined.
  */
-static Py_ssize_t 
+static size_t 
 calculate_insert_size(uint8_t *sequence1, 
                      size_t sequence1_length,
                      uint8_t *sequence2, 
@@ -4775,7 +4775,7 @@ calculate_insert_size(uint8_t *sequence1,
                 return i + sequence2_length;
             }
         }
-        if (start1 == word1 || end2 == word2) {
+        if (start1 == word1 || start2 == word2) {
             if (hamming_distance(sequence1 + i, seq_store, 16) <= 1) {
                 return i + 16;
             }
