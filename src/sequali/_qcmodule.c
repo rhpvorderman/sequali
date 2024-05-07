@@ -4652,7 +4652,8 @@ InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
 }
 
 static inline void 
-InsertSizeMetrics_add_adapter(InsertSizeMetrics *self, uint8_t *adapter, size_t adapter_length, bool read2)
+InsertSizeMetrics_add_adapter(
+    InsertSizeMetrics *self, const uint8_t *adapter, size_t adapter_length, bool read2)
 {
     assert(adapter_length <= MAX_ADAPTER_STORE_SIZE);
     uint64_t hash = MurmurHash3_x64_64(adapter, adapter_length, 0);
@@ -4710,7 +4711,7 @@ static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
 };
 
 static inline void 
-reverse_complement(uint8_t *dest, const uint8_t *src, size_t length) 
+reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t length) 
 {
     size_t dest_index = length;
     for (size_t src_index=0; src_index<length; src_index++) {
@@ -4744,10 +4745,10 @@ hamming_distance(const uint8_t *restrict sequence1,
  * @return Py_ssize_t 0, when no overlap could be determined.
  */
 static size_t 
-calculate_insert_size(uint8_t *sequence1, 
-                     size_t sequence1_length,
-                     uint8_t *sequence2, 
-                     size_t sequence2_length) 
+calculate_insert_size(const uint8_t *restrict sequence1, 
+                      size_t sequence1_length,
+                      const uint8_t *restrict sequence2, 
+                      size_t sequence2_length) 
 {
     /* The needle size is 16. One error is allowed. By hardcoding is it can 
        be optimized by looking for 2 64-bit integers instead. At least one of 
@@ -4763,8 +4764,8 @@ calculate_insert_size(uint8_t *sequence1,
     uint64_t start1 = ((uint64_t *)seq_store)[0];
     uint64_t start2 = ((uint64_t *)seq_store)[1];
     reverse_complement(seq_store + 16, sequence2 + sequence2_length - 16, 16);
-    uint64_t end1 = ((uint64_t *)seq_store[2]);
-    uint64_t end2 = ((uint64_t *)seq_store[3]);
+    uint64_t end1 = ((uint64_t *)seq_store)[2];
+    uint64_t end2 = ((uint64_t *)seq_store)[3];
 
     size_t run_length = sequence1_length - 15;
     for(size_t i=0; i<run_length; i++) {
@@ -4784,6 +4785,165 @@ calculate_insert_size(uint8_t *sequence1,
     return 0;  // No matches found.
 }
 
+static int InsertSizeMetrics_add_sequence_pair_ptr(
+    InsertSizeMetrics *self, const uint8_t *sequence1, size_t sequence1_length, 
+    const uint8_t *sequence2, size_t sequence2_length)
+{
+    size_t insert_size = calculate_insert_size(sequence1, sequence1_length, 
+                                               sequence2, sequence2_length);
+    if (insert_size > self->max_insert_size) {
+        if (InsertSizeMetrics_resize(self, insert_size) != 0) {
+            return -1;
+        };
+    }
+    self->insert_sizes[insert_size] += 1;
+    Py_ssize_t remainder1 = (Py_ssize_t)sequence1_length - (Py_ssize_t)insert_size;
+    if (remainder1 > 0) {
+        InsertSizeMetrics_add_adapter(
+            self, sequence1 + insert_size, 
+            Py_MIN(remainder1, MAX_ADAPTER_STORE_SIZE), false);
+    }
+    Py_ssize_t remainder2 = (Py_ssize_t)sequence2_length - (Py_ssize_t)insert_size;
+    if (remainder1 > 0) {
+        InsertSizeMetrics_add_adapter(
+            self, sequence2 + insert_size, 
+            Py_MIN(remainder2, MAX_ADAPTER_STORE_SIZE), true);
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_sequence_pair__doc__,
+"add_sequence_pair($self, sequence1, sequence2, /)\n"
+"--\n"
+"\n"
+"Add a paired sequence to the insert size metrics. \n"
+"\n"
+"  sequence1\n"
+"    An ASCII string.\n"
+"  sequence2\n"
+"    An ASCII string.\n"
+);
+
+#define InsertSizeMetrics_add_sequence_pair_method METH_VARARGS
+
+static PyObject *
+InsertSizeMetrics_add_sequence_pair(InsertSizeMetrics *self, PyObject *args)
+{
+    PyObject *sequence1_obj = NULL;
+    PyObject *sequence2_obj = NULL;
+    if (!PyArg_ParseTuple(
+        args, "UU|:InsertSizeMetrics.add_sequence_pair", 
+        &sequence1_obj, &sequence2_obj)) {
+            return NULL;
+        }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj) || 
+        !PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, "Both sequences must be ASCII strings.");
+        return NULL;
+    }
+    int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+        self, 
+        PyUnicode_DATA(sequence1_obj),
+        PyUnicode_GET_LENGTH(sequence1_obj),
+        PyUnicode_DATA(sequence2_obj), 
+        PyUnicode_GET_LENGTH(sequence2_obj)
+    );
+    if (ret != 0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_record_array_pair__doc__,
+"add_record_array_pair($self, record_array1, record_array2 /)\n"
+"--\n"
+"\n"
+"Add a pair of record arrays to the insert size metrics. \n"
+"\n"
+"  record_array1\n"
+"    A FastqRecordArrayView object. First of read pair.\n"
+"  record_array2\n"
+"    A FastqRecordArrayView object. Second of read pair.\n"
+);
+
+#define InsertSizeMetrics_add_record_array_pair_method METH_FASTCALL
+
+static PyObject *
+InsertSizeMetrics_add_record_array_pair(
+    InsertSizeMetrics *self, PyObject *const *args, Py_ssize_t nargs) 
+{
+    if (nargs != 2) {
+        PyErr_Format(PyExc_TypeError, 
+                     "InsertSizeMetrics.add_record_array_pair() "
+                     "takes exactly two arguments, got %zd", 
+                      nargs);
+    }
+    FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
+    FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
+    if (!FastqRecordArrayView_CheckExact(record_array1)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array1 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array1)->tp_name
+        );
+        return NULL;
+    }    
+    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array2 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array2)->tp_name
+        );
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array1);
+    if (Py_SIZE(record_array2) != number_of_records) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "record_array1 and record_array2 must be of the same size. "
+            "Got %zd and %zd respectively.", 
+            number_of_records, Py_SIZE(record_array2)
+        );
+    }
+    struct FastqMeta *records1 = record_array1->records;
+    struct FastqMeta *records2 = record_array2->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta1 = records1 + i;
+        struct FastqMeta *meta2 = records2 + i; 
+        uint8_t *sequence1 = meta1->record_start + meta1->sequence_offset;
+        uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
+        size_t sequence_length1 = meta1->sequence_length; 
+        size_t sequence_length2 = meta2->sequence_length; 
+        int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+            self, sequence1, sequence_length1, sequence2, sequence_length2);
+        if (ret != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef InsertSizeMetrics_methods[] = {
+    {"add_sequence_pair", (PyCFunction)InsertSizeMetrics_add_sequence_pair, 
+     InsertSizeMetrics_add_sequence_pair_method, 
+     InsertSizeMetrics_add_sequence_pair__doc__},
+    {"add_record_array_pair", 
+     (PyCFunction)InsertSizeMetrics_add_record_array_pair,
+     InsertSizeMetrics_add_record_array_pair_method,
+     InsertSizeMetrics_add_record_array_pair__doc__,
+    },
+    {NULL},
+};
+
+static PyTypeObject InsertSizeMetrics_Type = {
+    .tp_name = "_qc.InsertSizeMetrics",
+    .tp_basicsize = sizeof(InsertSizeMetrics),
+    .tp_dealloc = (destructor)InsertSizeMetrics_dealloc,
+    .tp_flags= Py_TPFLAGS_DEFAULT,
+    .tp_new = InsertSizeMetrics__new__,
+    .tp_methods = InsertSizeMetrics_methods,
+};
 
 /*************************
  * MODULE INITIALIZATION *
@@ -4891,6 +5051,9 @@ PyInit__qc(void)
         return NULL;
     }
 
+    if (python_module_add_type(m, &InsertSizeMetrics_Type) != 0) {
+        return NULL;
+    }
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
     PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
