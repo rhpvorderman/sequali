@@ -4924,6 +4924,81 @@ InsertSizeMetrics_add_record_array_pair(
     Py_RETURN_NONE;
 }
 
+PyDoc_STRVAR(InsertSizeMetrics_insert_sizes__doc__,
+"insert_sizes($self)\n"
+"--\n"
+"\n"
+"Retrieve an array of the insert sizes.\n"
+);
+
+#define InsertSizeMetrics_insert_sizes_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_insert_sizes(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PythonArray_FromBuffer('Q', self->insert_sizes, 
+        (self->max_insert_size + 1) * sizeof(uint64_t));
+}
+
+static PyObject *adapter_hash_table_to_python_list(
+    struct AdapterTableEntry *hash_table, size_t hash_table_size)
+{
+    PyObject *adapter_list = PyList_New(0);
+    struct AdapterTableEntry *entries = hash_table;
+    for (size_t i=0; i<hash_table_size; i++) {
+        struct AdapterTableEntry *entry = entries + i; 
+        uint64_t adapter_count = entry->adapter_count;
+        if (adapter_count) {
+            PyObject *adapter_tuple = Py_BuildValue(
+                "(s#K)", 
+                entry->adapter, 
+                (Py_ssize_t)entry->adapter_length,
+                adapter_count
+            );
+            if (adapter_tuple == NULL) {
+                Py_DECREF(adapter_list);
+                return NULL;
+            }
+            if (PyList_Append(adapter_list, adapter_tuple) != 0) {
+                return NULL;
+            }
+        }
+    }
+    return adapter_list;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read1__doc__,
+"adapters_read1($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 1 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read1_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read1(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read1, self->hash_table_size);
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read2__doc__,
+"adapters_read2($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 2 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read2_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read2(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read2, self->hash_table_size);
+}
+
 static PyMethodDef InsertSizeMetrics_methods[] = {
     {"add_sequence_pair", (PyCFunction)InsertSizeMetrics_add_sequence_pair, 
      InsertSizeMetrics_add_sequence_pair_method, 
@@ -4933,6 +5008,16 @@ static PyMethodDef InsertSizeMetrics_methods[] = {
      InsertSizeMetrics_add_record_array_pair_method,
      InsertSizeMetrics_add_record_array_pair__doc__,
     },
+    {"insert_sizes", (PyCFunction)InsertSizeMetrics_insert_sizes, 
+     InsertSizeMetrics_insert_sizes_method, 
+     InsertSizeMetrics_insert_sizes__doc__},
+    {"adapters_read1", (PyCFunction)InsertSizeMetrics_adapters_read1,
+     InsertSizeMetrics_adapters_read1_method, 
+     InsertSizeMetrics_adapters_read1__doc__},
+    {"adapters_read2", (PyCFunction)InsertSizeMetrics_adapters_read2,
+     InsertSizeMetrics_adapters_read2_method, 
+     InsertSizeMetrics_adapters_read2__doc__},
+
     {NULL},
 };
 
