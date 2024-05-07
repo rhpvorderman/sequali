@@ -16,7 +16,7 @@
 
 import pytest
 
-from sequali._qc import InsertSizeMetrics
+from sequali._qc import INSERT_SIZE_MAX_ADAPTER_STORE_SIZE, InsertSizeMetrics
 
 ILLUMINA_ADAPTER_R1 = "AGATCGGAAGAGCACACGTCTGAACTCCAGTCA"
 ILLUMINA_ADAPTER_R2 = "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
@@ -66,9 +66,9 @@ def test_insert_size_metrics(sequence1, sequence2, insert_size):
         sequence2
     )
     assert insert_size_metrics.insert_sizes()[insert_size] == 1
-    adapter_1 = sequence1[insert_size:][:31]
+    adapter_1 = sequence1[insert_size:][:INSERT_SIZE_MAX_ADAPTER_STORE_SIZE]
     if adapter_1:
         assert dict(insert_size_metrics.adapters_read1()).get(adapter_1) == 1
-    adapter_2 = sequence2[insert_size:][:31]
+    adapter_2 = sequence2[insert_size:][:INSERT_SIZE_MAX_ADAPTER_STORE_SIZE]
     if adapter_2:
         assert dict(insert_size_metrics.adapters_read2()).get(adapter_2) == 1

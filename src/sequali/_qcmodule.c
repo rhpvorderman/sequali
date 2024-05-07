@@ -4557,24 +4557,27 @@ static PyTypeObject NanoStats_Type = {
  ***********************/
 
 #define INSERT_SIZE_MAX_ADAPTERS 10000
-#define MAX_ADAPTER_STORE_SIZE 31
+#define INSERT_SIZE_MAX_ADAPTER_STORE_SIZE 31
 
 struct AdapterTableEntry {
     uint64_t hash;
     uint64_t adapter_count; 
     uint8_t adapter_length; 
-    uint8_t adapter[MAX_ADAPTER_STORE_SIZE];
+    uint8_t adapter[INSERT_SIZE_MAX_ADAPTER_STORE_SIZE];
 };
 
 typedef struct _InsertSizeMetricsStruct {
     PyObject_HEAD 
+    uint64_t *insert_sizes;
+    uint64_t total_reads;
+    uint64_t number_of_adapters_read1;
+    uint64_t number_of_adapters_read2;
     struct AdapterTableEntry *hash_table_read1;
     struct AdapterTableEntry *hash_table_read2; 
     size_t max_adapters;
     size_t hash_table_size;
     size_t hash_table_read1_entries;
     size_t hash_table_read2_entries;
-    uint64_t *insert_sizes;
     size_t max_insert_size; 
 } InsertSizeMetrics;
 
@@ -4584,6 +4587,18 @@ InsertSizeMetrics_dealloc(InsertSizeMetrics *self) {
     PyMem_Free(self->hash_table_read2); 
     PyMem_Free(self->insert_sizes);
 }
+
+static PyMemberDef InsertSizeMetrics_members[] = {
+    {"total_reads", T_ULONGLONG, offsetof(InsertSizeMetrics, total_reads), 
+     READONLY, "the total number of reads"},
+    {"number_of_adapters_read1", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read1), READONLY, 
+      "The number off reads in read 1 with an adapter."},
+    {"number_of_adapters_read2", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read2), READONLY, 
+      "The number off reads in read 2 with an adapter."},
+    {NULL},
+};
 
 static PyObject *
 InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
@@ -4655,7 +4670,7 @@ static inline void
 InsertSizeMetrics_add_adapter(
     InsertSizeMetrics *self, const uint8_t *adapter, size_t adapter_length, bool read2)
 {
-    assert(adapter_length <= MAX_ADAPTER_STORE_SIZE);
+    assert(adapter_length <= INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
     uint64_t hash = MurmurHash3_x64_64(adapter, adapter_length, 0);
     size_t hash_table_size = self->hash_table_size;
     struct AdapterTableEntry *hash_table = self->hash_table_read1;
@@ -4790,6 +4805,7 @@ static int InsertSizeMetrics_add_sequence_pair_ptr(
     InsertSizeMetrics *self, const uint8_t *sequence1, size_t sequence1_length, 
     const uint8_t *sequence2, size_t sequence2_length)
 {
+    
     size_t insert_size = calculate_insert_size(sequence1, sequence1_length, 
                                                sequence2, sequence2_length);
     if (insert_size > self->max_insert_size) {
@@ -4797,18 +4813,21 @@ static int InsertSizeMetrics_add_sequence_pair_ptr(
             return -1;
         };
     }
+    self->total_reads += 1;
     self->insert_sizes[insert_size] += 1;
     Py_ssize_t remainder1 = (Py_ssize_t)sequence1_length - (Py_ssize_t)insert_size;
     if (remainder1 > 0) {
+        self->number_of_adapters_read1 += 1;
         InsertSizeMetrics_add_adapter(
             self, sequence1 + insert_size, 
-            Py_MIN(remainder1, MAX_ADAPTER_STORE_SIZE), false);
+            Py_MIN(remainder1, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), false);
     }
     Py_ssize_t remainder2 = (Py_ssize_t)sequence2_length - (Py_ssize_t)insert_size;
-    if (remainder1 > 0) {
+    if (remainder2 > 0) {
+        self->number_of_adapters_read2 += 1;
         InsertSizeMetrics_add_adapter(
             self, sequence2 + insert_size, 
-            Py_MIN(remainder2, MAX_ADAPTER_STORE_SIZE), true);
+            Py_MIN(remainder2, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), true);
     }
     return 0;
 }
@@ -5029,6 +5048,7 @@ static PyTypeObject InsertSizeMetrics_Type = {
     .tp_flags= Py_TPFLAGS_DEFAULT,
     .tp_new = InsertSizeMetrics__new__,
     .tp_methods = InsertSizeMetrics_methods,
+    .tp_members = InsertSizeMetrics_members,
 };
 
 /*************************
@@ -5158,5 +5178,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
+    PyModule_AddIntMacro(m, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
     return m;
 }

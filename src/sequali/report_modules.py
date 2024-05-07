@@ -35,7 +35,8 @@ import pygal  # type: ignore
 import pygal.style  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import (AdapterCounter, DedupEstimator, InsertSizeMetrics,
+from ._qc import (AdapterCounter, DedupEstimator,
+                  INSERT_SIZE_MAX_ADAPTER_STORE_SIZE, InsertSizeMetrics,
                   NanoStats, PerTileQuality, QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from ._version import __version__
@@ -1745,6 +1746,192 @@ class NanoStatsReport(ReportModule):
         """
 
 
+@dataclasses.dataclass
+class InsertSizeMetricsReport(ReportModule):
+
+    insert_sizes: Sequence[int]
+
+    @classmethod
+    def from_insert_size_metrics(cls, metrics: InsertSizeMetrics):
+        return cls(
+            insert_sizes=metrics.insert_sizes().tolist(),
+        )
+
+    def insert_sizes_plot(self):
+        insert_sizes_copy = list(self.insert_sizes)
+        insert_sizes_copy[0] = 0
+        plot = pygal.Bar(
+            title="Insert Sizes",
+            x_title="Insert size",
+            y_title="Number of reads",
+            style=ONE_SERIE_STYLE,
+            x_labels=list(range(len(insert_sizes_copy))),
+            x_labels_major_every=10,
+            show_minor_x_labels=False,
+            **COMMON_GRAPH_OPTIONS
+        )
+        plot.add("", insert_sizes_copy)
+        return plot
+
+    def to_html(self) -> str:
+        total_reads = sum(self.insert_sizes)
+        no_overlap_reads = self.insert_sizes[0]
+        return f"""
+            {html_header("Insert Sizes", 1)}
+            <p class="explanation">
+            Insert sizes are calculated by taking the first and last
+            16&#8239;bp from read 2. These are searched for in read 1 while
+            allowing at most 1 error. This method is very fast and reasonably
+            accurate, but does not account for long poly-G cycles.
+            </p>
+            <table>
+            <tr>
+                <td>Total reads</td>
+                <td style="text-align:right;">{total_reads:,}</td>
+            </tr>
+            <tr>
+                <td>Reads without overlap</td>
+                <td style="text-align:right;">{no_overlap_reads:,}</td>
+                <td style="text-align:right;">
+                    {no_overlap_reads / max(total_reads, 1):.2%}
+                </td>
+            </tr>
+            </table>
+            {figurize_plot(self.insert_sizes_plot())}
+        """
+
+
+@dataclasses.dataclass
+class AdapterFromOverlapReport(ReportModule):
+    total_reads: int
+    number_of_adapters_read1: int
+    number_of_adapters_read2: int
+    adapters_read1: Sequence[Tuple[str, int]]
+    adapters_read2: Sequence[Tuple[str, int]]
+    longest_adapter_read1: str
+    longest_adapter_read2: str
+    longest_adapter_read1_match: str
+    longest_adapter_read2_match: str
+
+    @staticmethod
+    def select_relevant_adapters(adapter_list: Sequence[Tuple[str, int]]):
+        """
+        Get the most prevalent adapters for each length. Sort the resulting
+        list on length.
+        """
+        # Sort list on count
+        sorted_list = sorted(adapter_list, reverse=True, key=lambda x: (x[1]))
+        new_list = []
+        lengths_to_get = set(range(1, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE + 1))
+        for adapter, count in sorted_list:
+            if len(adapter) in lengths_to_get:
+                lengths_to_get.remove(len(adapter))
+                new_list.append((adapter, count))
+        new_list.sort(key=lambda x: len(x[0]))
+        return new_list
+
+    @classmethod
+    def from_insert_size_metrics(cls, metrics: InsertSizeMetrics):
+        def contaminant_iterator():
+            for file in DEFAULT_CONTAMINANTS_FILES:
+                yield from fasta_parser(file)
+
+        sequence_index = create_sequence_index(contaminant_iterator(),
+                                               DEFAULT_K)
+        adapters_read1 = AdapterFromOverlapReport.select_relevant_adapters(
+                metrics.adapters_read1())
+        adapters_read2 = AdapterFromOverlapReport.select_relevant_adapters(
+            metrics.adapters_read2())
+        longest_adapter_read1 = adapters_read1[-1][0]
+        longest_adapter_read2 = adapters_read2[-1][0]
+        longest_adapter_read1_match = identify_sequence(
+            longest_adapter_read1, sequence_index)[2]
+        longest_adapter_read2_match = identify_sequence(
+            longest_adapter_read2, sequence_index)[2]
+        return cls(
+            total_reads=metrics.total_reads,
+            number_of_adapters_read1=metrics.number_of_adapters_read1,
+            number_of_adapters_read2=metrics.number_of_adapters_read2,
+            adapters_read1=adapters_read1,
+            adapters_read2=adapters_read2,
+            longest_adapter_read1=longest_adapter_read1,
+            longest_adapter_read2=longest_adapter_read2,
+            longest_adapter_read1_match=longest_adapter_read1_match,
+            longest_adapter_read2_match=longest_adapter_read2_match,
+        )
+
+    def to_html(self) -> str:
+        report = io.StringIO()
+        report.write(f"""
+            {html_header("Adapter Content", 1)}
+            <p class="explanation">
+                By calculating the overlap between reads it is possible to
+                determine where the adapter is.
+            </p>
+            <table>
+            <tr>
+                <td>Total reads</td>
+                <td style="text-align:right;">{self.total_reads:,}</td>
+                <td style="text-align:right;">
+                    {self.total_reads / max(self.total_reads, 1):.2%}
+                </td>
+            </tr>
+            <tr>
+                <td>Adapters in read 1</td>
+                <td style="text-align:right;">{self.number_of_adapters_read1:,}</td>
+                <td style="text-align:right;">
+                    {self.number_of_adapters_read1 / max(self.total_reads, 1):.2%}
+                </td>
+            </tr>
+            <tr>
+                <td>Adapters in read 2</td>
+                <td style="text-align:right;">{self.number_of_adapters_read2:,}</td>
+                <td style="text-align:right;">
+                    {self.number_of_adapters_read2 / max(self.total_reads, 1):.2%}
+                </td>
+            </tr>
+            </table>
+            <table><tr><th>Longest most frequent adapter</th>
+            <th>Adapter Sequence</th><th>Best match</th></tr>
+            <tr>
+                <td>Read 1</td>
+                <td>{self.longest_adapter_read1}</td>
+                <td>{self.longest_adapter_read1_match}</td>
+            </tr>
+            <tr>
+                <td>Read 2</td>
+                <td>{self.longest_adapter_read2}</td>
+                <td>{self.longest_adapter_read2_match}</td>
+            </tr>
+            </table>
+        """)
+
+        report.write(html_header("Adapters read 1", 2))
+        report.write("<table>")
+        report.write("<tr><th>Adapter</th><th>Count</th></tr>")
+        for adapter, count in self.adapters_read1:
+            report.write(
+                f"""<tr>
+                        <td>{adapter}</td>
+                        <td style="text-align:right;">{count}</td>
+                    </tr>
+                """)
+        report.write("</table>")
+
+        report.write(html_header("Adapters read 2", 2))
+        report.write("<table>")
+        report.write("<tr><th>Adapter</th><th>Count</th></tr>")
+        for adapter, count in self.adapters_read2:
+            report.write(
+                f"""<tr>
+                        <td>{adapter}</td>
+                        <td style="text-align:right;">{count}</td>
+                    </tr>
+                """)
+        report.write("</table>")
+        return report.getvalue()
+
+
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "meta": Meta,
     "summary": Summary,
@@ -1760,6 +1947,8 @@ NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "duplication_fractions": DuplicationCounts,
     "overrepresented_sequences": OverRepresentedSequences,
     "nanopore_metrics": NanoStatsReport,
+    "adapter_content_from_insert_sizes": AdapterFromOverlapReport,
+    "insert_size_metrics": InsertSizeMetricsReport,
 }
 
 CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
@@ -1955,11 +2144,15 @@ def calculate_stats(
         else:
             data_ranges_reverse = list(
                 equidistant_ranges(max_length_reverse, graph_resolution))
+        modules.append(
+            AdapterFromOverlapReport.from_insert_size_metrics(insert_size_metrics))
+        modules.append(
+            InsertSizeMetricsReport.from_insert_size_metrics(insert_size_metrics))
         modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse,
                                           read_pair_info=READ2))
-        PerTileQualityReport.from_per_tile_quality_and_ranges(
+        modules.append(PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality_reverse, data_ranges_reverse,
-            read_pair_info=READ2),
+            read_pair_info=READ2))
         modules.append(OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication_reverse,
             fraction_threshold=fraction_threshold,

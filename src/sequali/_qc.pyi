@@ -36,6 +36,7 @@ DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH: int
 DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH: int
 DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET: int
 DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET: int
+INSERT_SIZE_MAX_ADAPTER_STORE_SIZE: int
 
 
 class FastqRecordView:
@@ -160,6 +161,10 @@ class NanoStats:
 
 
 class InsertSizeMetrics:
+    total_reads: int
+    number_of_adapters_read1: int
+    number_of_adapters_read2: int
+
     def __init__(self): ...
     def add_sequence_pair(self, __sequence1: str, __sequence2: str) -> None: ...
     def add_record_array_pair(self,
