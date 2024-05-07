@@ -4691,32 +4691,21 @@ InsertSizeMetrics_add_adapter(InsertSizeMetrics *self, uint8_t *adapter, size_t 
 }
 
 static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
+// All non-ACGT become 0 so they don't match with N.
 // Control characters
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 // Interpunction numbers etc
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-//        A    B    C    D    E    F    G 
-    'N', 'T', 'N', 'G', 'N', 'N', 'N', 'C',
-//   H    I    J    K    L    M    N    O
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-//   P    Q    R    S    T    U    V    W
-    'N', 'N', 'N', 'N', 'A', 'A', 'N', 'N',
-//   X    Y    Z 
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-//        a    b    c    d    e    f    g 
-    'N', 'T', 'N', 'G', 'N', 'N', 'N', 'C',
-//   h    i    j    k    l    m    n    o
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
-//   p    q    r    s    t    u    v    w
-    'N', 'N', 'N', 'N', 'A', 'A', 'N', 'N',
-//   x    y    z 
-    'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N',
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      A,  B,  C,  D, E, F,  G,  H, I, J, K, L, M, N, O,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  P, Q, R, S,  T,  U,  V, W, X, Y, Z,  
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      a,  b,  c,  d, e, f,  g,  h, i, j, k, l, m, n, o,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  p, q, r, s,  t,  u,  v, w, x, y, z, 
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 };
 
 static inline void 
