@@ -2115,39 +2115,49 @@ def calculate_stats(
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     modules = [
         Meta.from_filepath(filename, filename_reverse),
-        *qc_metrics_modules(metrics, data_ranges, read_pair_info=read_pair_info1),
     ]
+    # Generic modules for both read1 and read2 come first.
+    if insert_size_metrics:
+        modules.append(
+            AdapterFromOverlapReport.from_insert_size_metrics(insert_size_metrics))
+        modules.append(
+            InsertSizeMetricsReport.from_insert_size_metrics(insert_size_metrics))
+    if filename_reverse:
+        modules.append(
+            DuplicationCounts.from_dedup_estimator(dedup_estimator),
+        )
+    modules.extend(qc_metrics_modules(metrics, data_ranges,
+                                      read_pair_info=read_pair_info1))
     if adapter_counter:
         modules.append(
             AdapterContent.from_adapter_counter_adapters_and_ranges(
                 adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1)
         )
-
-    modules.extend([
-        PerTileQualityReport.from_per_tile_quality_and_ranges(
-            per_tile_quality, data_ranges, read_pair_info=read_pair_info1),
-        DuplicationCounts.from_dedup_estimator(dedup_estimator),
+    modules.append(PerTileQualityReport.from_per_tile_quality_and_ranges(
+        per_tile_quality, data_ranges, read_pair_info=read_pair_info1),)
+    if not filename_reverse:
+        modules.append(
+            DuplicationCounts.from_dedup_estimator(dedup_estimator)
+        )
+    modules.append(
         OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication,
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
             max_threshold=max_threshold,
             read_pair_info=read_pair_info1,
-        ),
-        NanoStatsReport.from_nanostats(nanostats)
-    ])
-    if (metrics_reverse and insert_size_metrics
-            and per_tile_quality_reverse and sequence_duplication_reverse):
+        )
+    )
+
+    if (metrics_reverse and per_tile_quality_reverse and
+            sequence_duplication_reverse):
         max_length_reverse = metrics_reverse.max_length
         if max_length_reverse > 500:
             data_ranges_reverse = list(logarithmic_ranges(max_length_reverse))
         else:
             data_ranges_reverse = list(
                 equidistant_ranges(max_length_reverse, graph_resolution))
-        modules.append(
-            AdapterFromOverlapReport.from_insert_size_metrics(insert_size_metrics))
-        modules.append(
-            InsertSizeMetricsReport.from_insert_size_metrics(insert_size_metrics))
+
         modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse,
                                           read_pair_info=READ2))
         modules.append(PerTileQualityReport.from_per_tile_quality_and_ranges(
@@ -2160,4 +2170,6 @@ def calculate_stats(
             max_threshold=max_threshold,
             read_pair_info=READ2,
         ))
+
+    modules.append(NanoStatsReport.from_nanostats(nanostats))
     return modules
