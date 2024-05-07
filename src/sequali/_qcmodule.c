@@ -4739,10 +4739,16 @@ hamming_distance(const uint8_t *restrict sequence1,
  */
 static Py_ssize_t 
 calculate_insert_size(uint8_t *sequence1, 
-                     size_t sequence1_length, 
+                     size_t sequence1_length,
                      uint8_t *sequence2, 
                      size_t sequence2_length) 
 {
+    /* The needle size is 16. One error is allowed. By hardcoding is it can 
+       be optimized by looking for 2 64-bit integers instead. At least one of 
+       the 64-bit integers must find a match at a position if there is only one 
+       error. This is the pigeon hole principle. This way the sequence can be
+       searched quickly, while allowing errors. */
+ 
     if (sequence2_length < 16 || sequence1_length < 16) {
         return 0;
     }
