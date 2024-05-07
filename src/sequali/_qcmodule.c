@@ -4732,6 +4732,12 @@ hamming_distance(const uint8_t *restrict sequence1,
     }
     return distance;
 }
+
+/* Everything set except the bit for 32. This is the difference in ASCII 
+   between lowercase and uppercase. */
+
+#define UPPER_MASK 0xDFDFDFDFDFDFDFDFULL
+
 /**
  * @brief Determine insert size between sequences by calculating the overlap.
  * 
@@ -4762,8 +4768,8 @@ calculate_insert_size(uint8_t *sequence1,
 
     size_t run_length = sequence1_length - 15;
     for(size_t i=0; i<run_length; i++) {
-        uint64_t word1 = ((uint64_t *)(sequence1 + i))[0];
-        uint64_t word2 = ((uint64_t *)(sequence1 + i))[1];
+        uint64_t word1 = ((uint64_t *)(sequence1 + i))[0] & UPPER_MASK;
+        uint64_t word2 = ((uint64_t *)(sequence1 + i))[1] & UPPER_MASK;
         if (end1 == word1 || end2 == word2) {
             if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
                 return i + sequence2_length;
