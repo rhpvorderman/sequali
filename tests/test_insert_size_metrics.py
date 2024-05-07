@@ -48,6 +48,16 @@ ILLUMINA_ADAPTER_R2 = "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT"
         "TCGATAGCTGCAACGTGTAC" + ILLUMINA_ADAPTER_R2,
         20
     ),
+    (
+        "GTACACGTTGCAGCTATCGA" + ILLUMINA_ADAPTER_R1,
+        "tcgatagctgcaacgtgtac" + ILLUMINA_ADAPTER_R2,
+        20
+    ),
+    (
+        "GTACACGTTGCAGCTATCGA" + ILLUMINA_ADAPTER_R1,
+        "tcGatagCTgcaAcgtGtac" + ILLUMINA_ADAPTER_R2,
+        20
+    ),
 ])
 def test_insert_size_metrics(sequence1, sequence2, insert_size):
     insert_size_metrics = InsertSizeMetrics()
@@ -57,8 +67,6 @@ def test_insert_size_metrics(sequence1, sequence2, insert_size):
     )
     assert insert_size_metrics.insert_sizes()[insert_size] == 1
     adapter_1 = sequence1[insert_size:][:31]
-    print(insert_size_metrics.adapters_read1())
-    print(insert_size_metrics.adapters_read2())
     if adapter_1:
         assert dict(insert_size_metrics.adapters_read1()).get(adapter_1) == 1
     adapter_2 = sequence2[insert_size:][:31]
