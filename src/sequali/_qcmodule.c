@@ -4719,7 +4719,7 @@ reverse_complement(uint8_t *dest, const uint8_t *src, size_t length)
     }
 }
 
-static size_t 
+static inline size_t 
 hamming_distance(const uint8_t *restrict sequence1, 
                  const uint8_t *restrict sequence2, 
                  size_t length)
