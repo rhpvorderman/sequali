@@ -32,6 +32,7 @@ from ._qc import (
     DEFAULT_MAX_UNIQUE_FRAGMENTS,
     DEFAULT_UNIQUE_SAMPLE_EVERY,
     DedupEstimator,
+    InsertSizeMetrics,
     NanoStats,
     PerTileQuality,
     QCMetrics,
@@ -211,6 +212,7 @@ def main() -> None:
     )
 
     if paired:
+        insert_size_metrics = InsertSizeMetrics()
         metrics2 = QCMetrics()
         per_tile_quality2 = PerTileQuality()
         sequence_duplication2 = SequenceDuplication(
@@ -222,6 +224,7 @@ def main() -> None:
         metrics2 = None
         per_tile_quality2 = None
         sequence_duplication2 = None
+        insert_size_metrics = None
     with contextlib.ExitStack() as exit_stack:
         reader1 = NGSFile(args.input, threads - 1)
         exit_stack.enter_context(reader1)
@@ -238,18 +241,14 @@ def main() -> None:
                 raise RuntimeError("Paired end mode is only supported for "
                                    "FASTQ files.")
             seqtech = "illumina"  # Paired end is always illumina
+            adapter_counter1 = None
         adapters = list(adapters_from_file(args.adapter_file, seqtech))
-        adapter_counter1 = AdapterCounter(
-            adapter.sequence for adapter in adapters)
-        if paired:
-            adapter_counter2 = AdapterCounter(
+        if not paired:
+            adapter_counter1 = AdapterCounter(
                 adapter.sequence for adapter in adapters)
-        else:
-            adapter_counter2 = None
         for record_array1 in reader1:
             metrics1.add_record_array(record_array1)
             per_tile_quality1.add_record_array(record_array1)
-            adapter_counter1.add_record_array(record_array1)
             sequence_duplication1.add_record_array(record_array1)
             nanostats1.add_record_array(record_array1)
             if paired:
@@ -268,27 +267,28 @@ def main() -> None:
                                 f"{r2.name()}")
                     raise RuntimeError("Mismatching names found!")
                 dedup_estimator.add_record_array_pair(record_array1, record_array2)
+                insert_size_metrics.add_record_array_pair(record_array1, record_array2)  # type: ignore  # noqa: E501
                 metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                adapter_counter2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
             else:
+                adapter_counter1.add_record_array(record_array1)   # type: ignore  # noqa: E501
                 dedup_estimator.add_record_array(record_array1)
         if paired and len(reader2.read(1)) > 0:
             raise RuntimeError(
                 f"FASTQ Files out of sync {args.input_reverse} has "
                 f"more FASTQ records than {args.input}.")
     report_modules = calculate_stats(
-        args.input,
-        metrics1,
-        adapter_counter1,
-        per_tile_quality1,
-        sequence_duplication1,
-        dedup_estimator,
+        filename=args.input,
+        metrics=metrics1,
+        adapter_counter=adapter_counter1,
+        per_tile_quality=per_tile_quality1,
+        sequence_duplication=sequence_duplication1,
+        dedup_estimator=dedup_estimator,
         nanostats=nanostats1,
+        insert_size_metrics=insert_size_metrics,
         filename_reverse=args.input_reverse,
         metrics_reverse=metrics2,
-        adapter_counter_reverse=adapter_counter2,
         per_tile_quality_reverse=per_tile_quality2,
         sequence_duplication_reverse=sequence_duplication2,
         adapters=adapters,

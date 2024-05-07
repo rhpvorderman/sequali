@@ -4675,15 +4675,16 @@ InsertSizeMetrics_add_adapter(
             if (adapter_length == entry->adapter_length && 
                 memcmp(adapter, entry->adapter, adapter_length) == 0) {
                 entry->adapter_count += 1;
-                current_entries[0] += 1;
                 return;
             }
         }
         else if (entry->adapter_count == 0) {
             if (!hash_table_full) {
+                entry->hash = hash;
                 entry->adapter_length = adapter_length;
                 memcpy(entry->adapter, adapter, adapter_length);
                 entry->adapter_count = 1;
+                current_entries[0] += 1;
             }
             return;
         } 

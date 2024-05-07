@@ -35,8 +35,8 @@ import pygal  # type: ignore
 import pygal.style  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import (AdapterCounter, DedupEstimator, NanoStats, PerTileQuality,
-                  QCMetrics, SequenceDuplication)
+from ._qc import (AdapterCounter, DedupEstimator, InsertSizeMetrics,
+                  NanoStats, PerTileQuality, QCMetrics, SequenceDuplication)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from ._version import __version__
 from .adapters import Adapter
@@ -1902,15 +1902,15 @@ def qc_metrics_modules(metrics: QCMetrics,
 def calculate_stats(
         filename: str,
         metrics: QCMetrics,
-        adapter_counter: AdapterCounter,
         per_tile_quality: PerTileQuality,
         sequence_duplication: SequenceDuplication,
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
         adapters: List[Adapter],
+        adapter_counter: Optional[AdapterCounter] = None,
         filename_reverse: Optional[str] = None,
+        insert_size_metrics: Optional[InsertSizeMetrics] = None,
         metrics_reverse: Optional[QCMetrics] = None,
-        adapter_counter_reverse: Optional[AdapterCounter] = None,
         per_tile_quality_reverse: Optional[PerTileQuality] = None,
         sequence_duplication_reverse: Optional[SequenceDuplication] = None,
         graph_resolution: int = 200,
@@ -1927,8 +1927,14 @@ def calculate_stats(
     modules = [
         Meta.from_filepath(filename, filename_reverse),
         *qc_metrics_modules(metrics, data_ranges, read_pair_info=read_pair_info1),
-        AdapterContent.from_adapter_counter_adapters_and_ranges(
-            adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1),
+    ]
+    if adapter_counter:
+        modules.append(
+            AdapterContent.from_adapter_counter_adapters_and_ranges(
+                adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1)
+        )
+
+    modules.extend([
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality, data_ranges, read_pair_info=read_pair_info1),
         DuplicationCounts.from_dedup_estimator(dedup_estimator),
@@ -1940,8 +1946,8 @@ def calculate_stats(
             read_pair_info=read_pair_info1,
         ),
         NanoStatsReport.from_nanostats(nanostats)
-    ]
-    if (metrics_reverse and adapter_counter_reverse
+    ])
+    if (metrics_reverse and insert_size_metrics
             and per_tile_quality_reverse and sequence_duplication_reverse):
         max_length_reverse = metrics_reverse.max_length
         if max_length_reverse > 500:
@@ -1951,10 +1957,6 @@ def calculate_stats(
                 equidistant_ranges(max_length_reverse, graph_resolution))
         modules.extend(qc_metrics_modules(metrics_reverse, data_ranges_reverse,
                                           read_pair_info=READ2))
-        modules.append(AdapterContent.from_adapter_counter_adapters_and_ranges(
-            adapter_counter_reverse, adapters, data_ranges_reverse,
-            read_pair_info=READ2,
-        ))
         PerTileQualityReport.from_per_tile_quality_and_ranges(
             per_tile_quality_reverse, data_ranges_reverse,
             read_pair_info=READ2),
