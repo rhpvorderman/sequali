@@ -4770,14 +4770,14 @@ calculate_insert_size(uint8_t *sequence1,
     for(size_t i=0; i<run_length; i++) {
         uint64_t word1 = ((uint64_t *)(sequence1 + i))[0] & UPPER_MASK;
         uint64_t word2 = ((uint64_t *)(sequence1 + i))[1] & UPPER_MASK;
-        if (end1 == word1 || end2 == word2) {
-            if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
-                return i + sequence2_length;
-            }
-        }
         if (start1 == word1 || start2 == word2) {
             if (hamming_distance(sequence1 + i, seq_store, 16) <= 1) {
                 return i + 16;
+            }
+        }
+        if (end1 == word1 || end2 == word2) {
+            if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
+                return i + sequence2_length;
             }
         }
     }
