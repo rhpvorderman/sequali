@@ -4711,7 +4711,7 @@ InsertSizeMetrics_add_adapter(
     }
 }
 
-static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
+static const uint8_t NUCLEOTIDE_COMPLEMENT[128] = {
 // All non-ACGT become 0 so they don't match with N.
 // Control characters
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -4735,7 +4735,7 @@ reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t l
     size_t dest_index = length;
     for (size_t src_index=0; src_index<length; src_index++) {
         dest_index -= 1; 
-        dest[dest_index] = NUCLEOTIDE_REVERSE_COMPLEMENT[src[src_index]];
+        dest[dest_index] = NUCLEOTIDE_COMPLEMENT[src[src_index]];
     }
 }
 
@@ -4779,24 +4779,27 @@ calculate_insert_size(const uint8_t *restrict sequence1,
         return 0;
     }
     uint8_t seq_store[32];
-    reverse_complement(seq_store, sequence2, 16);
-    uint64_t start1 = ((uint64_t *)seq_store)[0];
-    uint64_t start2 = ((uint64_t *)seq_store)[1];
-    reverse_complement(seq_store + 16, sequence2 + sequence2_length - 16, 16);
-    uint64_t end1 = ((uint64_t *)seq_store)[2];
-    uint64_t end2 = ((uint64_t *)seq_store)[3];
+    uint8_t *start_seq = seq_store;
+    uint8_t *end_seq = ((uint8_t *)seq_store) + 16;
+    reverse_complement(start_seq, sequence2, 16);
+    reverse_complement(end_seq, sequence2 + sequence2_length - 16, 16);
+
+    uint64_t start1 = ((uint64_t *)start_seq)[0];
+    uint64_t start2 = ((uint64_t *)start_seq)[1];
+    uint64_t end1 = ((uint64_t *)end_seq)[0];
+    uint64_t end2 = ((uint64_t *)end_seq)[1];
 
     size_t run_length = sequence1_length - 15;
     for(size_t i=0; i<run_length; i++) {
         uint64_t word1 = ((uint64_t *)(sequence1 + i))[0] & UPPER_MASK;
         uint64_t word2 = ((uint64_t *)(sequence1 + i))[1] & UPPER_MASK;
         if (start1 == word1 || start2 == word2) {
-            if (hamming_distance(sequence1 + i, seq_store, 16) <= 1) {
+            if (hamming_distance(sequence1 + i, start_seq, 16) <= 1) {
                 return i + 16;
             }
         }
         if (end1 == word1 || end2 == word2) {
-            if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
+            if (hamming_distance(sequence1 + i, end_seq, 16) <= 1) {
                 return i + sequence2_length;
             }
         }
