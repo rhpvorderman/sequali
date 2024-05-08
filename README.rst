@@ -1,30 +1,33 @@
-.. image:: https://img.shields.io/pypi/v/sequali.svg
+.. |python-version-shield| image:: https://img.shields.io/pypi/v/sequali.svg
   :target: https://pypi.org/project/sequali/
   :alt:
 
-.. image:: https://img.shields.io/conda/v/bioconda/sequali.svg
+.. |conda-version-shield| image:: https://img.shields.io/conda/v/bioconda/sequali.svg
   :target: https://bioconda.github.io/recipes/sequali/README.html
   :alt:
 
-.. image:: https://img.shields.io/pypi/pyversions/sequali.svg
+.. |python-install-version-shield| image:: https://img.shields.io/pypi/pyversions/sequali.svg
   :target: https://pypi.org/project/sequali/
   :alt:
 
-.. image:: https://img.shields.io/pypi/l/sequali.svg
+.. |license-shield| image:: https://img.shields.io/pypi/l/sequali.svg
   :target: https://github.com/rhpvorderman/sequali/blob/main/LICENSE
   :alt:
 
-.. image:: https://readthedocs.org/projects/sequali/badge/?version=latest
+.. |docs-shield| image:: https://readthedocs.org/projects/sequali/badge/?version=latest
   :target: https://sequali.readthedocs.io/en/latest/?badge=latest
   :alt:
 
-.. image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
+.. |coverage-shield| image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
   :target: https://codecov.io/gh/rhpvorderman/sequali
   :alt:
 
-.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
+.. |zenodo-shield| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
   :target: https://doi.org/10.5281/zenodo.10854010
   :alt:
+
+|python-version-shield| |conda-version-shield| |python-install-version-shield|
+|license-shield| |docs-shield| |coverage-shield| |zenodo-shield|
 
 ========
 Sequali
