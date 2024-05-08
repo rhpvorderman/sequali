@@ -57,6 +57,8 @@ def main():
         (12, 1),
         (16, 0),
         (16, 1),
+        (16, 2),
+        (16, 3),
         (21, 1),
         (21, 2),
         (21, 3),
@@ -76,7 +78,7 @@ def main():
     lengths = (151, 8000, 20_000)
     print("probe\t\tProbe detection rate for amount of sequencing errors\tFalse positive rates for read length")
     print("length\terrors\t" + "\t".join(f"{e:>7.2%}" for e in error_rates) +
-          "\t" + "\t".join(f"{l:>7,}" for l in lengths))
+          "\t" + "\t".join(f"{l:>8,}" for l in lengths))
 
     for probe_length, allowed_errors in lengths_and_errors:
         detection_rates = "\t".join(
@@ -85,7 +87,7 @@ def main():
             match_probabilities(error_rates, probe_length, allowed_errors)
         )
         false_positive_rates = "\t".join(
-            f"{false_positive_rate(probe_length, l, allowed_errors):>7.3%}"
+            f"{false_positive_rate(probe_length, l, allowed_errors):>7.5%}"
             for l in lengths
         )
         print(f"{probe_length}\t{allowed_errors}\t{detection_rates}\t{false_positive_rates}")

@@ -14,15 +14,23 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Sequali.  If not, see <https://www.gnu.org/licenses/
 import collections
+import functools
 import os
 import typing
-from typing import Dict, Iterable, List, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Tuple, Union
+
+from .util import fasta_parser
 
 DEFAULT_K = 13
 
 CONTAMINANTS_DIR = os.path.join(os.path.dirname(__file__), "contaminants")
 DEFAULT_CONTAMINANTS_FILES = [f.path for f in os.scandir(CONTAMINANTS_DIR)
                               if f.name != "README"]
+
+
+def default_contaminant_iterator() -> Iterator[Tuple[str, str]]:
+    for file in DEFAULT_CONTAMINANTS_FILES:
+        yield from fasta_parser(file)
 
 
 def create_upper_table():
@@ -93,6 +101,12 @@ def create_sequence_index(
     return sequence_index
 
 
+@functools.lru_cache
+def create_default_sequence_index(k: int = DEFAULT_K
+                                  ) -> Dict[str, Union[List[str], str]]:
+    return create_sequence_index(default_contaminant_iterator(), k)
+
+
 def identify_sequence(
         sequence: str,
         sequence_index: Dict[str, Union[List[str], str]],
@@ -111,3 +125,13 @@ def identify_sequence(
     if matches:
         best_match, most_matches = matches[0]
     return most_matches, len(kmers), best_match
+
+
+def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
+    """
+    Identify a sequence using the builtin sequence libraries.
+    :return: A tuple of kmer matches, the max matches and a string containing
+             the best match.
+    """
+    sequence_index = create_default_sequence_index(k)
+    return identify_sequence(sequence, sequence_index, k)

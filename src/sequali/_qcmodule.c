@@ -49,6 +49,16 @@ static PyTypeObject *PythonArray;  // array.array
  * Utils *
  *********/
 
+static inline void non_temporal_prefetch(void *address)
+{
+    #ifdef __SSE2__
+    _mm_prefetch(address, _MM_HINT_NTA);
+    #else 
+    /* no-op for non-x86 architectures*/
+    return;
+    #endif
+}
+
 static PyObject *
 PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize) 
 {
@@ -581,6 +591,7 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
     FastqRecordArrayView *record_array = 
         (FastqRecordArrayView *)
         FastqRecordArrayView_FromPointerSizeAndObject(NULL, number_of_items, obj);
+    Py_DECREF(obj);  // Reference count increased by 1 by previous function.
     if (record_array == NULL) {
         Py_DECREF(obj); 
         return NULL;
@@ -635,6 +646,97 @@ FastqRecordArrayView_CheckExact(void *obj) {
     return Py_TYPE(obj) == &FastqRecordArrayView_Type;
 }
 
+/**
+ * @brief Compare two FASTQ record names to see if they are mates.
+ * 
+ * They are mates if their IDs are the same. The ID is the part before the 
+ * first whitespace. If the last symbol of both IDs is a '1' or '2' it is 
+ * ignored to allow 'record/1' and 'record/2' to match.
+ * 
+ * @param name1 Pointer to the first name
+ * @param name2 Pointer to the second name
+ * @param name2_length The length of the second name
+ */
+static inline bool 
+fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length) {
+    /* strcspn will return the length of the string if none of the complement 
+       characters is found, so name1_length is not necessary as a parameter.*/
+    size_t id_length = strcspn(name1, " \t\n");
+    if (name2_length < id_length) {
+        return false;
+    }  
+    if (name2_length > id_length) {
+        char id2_sep = name2[id_length];
+        if (!(id2_sep == ' ' || id2_sep == '\t' || id2_sep == '\n')) {
+            return false;
+        }
+    }
+    /* Make sure /1 and /2 endings are ignored. */
+    char id1_last_char = name1[id_length - 1];
+    if (id1_last_char == '1' || id1_last_char == '2') {
+        char id2_last_char = name2[id_length -1];
+        if (id2_last_char == '1' || id2_last_char == '2') {
+            id_length -= 1;
+        }
+    }
+    return memcmp(name1, name2, id_length) == 0;
+}
+
+PyDoc_STRVAR(FastqRecordArrayView_is_mate__doc__,
+"is_mate($self, other, /)\n"
+"--\n"
+"\n"
+"Check if the record IDs in this array view match with those in other.\n"
+"\n"
+"  other\n"
+"    Another FastqRecordArrayView object.\n"
+);
+
+#define FastqRecordArrayView_is_mate_method METH_O
+static PyObject *
+FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
+{
+    if (!FastqRecordArrayView_CheckExact(other_obj)) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "other must be of type FastqRecordArrayView, got %s",
+            Py_TYPE(other_obj)->tp_name
+        );
+        return NULL;
+    }
+    FastqRecordArrayView *other = (FastqRecordArrayView *)other_obj;
+    Py_ssize_t length = Py_SIZE(self);
+    if (length != Py_SIZE(other)) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "other is not the same length as this record array view. "
+            "This length: %zd, other length: %zd",
+            length, 
+            Py_SIZE(other)
+        );
+        return NULL;
+    }
+    struct FastqMeta *self_records = self->records;
+    struct FastqMeta *other_records = other->records;
+    for (Py_ssize_t i=0; i<length; i++) {
+        struct FastqMeta *record1 = self_records + i;
+        struct FastqMeta *record2 = other_records + i;
+        char *name1 = (char *)record1->record_start + 1;
+        char *name2 = (char *)record2->record_start + 1;
+        size_t name2_length = record2->name_length;
+        if (!fastq_names_are_mates(name1, name2, name2_length)) {
+            Py_RETURN_FALSE;
+        }
+    }
+    Py_RETURN_TRUE;
+}
+
+static PyMethodDef FastqRecordArrayView_methods[] = {
+    {"is_mate", (PyCFunction)FastqRecordArrayView_is_mate, 
+     FastqRecordArrayView_is_mate_method, FastqRecordArrayView_is_mate__doc__},
+    {NULL},
+};
+
 static PySequenceMethods FastqRecordArrayView_sequence_methods = {
     .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
     .sq_length = (lenfunc)FastqRecordArrayView__length__,
@@ -654,6 +756,7 @@ static PyTypeObject FastqRecordArrayView_Type = {
     .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
     .tp_new = FastqRecordArrayView__new__,
     .tp_members = FastqRecordArrayView_members,
+    .tp_methods = FastqRecordArrayView_methods,
 };
 
 
@@ -725,39 +828,73 @@ FastqParser__iter__(PyObject *self)
     return self;
 }
 
+static inline bool 
+buffer_contains_fastq(const uint8_t *buffer, size_t buffer_size)
+{
+    const uint8_t *buffer_end = buffer + buffer_size;
+    const uint8_t *buffer_pos = buffer;
+    /* Four newlines should be present in a FASTQ record. */
+    for (size_t i=0; i<4;i++) { 
+        buffer_pos = memchr(buffer_pos, '\n', buffer_end - buffer_pos);
+        if (buffer_pos == NULL) {
+            return false;
+        }
+        /* Skip the found newline */
+        buffer_pos += 1;
+    }
+    return true;
+}
+
 static PyObject *
-FastqParser__next__(FastqParser *self) 
+FastqParser_create_record_array(FastqParser *self, size_t min_records, size_t max_records)
 {
     uint8_t *record_start = self->record_start;
     uint8_t *buffer_end = self->buffer_end;
     size_t parsed_records = 0;
     PyObject *new_buffer_obj = NULL;
-    while (parsed_records == 0) {
+    while (parsed_records < min_records) {
         size_t leftover_size = buffer_end - record_start;
         size_t read_in_size;
-        if (leftover_size >= self->read_in_size) {
-        	// A FASTQ record does not fit, enlarge the buffer
-            read_in_size = self->read_in_size;
-        } else {
-        	// Fill up the buffer up to read_in_size
-        	read_in_size = self->read_in_size - leftover_size;
-        }
-        Py_ssize_t new_buffer_size = leftover_size + read_in_size;
+        size_t read_in_offset;
+        Py_ssize_t new_buffer_size;
+        size_t record_start_offset;
         if (new_buffer_obj == NULL) {
+            /* On the first loop create a new buffer and initialize it with 
+               the leftover from the last run of the function. */
+            new_buffer_size = self->read_in_size;
             new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
             if (new_buffer_obj == NULL) {
                 return NULL;
             }
             memcpy(PyBytes_AS_STRING(new_buffer_obj), record_start, leftover_size);
+        	read_in_size = new_buffer_size - leftover_size;
+            read_in_offset = leftover_size;
+            record_start_offset = 0;
         } else {
+            /* On subsequent loops, enlarge the buffer until the minimum 
+               amount of records fits. */
+            uint8_t *old_start = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+            record_start_offset = record_start - old_start;
+            size_t old_size = buffer_end - old_start;
+            new_buffer_size = old_size + self->read_in_size;
             if (_PyBytes_Resize(&new_buffer_obj, new_buffer_size) == -1) {
                 return NULL;
             }
+            /* Change the already parsed records to point to the new buffer. */
+            uint8_t *new_start = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+            struct FastqMeta *meta_buffer = self->meta_buffer;
+            for (size_t i=0; i < parsed_records; i++) {
+                struct FastqMeta *record = meta_buffer + i;
+                intptr_t record_offset = record->record_start - old_start;
+                record->record_start = new_start + record_offset;
+            }
+            read_in_size = self->read_in_size;
+            read_in_offset = old_size; 
         }
         uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
 
         PyObject *remaining_space_view = PyMemoryView_FromMemory(
-            (char *)new_buffer + leftover_size, read_in_size, PyBUF_WRITE);
+            (char *)new_buffer + read_in_offset, read_in_size, PyBUF_WRITE);
         if (remaining_space_view == NULL) {
             return NULL;
         }
@@ -774,7 +911,7 @@ FastqParser__next__(FastqParser *self)
             return NULL;
         }
         Py_DECREF(read_bytes_obj);
-        Py_ssize_t actual_buffer_size = leftover_size + read_bytes;
+        Py_ssize_t actual_buffer_size = read_in_offset + read_bytes;
         if (actual_buffer_size < new_buffer_size) {
             if (_PyBytes_Resize(&new_buffer_obj, actual_buffer_size) == -1) {
                 return NULL;
@@ -782,9 +919,9 @@ FastqParser__next__(FastqParser *self)
         }
         new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
         new_buffer_size = actual_buffer_size;
-        if (!string_is_ascii((char *)new_buffer + leftover_size, read_bytes)) {
+        if (!string_is_ascii((char *)new_buffer + read_in_offset, read_bytes)) {
             Py_ssize_t pos;
-            for (pos=leftover_size; pos<new_buffer_size; pos+=1) {
+            for (pos=read_in_offset; pos<new_buffer_size; pos+=1) {
                 if (new_buffer[pos] & ASCII_MASK_1BYTE) {
                     break;
                 }
@@ -798,23 +935,30 @@ FastqParser__next__(FastqParser *self)
         }
 
         if (new_buffer_size == 0) {
-            // Entire file is read
-            PyErr_SetNone(PyExc_StopIteration);
-            Py_DECREF(new_buffer_obj);
-            return NULL;
+            // Entire file is read.
+            break;
         } else if (read_bytes == 0) {
-            // Incomplete record at the end of file;
-            PyErr_Format(
-                PyExc_EOFError,
-                "Incomplete record at the end of file %s", 
-                new_buffer);
-            Py_DECREF(new_buffer_obj);
-            return NULL;
+            if (!buffer_contains_fastq(new_buffer, new_buffer_size)) {
+                // Incomplete record at the end of file;
+                PyErr_Format(
+                    PyExc_EOFError,
+                    "Incomplete record at the end of file %s", 
+                    new_buffer);
+                Py_DECREF(new_buffer_obj);
+                return NULL;
+            }
+            if (parsed_records) {
+                /* min_records not yet reached, but file contains no more
+                   records */
+                break;
+            }
+            /* At this point, there are still valid FASTQ records in the buffer 
+               but these have not been parsed yet.*/
         }
-        record_start = new_buffer;
-        buffer_end = record_start + new_buffer_size;
+        record_start = new_buffer + record_start_offset;
+        buffer_end = new_buffer + new_buffer_size;
 
-        while (1) {
+        while (parsed_records < max_records) {
             if (record_start + 2 >= buffer_end) {
                 break;
             }
@@ -896,14 +1040,63 @@ FastqParser__next__(FastqParser *self)
             record_start = qualities_end + 1;
         }
     }
+    /* Save the current buffer object so any leftovers can be reused at the 
+       next invocation. */
     PyObject *tmp = self->buffer_obj;
     self->buffer_obj = new_buffer_obj;
     Py_DECREF(tmp);
+    /* Save record start and buffer end for next invocation. */
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     return FastqRecordArrayView_FromPointerSizeAndObject(
         self->meta_buffer, parsed_records, new_buffer_obj);
 }
+
+static PyObject * 
+FastqParser__next__(FastqParser *self)
+{
+    PyObject *ret = FastqParser_create_record_array(self, 1, SIZE_MAX);
+    if ((ret != NULL) && (Py_SIZE(ret) == 0)) {
+        PyErr_SetNone(PyExc_StopIteration);
+        Py_DECREF(ret);
+        return NULL;
+    }
+    return ret;
+}
+
+
+PyDoc_STRVAR(FastqParser_read__doc__,
+"read($self, number_of_records, /)\n"
+"--\n"
+"\n"
+"Read a number of records into a count array.\n"
+"\n"
+"  Number_of_records\n"
+"    Number_of_records that should be attempted to read.\n"
+);
+
+#define FastqParser_read_method METH_O
+
+static PyObject *
+FastqParser_read(FastqParser *self, PyObject *number_of_records_obj) 
+{
+    Py_ssize_t number_of_records = PyLong_AsSsize_t(number_of_records_obj);
+    if (number_of_records < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "number_of_records should be greater than 1, got %zd",
+            number_of_records
+        );
+        return NULL; 
+    }
+    return FastqParser_create_record_array(self, number_of_records, number_of_records);
+}
+
+static PyMethodDef FastqParser_methods[] = {
+    {"read", (PyCFunction)FastqParser_read, FastqParser_read_method, 
+     FastqParser_read__doc__},
+    {NULL},
+};
 
 PyTypeObject FastqParser_Type = {
     .tp_name = "_qc.FastqParser",
@@ -912,6 +1105,7 @@ PyTypeObject FastqParser_Type = {
     .tp_new = FastqParser__new__,
     .tp_iter = (iternextfunc)FastqParser__iter__,
     .tp_iternext = (iternextfunc)FastqParser__next__,
+    .tp_methods = FastqParser_methods,
 };
 
 /**************
@@ -1471,16 +1665,25 @@ QCMetrics_flush_staging(QCMetrics *self) {
     uint64_t *base_counts = (uint64_t *)self->base_counts;
     uint16_t *staging_base_counts = (uint16_t *)self->staging_base_counts;
     size_t number_of_base_slots = self->max_length * NUC_TABLE_SIZE;
+    /* base counts is only updated once every 65535 times. So make sure it 
+       does not pollute the cache and use non temporal prefetching. The 
+       same goes for phred counts.
+    */
+    non_temporal_prefetch(base_counts);
     for (size_t i=0; i < number_of_base_slots; i++) {
         base_counts[i] += staging_base_counts[i];
+        /* Fetch the next 64 byte cache line non-temporal. */
+        non_temporal_prefetch(base_counts + i + 8);
     }
     memset(staging_base_counts, 0, number_of_base_slots * sizeof(uint16_t));
 
     uint64_t *phred_counts = (uint64_t *)self->phred_counts;
     uint16_t *staging_phred_counts = (uint16_t *)self->staging_phred_counts;
     size_t number_of_phred_slots = self->max_length * PHRED_TABLE_SIZE;
+    non_temporal_prefetch(phred_counts);
     for (size_t i=0; i < number_of_phred_slots; i++) {
         phred_counts[i] += staging_phred_counts[i];
+        non_temporal_prefetch(phred_counts + i + 8);
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
@@ -3606,31 +3809,12 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
     return 0;
 }
 
-static int 
-DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
-                               uint8_t *sequence, size_t sequence_length) 
+static int DedupEstimator_add_fingerprint(DedupEstimator *self, 
+                                          uint8_t *fingerprint, 
+                                          size_t fingerprint_length, 
+                                          uint64_t seed) 
 {
-
-    uint64_t hash;
-    size_t front_sequence_length = self->front_sequence_length;
-    size_t back_sequence_length = self->back_sequence_length;
-    size_t front_sequence_offset = self->front_sequence_offset;
-    size_t back_sequence_offset = self->back_sequence_offset;
-    size_t fingerprint_length = front_sequence_length + back_sequence_length;
-    uint8_t *fingerprint = self->fingerprint_store;
-    if (sequence_length <= fingerprint_length) {
-        hash = MurmurHash3_x64_64(sequence, sequence_length, 0);
-    } else {
-        uint64_t seed = sequence_length >> 6;
-        size_t remainder = sequence_length - fingerprint_length;
-        size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
-        size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
-        memcpy(fingerprint, sequence + front_offset, front_sequence_length);
-        memcpy(fingerprint + front_sequence_length, 
-               sequence + sequence_length - (back_offset + back_sequence_length), 
-               back_sequence_length);
-        hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
-    }
+    uint64_t hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
     size_t modulo_bits = self->modulo_bits;
     size_t ignore_mask = (1ULL << modulo_bits) - 1;
     if (hash & ignore_mask) {
@@ -3663,6 +3847,64 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self,
     return 0;
 }
 
+static int 
+DedupEstimator_add_sequence_ptr(DedupEstimator *self, 
+                               uint8_t *sequence, size_t sequence_length) 
+{
+    size_t front_sequence_length = self->front_sequence_length;
+    size_t back_sequence_length = self->back_sequence_length;
+    size_t front_sequence_offset = self->front_sequence_offset;
+    size_t back_sequence_offset = self->back_sequence_offset;
+    size_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    if (sequence_length <= fingerprint_length) {
+        return DedupEstimator_add_fingerprint(self, sequence, sequence_length, 0);
+    } 
+    uint64_t seed = sequence_length >> 6;
+    size_t remainder = sequence_length - fingerprint_length;
+    size_t front_offset = Py_MIN(remainder / 2, front_sequence_offset);
+    size_t back_offset = Py_MIN(remainder / 2, back_sequence_offset);
+    memcpy(fingerprint, sequence + front_offset, front_sequence_length);
+    memcpy(fingerprint + front_sequence_length, 
+            sequence + sequence_length - (back_offset + back_sequence_length), 
+            back_sequence_length);
+    return DedupEstimator_add_fingerprint(self, fingerprint, fingerprint_length, seed);
+}
+
+static int 
+DedupEstimator_add_sequence_pair_ptr(
+    DedupEstimator *self, 
+    uint8_t *sequence1, 
+    Py_ssize_t sequence_length1,
+    uint8_t *sequence2, 
+    Py_ssize_t sequence_length2
+) 
+{
+    Py_ssize_t front_sequence_length = self->front_sequence_length;
+    Py_ssize_t back_sequence_length = self->back_sequence_length;
+    Py_ssize_t front_sequence_offset = self->front_sequence_offset;
+    Py_ssize_t back_sequence_offset = self->back_sequence_offset;
+    Py_ssize_t fingerprint_length = front_sequence_length + back_sequence_length;
+    uint8_t *fingerprint = self->fingerprint_store;
+    uint64_t seed = (sequence_length1 + sequence_length2) >> 6;
+    
+    // Ensure not more sequence is taken than available. 
+    front_sequence_length = Py_MIN(front_sequence_length, sequence_length1);
+    // Ensure that the offset is not beyond the length of the sequence.
+    Py_ssize_t front_offset = Py_MIN(
+        front_sequence_offset, (sequence_length1 - front_sequence_length));
+    // Same guarantees for sequence 2.
+    back_sequence_length = Py_MIN(back_sequence_length, sequence_length2);
+    Py_ssize_t back_offset = Py_MIN(
+        back_sequence_offset, (sequence_length2 - back_sequence_length));
+    
+    memcpy(fingerprint, sequence1 + front_offset, front_sequence_length);
+    memcpy(fingerprint + front_sequence_length, sequence2 + back_offset, 
+           back_sequence_length);
+    return DedupEstimator_add_fingerprint(self, fingerprint, fingerprint_length, seed);
+}
+
+
 PyDoc_STRVAR(DedupEstimator_add_record_array__doc__,
 "add_record_array($self, record_array, /)\n"
 "--\n"
@@ -3691,6 +3933,75 @@ DedupEstimator_add_record_array(DedupEstimator *self, FastqRecordArrayView *reco
         uint8_t *sequence = meta->record_start + meta->sequence_offset;
         size_t sequence_length = meta->sequence_length;
         if (DedupEstimator_add_sequence_ptr(self, sequence, sequence_length) != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+
+PyDoc_STRVAR(DedupEstimator_add_record_array_pair__doc__,
+"add_record_array_pair($self, record_array1, record_array2 /)\n"
+"--\n"
+"\n"
+"Add a pair of record arrays to the deduplication estimator. \n"
+"\n"
+"  record_array1\n"
+"    A FastqRecordArrayView object. First of read pair.\n"
+"  record_array2\n"
+"    A FastqRecordArrayView object. Second of read pair.\n"
+);
+
+#define DedupEstimator_add_record_array_pair_method METH_FASTCALL
+
+static PyObject *
+DedupEstimator_add_record_array_pair(DedupEstimator *self, PyObject *const *args, Py_ssize_t nargs) 
+{
+    if (nargs != 2) {
+        PyErr_Format(PyExc_TypeError, 
+                     "Dedupestimatorr.add_record_array_pair() "
+                     "takes exactly two arguments (%zd given)", 
+                     nargs);
+    }
+    FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
+    FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
+    if (!FastqRecordArrayView_CheckExact(record_array1)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array1 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array1)->tp_name
+        );
+        return NULL;
+    }    
+    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array2 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array2)->tp_name
+        );
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array1);
+    if (Py_SIZE(record_array2) != number_of_records) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "record_array1 and record_array2 must be of the same size. "
+            "Got %zd and %zd respectively.", 
+            number_of_records, Py_SIZE(record_array2)
+        );
+    }
+    struct FastqMeta *records1 = record_array1->records;
+    struct FastqMeta *records2 = record_array2->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta1 = records1 + i;
+        struct FastqMeta *meta2 = records2 + i; 
+        uint8_t *sequence1 = meta1->record_start + meta1->sequence_offset;
+        uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
+        size_t sequence_length1 = meta1->sequence_length; 
+        size_t sequence_length2 = meta2->sequence_length; 
+        int ret = DedupEstimator_add_sequence_pair_ptr(
+            self, sequence1, sequence_length1, sequence2, sequence_length2);
+        if (ret != 0) {
             return NULL;
         }
     }
@@ -3732,6 +4043,51 @@ DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence)
 }
 
 
+PyDoc_STRVAR(DedupEstimator_add_sequence_pair__doc__,
+"add__paired_sequence($self, sequence1, sequence2, /)\n"
+"--\n"
+"\n"
+"Add a paired sequence to the deduplication estimator. \n"
+"\n"
+"  sequence1\n"
+"    An ASCII string.\n"
+"  sequence2\n"
+"    An ASCII string.\n"
+);
+
+#define DedupEstimator_add_sequence_pair_method METH_VARARGS
+
+static PyObject *
+DedupEstimator_add_sequence_pair(DedupEstimator *self, PyObject *args) 
+{
+    PyObject *sequence1_obj = NULL; 
+    PyObject *sequence2_obj = NULL; 
+    if (!PyArg_ParseTuple(args, "UU|:add_sequence_pair", &sequence1_obj, &sequence2_obj)) {
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, 
+            "sequence should consist only of ASCII characters.");
+        return NULL;
+    }
+    uint8_t *sequence1 = PyUnicode_DATA(sequence1_obj);
+    uint8_t *sequence2 = PyUnicode_DATA(sequence2_obj);
+    Py_ssize_t sequence1_length = PyUnicode_GET_LENGTH(sequence1_obj);
+    Py_ssize_t sequence2_length = PyUnicode_GET_LENGTH(sequence2_obj);
+    if (DedupEstimator_add_sequence_pair_ptr(
+        self, sequence1, sequence1_length, sequence2, sequence2_length) != 0) {
+            return NULL;
+        }
+    Py_RETURN_NONE;
+}
+
 PyDoc_STRVAR(DedupEstimator_duplication_counts__doc__,
 "duplication_counts($self)\n"
 "--\n"
@@ -3769,8 +4125,14 @@ DedupEstimator_duplication_counts(DedupEstimator *self, PyObject *Py_UNUSED(igno
 static PyMethodDef DedupEstimator_methods[] = {
     {"add_record_array", (PyCFunction)DedupEstimator_add_record_array, 
      DedupEstimator_add_record_array_method, DedupEstimator_add_record_array__doc__},
+    {"add_record_array_pair", (PyCFunction)DedupEstimator_add_record_array_pair, 
+     DedupEstimator_add_record_array_pair_method, 
+     DedupEstimator_add_record_array_pair__doc__},
     {"add_sequence", (PyCFunction)DedupEstimator_add_sequence, 
      DedupEstimator_add_sequence_method, DedupEstimator_add_sequence__doc__},
+    {"add_sequence_pair", (PyCFunction)DedupEstimator_add_sequence_pair, 
+     DedupEstimator_add_sequence_pair_method, 
+     DedupEstimator_add_sequence_pair__doc__},
     {"duplication_counts", (PyCFunction)DedupEstimator_duplication_counts, 
      DedupEstimator_duplication_counts_method, DedupEstimator_duplication_counts__doc__},
     {NULL},
@@ -4190,6 +4552,517 @@ static PyTypeObject NanoStats_Type = {
     .tp_members = NanoStats_members,
 };
 
+/***********************
+ * INSERT SIZE METRICS * 
+ ***********************/
+
+#define INSERT_SIZE_MAX_ADAPTERS 10000
+#define INSERT_SIZE_MAX_ADAPTER_STORE_SIZE 31
+
+struct AdapterTableEntry {
+    uint64_t hash;
+    uint64_t adapter_count; 
+    uint8_t adapter_length; 
+    uint8_t adapter[INSERT_SIZE_MAX_ADAPTER_STORE_SIZE];
+};
+
+typedef struct _InsertSizeMetricsStruct {
+    PyObject_HEAD 
+    uint64_t *insert_sizes;
+    uint64_t total_reads;
+    uint64_t number_of_adapters_read1;
+    uint64_t number_of_adapters_read2;
+    struct AdapterTableEntry *hash_table_read1;
+    struct AdapterTableEntry *hash_table_read2; 
+    size_t max_adapters;
+    size_t hash_table_size;
+    size_t hash_table_read1_entries;
+    size_t hash_table_read2_entries;
+    size_t max_insert_size; 
+} InsertSizeMetrics;
+
+static void
+InsertSizeMetrics_dealloc(InsertSizeMetrics *self) {
+    PyMem_Free(self->hash_table_read1);
+    PyMem_Free(self->hash_table_read2); 
+    PyMem_Free(self->insert_sizes);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyMemberDef InsertSizeMetrics_members[] = {
+    {"total_reads", T_ULONGLONG, offsetof(InsertSizeMetrics, total_reads), 
+     READONLY, "the total number of reads"},
+    {"number_of_adapters_read1", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read1), READONLY, 
+      "The number off reads in read 1 with an adapter."},
+    {"number_of_adapters_read2", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read2), READONLY, 
+      "The number off reads in read 2 with an adapter."},
+    {NULL},
+};
+
+static PyObject *
+InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
+{
+    Py_ssize_t max_adapters = INSERT_SIZE_MAX_ADAPTERS;
+    static char *format = "|n:InsertSizeMetrics.__new__";
+    static char *keywords[] = {"max_adapters", NULL};
+    if (!PyArg_ParseTupleAndKeywords(
+        args, kwargs, format, keywords, &max_adapters
+    )) {
+        return NULL;
+    }
+
+    if (max_adapters < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "max_adapters must be at least 1, got %zd", 
+            max_adapters
+        );
+        return NULL;
+    }
+
+    InsertSizeMetrics *self = PyObject_New(InsertSizeMetrics, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    size_t hash_table_bits = (size_t)(log2(max_adapters * 1.5) + 1);
+
+    self->max_adapters = max_adapters;
+    self->max_insert_size = 300;
+    self->hash_table_read1_entries = 0;
+    self->hash_table_read2_entries = 0;
+    self->hash_table_size = 1 << hash_table_bits; 
+    self->hash_table_read1 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->hash_table_read2 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->insert_sizes = PyMem_Calloc(self->max_insert_size + 1, sizeof(uint64_t));
+    self->total_reads = 0;
+    self->number_of_adapters_read1 = 0;
+    self->number_of_adapters_read2 = 0;
+
+    if (self->hash_table_read1 == NULL || self->hash_table_read2 == NULL || 
+            self->insert_sizes == NULL) {
+        /* Memory gets freed in the dealloc method. */
+        Py_DECREF(self);
+        return PyErr_NoMemory();
+    }
+    return (PyObject *)self;
+}
+
+static int 
+InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
+{
+    if (new_size <= self->max_insert_size) {
+        return 0;
+    }
+    size_t old_size = self->max_insert_size;
+    size_t new_raw_size = sizeof(uint64_t) * (new_size + 1);
+    uint64_t *tmp = PyMem_Realloc(self->insert_sizes, new_raw_size);
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    memset(tmp + old_size, 0, (new_size - old_size) * sizeof(uint64_t));
+    self->max_insert_size = new_size;
+    self->insert_sizes = tmp;
+    return 0;
+}
+
+static inline void 
+InsertSizeMetrics_add_adapter(
+    InsertSizeMetrics *self, const uint8_t *adapter, size_t adapter_length, bool read2)
+{
+    assert(adapter_length <= INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
+    uint64_t hash = MurmurHash3_x64_64(adapter, adapter_length, 0);
+    size_t hash_table_size = self->hash_table_size;
+    struct AdapterTableEntry *hash_table = self->hash_table_read1;
+    size_t *current_entries = &self->hash_table_read1_entries;
+    if (read2) {
+        hash_table = self->hash_table_read2;
+        current_entries = &self->hash_table_read2_entries;
+    }
+    bool hash_table_full = *current_entries == self->max_adapters;  
+
+    size_t hash_to_index_int = hash_table_size - 1;  // Works because size is a power of 2.
+    size_t index = hash & hash_to_index_int;
+    while (true) {
+        struct AdapterTableEntry *entry = hash_table + index; 
+        uint64_t current_hash = entry->hash; 
+        if (current_hash == hash) {
+            if (adapter_length == entry->adapter_length && 
+                memcmp(adapter, entry->adapter, adapter_length) == 0) {
+                entry->adapter_count += 1;
+                return;
+            }
+        }
+        else if (entry->adapter_count == 0) {
+            if (!hash_table_full) {
+                entry->hash = hash;
+                entry->adapter_length = adapter_length;
+                memcpy(entry->adapter, adapter, adapter_length);
+                entry->adapter_count = 1;
+                current_entries[0] += 1;
+            }
+            return;
+        } 
+        index += 1;
+        index &= hash_to_index_int;
+    }
+}
+
+static const uint8_t NUCLEOTIDE_COMPLEMENT[128] = {
+// All non-ACGT become 0 so they don't match with N.
+// Control characters
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// Interpunction numbers etc
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      A,  B,  C,  D, E, F,  G,  H, I, J, K, L, M, N, O,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  P, Q, R, S,  T,  U,  V, W, X, Y, Z,  
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      a,  b,  c,  d, e, f,  g,  h, i, j, k, l, m, n, o,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  p, q, r, s,  t,  u,  v, w, x, y, z, 
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+};
+
+static inline void 
+reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t length) 
+{
+    size_t dest_index = length;
+    for (size_t src_index=0; src_index<length; src_index++) {
+        dest_index -= 1; 
+        dest[dest_index] = NUCLEOTIDE_COMPLEMENT[src[src_index]];
+    }
+}
+
+static inline size_t 
+hamming_distance(const uint8_t *restrict sequence1, 
+                 const uint8_t *restrict sequence2, 
+                 size_t length)
+{
+    size_t distance = 0;
+    for (size_t i=0; i<length; i++) {
+        if (sequence1[i] != sequence2[i]) {
+            distance += 1;
+        }
+    }
+    return distance;
+}
+
+/* Everything set except the bit for 32. This is the difference in ASCII 
+   between lowercase and uppercase. */
+
+#define UPPER_MASK 0xDFDFDFDFDFDFDFDFULL
+
+/**
+ * @brief Determine insert size between sequences by calculating the overlap.
+ * 
+ * @return Py_ssize_t 0, when no overlap could be determined.
+ */
+static size_t 
+calculate_insert_size(const uint8_t *restrict sequence1, 
+                      size_t sequence1_length,
+                      const uint8_t *restrict sequence2, 
+                      size_t sequence2_length) 
+{
+    /* The needle size is 16. One error is allowed. By hardcoding is it can 
+       be optimized by looking for 2 64-bit integers instead. At least one of 
+       the 64-bit integers must find a match at a position if there is only one 
+       error. This is the pigeon hole principle. This way the sequence can be
+       searched quickly, while allowing errors. */
+ 
+    if (sequence2_length < 16 || sequence1_length < 16) {
+        return 0;
+    }
+    uint8_t seq_store[32];
+    uint8_t *start_seq = seq_store;
+    uint8_t *end_seq = ((uint8_t *)seq_store) + 16;
+    reverse_complement(start_seq, sequence2, 16);
+    reverse_complement(end_seq, sequence2 + sequence2_length - 16, 16);
+
+    uint64_t start1 = ((uint64_t *)start_seq)[0];
+    uint64_t start2 = ((uint64_t *)start_seq)[1];
+    uint64_t end1 = ((uint64_t *)end_seq)[0];
+    uint64_t end2 = ((uint64_t *)end_seq)[1];
+
+    size_t run_length = sequence1_length - 15;
+    for(size_t i=0; i<run_length; i++) {
+        uint64_t word1 = ((uint64_t *)(sequence1 + i))[0] & UPPER_MASK;
+        uint64_t word2 = ((uint64_t *)(sequence1 + i))[1] & UPPER_MASK;
+        if (start1 == word1 || start2 == word2) {
+            if (hamming_distance(sequence1 + i, start_seq, 16) <= 1) {
+                return i + 16;
+            }
+        }
+        if (end1 == word1 || end2 == word2) {
+            if (hamming_distance(sequence1 + i, end_seq, 16) <= 1) {
+                return i + sequence2_length;
+            }
+        }
+    }
+    return 0;  // No matches found.
+}
+
+static int InsertSizeMetrics_add_sequence_pair_ptr(
+    InsertSizeMetrics *self, const uint8_t *sequence1, size_t sequence1_length, 
+    const uint8_t *sequence2, size_t sequence2_length)
+{
+    
+    size_t insert_size = calculate_insert_size(sequence1, sequence1_length, 
+                                               sequence2, sequence2_length);
+    if (insert_size > self->max_insert_size) {
+        if (InsertSizeMetrics_resize(self, insert_size) != 0) {
+            return -1;
+        };
+    }
+    self->total_reads += 1;
+    self->insert_sizes[insert_size] += 1;
+    /* Don't store adapters when no overlap is detected. */
+    if ((insert_size) == 0) {
+        return 0;
+    }
+    Py_ssize_t remainder1 = (Py_ssize_t)sequence1_length - (Py_ssize_t)insert_size;
+    if (remainder1 > 0) {
+        self->number_of_adapters_read1 += 1;
+        InsertSizeMetrics_add_adapter(
+            self, sequence1 + insert_size, 
+            Py_MIN(remainder1, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), false);
+    }
+    Py_ssize_t remainder2 = (Py_ssize_t)sequence2_length - (Py_ssize_t)insert_size;
+    if (remainder2 > 0) {
+        self->number_of_adapters_read2 += 1;
+        InsertSizeMetrics_add_adapter(
+            self, sequence2 + insert_size, 
+            Py_MIN(remainder2, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), true);
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_sequence_pair__doc__,
+"add_sequence_pair($self, sequence1, sequence2, /)\n"
+"--\n"
+"\n"
+"Add a paired sequence to the insert size metrics. \n"
+"\n"
+"  sequence1\n"
+"    An ASCII string.\n"
+"  sequence2\n"
+"    An ASCII string.\n"
+);
+
+#define InsertSizeMetrics_add_sequence_pair_method METH_VARARGS
+
+static PyObject *
+InsertSizeMetrics_add_sequence_pair(InsertSizeMetrics *self, PyObject *args)
+{
+    PyObject *sequence1_obj = NULL;
+    PyObject *sequence2_obj = NULL;
+    if (!PyArg_ParseTuple(
+        args, "UU|:InsertSizeMetrics.add_sequence_pair", 
+        &sequence1_obj, &sequence2_obj)) {
+            return NULL;
+        }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj) || 
+        !PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, "Both sequences must be ASCII strings.");
+        return NULL;
+    }
+    int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+        self, 
+        PyUnicode_DATA(sequence1_obj),
+        PyUnicode_GET_LENGTH(sequence1_obj),
+        PyUnicode_DATA(sequence2_obj), 
+        PyUnicode_GET_LENGTH(sequence2_obj)
+    );
+    if (ret != 0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_record_array_pair__doc__,
+"add_record_array_pair($self, record_array1, record_array2 /)\n"
+"--\n"
+"\n"
+"Add a pair of record arrays to the insert size metrics. \n"
+"\n"
+"  record_array1\n"
+"    A FastqRecordArrayView object. First of read pair.\n"
+"  record_array2\n"
+"    A FastqRecordArrayView object. Second of read pair.\n"
+);
+
+#define InsertSizeMetrics_add_record_array_pair_method METH_FASTCALL
+
+static PyObject *
+InsertSizeMetrics_add_record_array_pair(
+    InsertSizeMetrics *self, PyObject *const *args, Py_ssize_t nargs) 
+{
+    if (nargs != 2) {
+        PyErr_Format(PyExc_TypeError, 
+                     "InsertSizeMetrics.add_record_array_pair() "
+                     "takes exactly two arguments, got %zd", 
+                      nargs);
+    }
+    FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
+    FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
+    if (!FastqRecordArrayView_CheckExact(record_array1)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array1 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array1)->tp_name
+        );
+        return NULL;
+    }    
+    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array2 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array2)->tp_name
+        );
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array1);
+    if (Py_SIZE(record_array2) != number_of_records) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "record_array1 and record_array2 must be of the same size. "
+            "Got %zd and %zd respectively.", 
+            number_of_records, Py_SIZE(record_array2)
+        );
+    }
+    struct FastqMeta *records1 = record_array1->records;
+    struct FastqMeta *records2 = record_array2->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta1 = records1 + i;
+        struct FastqMeta *meta2 = records2 + i; 
+        uint8_t *sequence1 = meta1->record_start + meta1->sequence_offset;
+        uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
+        size_t sequence_length1 = meta1->sequence_length; 
+        size_t sequence_length2 = meta2->sequence_length; 
+        int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+            self, sequence1, sequence_length1, sequence2, sequence_length2);
+        if (ret != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_insert_sizes__doc__,
+"insert_sizes($self)\n"
+"--\n"
+"\n"
+"Retrieve an array of the insert sizes.\n"
+);
+
+#define InsertSizeMetrics_insert_sizes_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_insert_sizes(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PythonArray_FromBuffer('Q', self->insert_sizes, 
+        (self->max_insert_size + 1) * sizeof(uint64_t));
+}
+
+static PyObject *adapter_hash_table_to_python_list(
+    struct AdapterTableEntry *hash_table, size_t hash_table_size)
+{
+    PyObject *adapter_list = PyList_New(0);
+    struct AdapterTableEntry *entries = hash_table;
+    for (size_t i=0; i<hash_table_size; i++) {
+        struct AdapterTableEntry *entry = entries + i; 
+        uint64_t adapter_count = entry->adapter_count;
+        if (adapter_count) {
+            PyObject *adapter_tuple = Py_BuildValue(
+                "(s#K)", 
+                entry->adapter, 
+                (Py_ssize_t)entry->adapter_length,
+                adapter_count
+            );
+            if (adapter_tuple == NULL) {
+                Py_DECREF(adapter_list);
+                return NULL;
+            }
+            if (PyList_Append(adapter_list, adapter_tuple) != 0) {
+                return NULL;
+            }
+            Py_DECREF(adapter_tuple);
+        }
+    }
+    return adapter_list;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read1__doc__,
+"adapters_read1($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 1 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read1_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read1(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read1, self->hash_table_size);
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read2__doc__,
+"adapters_read2($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 2 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read2_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read2(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read2, self->hash_table_size);
+}
+
+static PyMethodDef InsertSizeMetrics_methods[] = {
+    {"add_sequence_pair", (PyCFunction)InsertSizeMetrics_add_sequence_pair, 
+     InsertSizeMetrics_add_sequence_pair_method, 
+     InsertSizeMetrics_add_sequence_pair__doc__},
+    {"add_record_array_pair", 
+     (PyCFunction)InsertSizeMetrics_add_record_array_pair,
+     InsertSizeMetrics_add_record_array_pair_method,
+     InsertSizeMetrics_add_record_array_pair__doc__,
+    },
+    {"insert_sizes", (PyCFunction)InsertSizeMetrics_insert_sizes, 
+     InsertSizeMetrics_insert_sizes_method, 
+     InsertSizeMetrics_insert_sizes__doc__},
+    {"adapters_read1", (PyCFunction)InsertSizeMetrics_adapters_read1,
+     InsertSizeMetrics_adapters_read1_method, 
+     InsertSizeMetrics_adapters_read1__doc__},
+    {"adapters_read2", (PyCFunction)InsertSizeMetrics_adapters_read2,
+     InsertSizeMetrics_adapters_read2_method, 
+     InsertSizeMetrics_adapters_read2__doc__},
+
+    {NULL},
+};
+
+static PyTypeObject InsertSizeMetrics_Type = {
+    .tp_name = "_qc.InsertSizeMetrics",
+    .tp_basicsize = sizeof(InsertSizeMetrics),
+    .tp_dealloc = (destructor)InsertSizeMetrics_dealloc,
+    .tp_flags= Py_TPFLAGS_DEFAULT,
+    .tp_new = InsertSizeMetrics__new__,
+    .tp_methods = InsertSizeMetrics_methods,
+    .tp_members = InsertSizeMetrics_members,
+};
+
 /*************************
  * MODULE INITIALIZATION *
  *************************/
@@ -4296,6 +5169,9 @@ PyInit__qc(void)
         return NULL;
     }
 
+    if (python_module_add_type(m, &InsertSizeMetrics_Type) != 0) {
+        return NULL;
+    }
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
     PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
@@ -4314,5 +5190,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
+    PyModule_AddIntMacro(m, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
     return m;
 }

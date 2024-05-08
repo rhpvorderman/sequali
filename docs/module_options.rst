@@ -108,7 +108,9 @@ Sequali's fingerprints by collecting a small sample from the front and back
 of the sequence. To avoid adapter sequences, the samples are taken at an
 offset. If the sequence is small, the offsets are sunk proportionally. If the
 sequence is smaller than the sample sequence lenghts, its entire length
-is sampled.
+is sampled. Paired sequences are sampled at the beginning of both its sequences
+without an offset, since adapter sequences for illumina sequences are closer
+to the end.
 
 .. figure:: _static/images/fingerprint.svg
 
@@ -117,6 +119,8 @@ is sampled.
     the sequence is long. Sequence #2 is smaller than the combined length of
     the offsets and the samples, so the offsets are shrunk proportionally.
     Sequence #3 is smaller than the sample length, so its sampled entirely.
+    Sequence #4 is paired, so samples are taken from the beginning of R1 and
+    R2.
 
 The sampled sequences are then combined into one and hashed. The hash
 seed is determined by the sequence length integer divided by 64. The resulting
@@ -148,7 +152,9 @@ The following command line options affect this module:
 
 These options can be used to control how the fingerprint is taken
 
-+ ``--fingerprint-front-length``
-+ ``--fingerprint-back-length``
-+ ``--fingerprint-front-offset``
-+ ``--fingerprint-back-offset``
++ ``--fingerprint-front-length``.
++ ``--fingerprint-back-length``.  For paired-end sequencing this is the length
+  of the sample from from the beginning for R2.
++ ``--fingerprint-front-offset``.
++ ``--fingerprint-back-offset``. For paired-end sequencing this is the offset
+  the sample from the beginning for R2.

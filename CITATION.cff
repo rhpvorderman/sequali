@@ -1,0 +1,30 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Sequali
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Ruben Harmen Paul
+    family-names: Vorderman
+    email: r.h.p.vorderman@lumc.nl
+    affiliation: Leids Universitair Medisch Centrum
+    orcid: 'https://orcid.org/0000-0002-8813-1528'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.10822485
+repository-code: 'https://github.com/rhpvorderman/sequali'
+abstract: >-
+  Sequali is a QC tool that generates useful graphs for both short and
+  long-read data. This includes adapter contamination searching and making an
+  estimate of the amount of duplication.
+keywords:
+  - QC
+  - uBAM
+  - FASTQ
+  - illumina
+  - nanopore
+license: AGPL-3.0-or-later

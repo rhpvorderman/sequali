@@ -20,7 +20,11 @@ import pytest
 
 from sequali.util import (fasta_parser,
                           fastq_header_is_illumina, fastq_header_is_nanopore,
-                          guess_sequencing_technology_from_bam_header)
+                          guess_sequencing_technology_from_bam_header,
+                          sequence_names_match)
+
+from .test_fastq_record_array import NAME_MATCH_TESTS
+
 
 DATA = Path(__file__).parent / "data"
 SAM = DATA / ("project.NIST_NIST7035_H7AP8ADXX_TAAGGCGA_1_NA12878.bwa."
@@ -61,3 +65,8 @@ def test_fasta_parser():
         ("A simple multiline sequence", "AAAA"),
         ("Shortseq", "gattaca")
     ]
+
+
+@pytest.mark.parametrize(["name1", "name2", "expected"], NAME_MATCH_TESTS)
+def test_sequence_names_match(name1, name2, expected):
+    assert sequence_names_match(name1, name2) is expected

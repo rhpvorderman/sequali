@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name="sequali"
-description="Fast sequencing quality metrics"
+description="Sequali is a QC tool that generates useful graphs for both short and long-read data."
 authors = [
     {name = "Ruben Vorderman", email = "r.h.p.vorderman@lumc.nl"}
 ]

@@ -1,30 +1,33 @@
-.. image:: https://img.shields.io/pypi/v/sequali.svg
+.. |python-version-shield| image:: https://img.shields.io/pypi/v/sequali.svg
   :target: https://pypi.org/project/sequali/
   :alt:
 
-.. image:: https://img.shields.io/conda/v/bioconda/sequali.svg
+.. |conda-version-shield| image:: https://img.shields.io/conda/v/bioconda/sequali.svg
   :target: https://bioconda.github.io/recipes/sequali/README.html
   :alt:
 
-.. image:: https://img.shields.io/pypi/pyversions/sequali.svg
+.. |python-install-version-shield| image:: https://img.shields.io/pypi/pyversions/sequali.svg
   :target: https://pypi.org/project/sequali/
   :alt:
 
-.. image:: https://img.shields.io/pypi/l/sequali.svg
+.. |license-shield| image:: https://img.shields.io/pypi/l/sequali.svg
   :target: https://github.com/rhpvorderman/sequali/blob/main/LICENSE
   :alt:
 
-.. image:: https://readthedocs.org/projects/sequali/badge/?version=latest
+.. |docs-shield| image:: https://readthedocs.org/projects/sequali/badge/?version=latest
   :target: https://sequali.readthedocs.io/en/latest/?badge=latest
   :alt:
 
-.. image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
+.. |coverage-shield| image:: https://codecov.io/gh/rhpvorderman/sequali/graph/badge.svg?token=MSR1A6BEGC
   :target: https://codecov.io/gh/rhpvorderman/sequali
   :alt:
 
-.. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
+.. |zenodo-shield| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
   :target: https://doi.org/10.5281/zenodo.10854010
   :alt:
+
+|python-version-shield| |conda-version-shield| |python-install-version-shield|
+|license-shield| |docs-shield| |coverage-shield| |zenodo-shield|
 
 ========
 Sequali
@@ -44,14 +47,17 @@ Features:
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
   <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
-+ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences.
++ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences
+  for single read data.
++ Determines adapters by overlap analysis for paired read data.
++ Insert size metrics for paired read data.
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
 
 Example reports:
 
-+ `GM24385_1.fastq.gz <https://github.com/rhpvorderman/sequali/files/14725146/GM24385_1.fastq.gz.html.zip>`_;
++ `GM24385_1.fastq.gz <https://sequali.readthedocs.io/en/latest/GM24385_1.fastq.gz.html>`_;
   HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. `Sequence file download <https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/UCSC_Ultralong_OxfordNanopore_Promethion/GM24385_1.fastq.gz>`_.
 
 .. introduction end
@@ -67,11 +73,11 @@ Supported formats
   calculation of 10 ^ (-phred/10) is supported. All sequencers use this
   format today.
 
+  - Paired end sequencing data is supported.
   - For sequences called by illumina base callers an additional plot with the
     per tile quality will be provided.
   - For sequences called by guppy additional plots for nanopore specific
     data will be provided.
-
 - unaligned BAM. Any alignment flags are currently ignored.
 
   - For uBAM data as delivered by dorado additional nanopore plots will be
