@@ -41,9 +41,8 @@ from ._qc import (AdapterCounter, DedupEstimator,
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from ._version import __version__
 from .adapters import Adapter
-from .sequence_identification import DEFAULT_CONTAMINANTS_FILES, DEFAULT_K, \
-    create_sequence_index, identify_sequence, reverse_complement
-from .util import fasta_parser
+from .sequence_identification import (identify_sequence_builtin,
+                                      reverse_complement)
 
 SEQUALI_REPORT_CSS = Path(__file__).parent / "static" / "sequali_report.css"
 SEQUALI_REPORT_CSS_CONTENT = SEQUALI_REPORT_CSS.read_text(encoding="utf-8")
@@ -1480,19 +1479,11 @@ class OverRepresentedSequences(ReportModule):
             min_threshold,
             max_threshold
         )
-        if overrepresented_sequences:
-            def contaminant_iterator():
-                for file in DEFAULT_CONTAMINANTS_FILES:
-                    yield from fasta_parser(file)
 
-            sequence_index = create_sequence_index(contaminant_iterator(),
-                                                   DEFAULT_K)
-        else:  # Only spend time creating sequence index when its worth it.
-            sequence_index = {}
         overrepresented_with_identification = [
             OverRepresentedSequence(
                 count, fraction, sequence, reverse_complement(sequence),
-                *identify_sequence(sequence, sequence_index))
+                *identify_sequence_builtin(sequence))
             for count, fraction, sequence in overrepresented_sequences
         ]
         return cls(overrepresented_with_identification,
@@ -1832,22 +1823,16 @@ class AdapterFromOverlapReport(ReportModule):
 
     @classmethod
     def from_insert_size_metrics(cls, metrics: InsertSizeMetrics):
-        def contaminant_iterator():
-            for file in DEFAULT_CONTAMINANTS_FILES:
-                yield from fasta_parser(file)
-
-        sequence_index = create_sequence_index(contaminant_iterator(),
-                                               DEFAULT_K)
         adapters_read1 = AdapterFromOverlapReport.select_relevant_adapters(
                 metrics.adapters_read1())
         adapters_read2 = AdapterFromOverlapReport.select_relevant_adapters(
             metrics.adapters_read2())
         longest_adapter_read1 = adapters_read1[-1][0]
         longest_adapter_read2 = adapters_read2[-1][0]
-        longest_adapter_read1_match = identify_sequence(
-            longest_adapter_read1, sequence_index)[2]
-        longest_adapter_read2_match = identify_sequence(
-            longest_adapter_read2, sequence_index)[2]
+        longest_adapter_read1_match = identify_sequence_builtin(
+            longest_adapter_read1)[2]
+        longest_adapter_read2_match = identify_sequence_builtin(
+            longest_adapter_read2)[2]
         return cls(
             total_reads=metrics.total_reads,
             number_of_adapters_read1=metrics.number_of_adapters_read1,
