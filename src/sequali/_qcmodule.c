@@ -4586,6 +4586,7 @@ InsertSizeMetrics_dealloc(InsertSizeMetrics *self) {
     PyMem_Free(self->hash_table_read1);
     PyMem_Free(self->hash_table_read2); 
     PyMem_Free(self->insert_sizes);
+    Py_TYPE(self)->tp_free(self);
 }
 
 static PyMemberDef InsertSizeMetrics_members[] = {
@@ -4992,6 +4993,7 @@ static PyObject *adapter_hash_table_to_python_list(
             if (PyList_Append(adapter_list, adapter_tuple) != 0) {
                 return NULL;
             }
+            Py_DECREF(adapter_tuple);
         }
     }
     return adapter_list;
