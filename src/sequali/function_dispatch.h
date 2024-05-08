@@ -461,10 +461,11 @@ hamming_distance(const uint8_t *restrict sequence1,
  * @return Py_ssize_t 0, when no overlap could be determined.
  */
 static size_t 
-calculate_insert_size(const uint8_t *restrict sequence1, 
-                      size_t sequence1_length,
-                      const uint8_t *restrict sequence2, 
-                      size_t sequence2_length) 
+calculate_insert_size_default(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length) 
 {
     /* The needle size is 16. One error is allowed. By hardcoding is it can 
        be optimized by looking for 2 64-bit integers instead. At least one of 
@@ -503,3 +504,88 @@ calculate_insert_size(const uint8_t *restrict sequence1,
     }
     return 0;  // No matches found.
 }
+
+#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+__attribute__((__target__("sse4.1")))
+static size_t 
+calculate_insert_size_vector(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length) {
+    /* The needle size is 16. One error is allowed. By hardcoding is it can 
+       be optimized by looking for 2 64-bit integers instead. At least one of 
+       the 64-bit integers must find a match at a position if there is only one 
+       error. This is the pigeon hole principle. This way the sequence can be
+       searched quickly, while allowing errors. */
+ 
+    if (sequence2_length < 16 || sequence1_length < 16) {
+        return 0;
+    }
+    uint8_t seq_store[32];
+    uint8_t *start_seq = seq_store;
+    uint8_t *end_seq = ((uint8_t *)seq_store) + 16;
+    reverse_complement(start_seq, sequence2, 16);
+    reverse_complement(end_seq, sequence2 + sequence2_length - 16, 16);
+
+    __m128i start = _mm_lddqu_si128((__m128i *)start_seq);
+    __m128i end = _mm_lddqu_si128((__m128i *)end_seq);
+
+    size_t run_length = sequence1_length - 15;
+    for(size_t i=0; i<run_length; i++) {
+        __m128i word = _mm_andnot_si128(
+            _mm_set1_epi8(32), 
+            _mm_lddqu_si128((__m128i *)(sequence1 + i)));
+        if (_mm_movemask_epi8(_mm_cmpeq_epi64(word, start))) {
+            if (hamming_distance(sequence1 + i, start_seq, 16) <= 1) {
+                return i + 16;
+            }
+        }
+        if (_mm_movemask_epi8(_mm_cmpeq_epi64(word, end)))  {
+            if (hamming_distance(sequence1 + i, end_seq, 16) <= 1) {
+                return i + sequence2_length;
+            }
+        }
+    }
+    return 0;  // No matches found.
+    }
+
+static size_t (*calculate_insert_size)(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length);
+
+static size_t 
+calculate_insert_size_dispatch(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length) 
+{
+    if (__builtin_cpu_supports("sse4.1")) {
+        calculate_insert_size = calculate_insert_size_vector;
+    } else {
+        calculate_insert_size = calculate_insert_size_default;
+    }
+    return calculate_insert_size(sequence1, sequence1_length, sequence2, 
+                                 sequence2_length);
+}
+
+static size_t (*calculate_insert_size)(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length) = calculate_insert_size_dispatch;
+
+#else 
+static inline size_t calculate_insert_size(
+    const uint8_t *restrict sequence1, 
+    size_t sequence1_length,
+    const uint8_t *restrict sequence2, 
+    size_t sequence2_length) {
+        return calculate_insert_size_default(
+            sequence1, sequence1_length, 
+            sequence2, sequence2_length);
+    }
+#endif
