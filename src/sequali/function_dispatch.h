@@ -506,7 +506,38 @@ calculate_insert_size_default(
 }
 
 #if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+
 __attribute__((__target__("sse4.1")))
+static inline __m128i reverse_complement_vector(__m128i vector) {
+    __m128i vector_upper = _mm_andnot_si128(_mm_set1_epi8(32), vector);
+    __m128i ACGT_bases = _mm_or_si128(
+        _mm_or_si128(
+            _mm_cmpeq_epi8(_mm_set1_epi8('A'), vector_upper),
+            _mm_cmpeq_epi8(_mm_set1_epi8('C'), vector_upper)
+        ),
+        _mm_or_si128(
+            _mm_cmpeq_epi8(_mm_set1_epi8('G'), vector_upper),
+            _mm_cmpeq_epi8(_mm_set1_epi8('T'), vector_upper)
+        )
+    );
+    /* Make use of the fact that the last three bits for acgt differ. */ 
+    __m128i indices = _mm_and_si128(vector_upper, _mm_set1_epi8(7));
+    __m128i nuc_complement_lookup = _mm_setr_epi8(
+    /*      A,  ,   C,   T,  ,  ,   G */
+        0, 'T', 0, 'G', 'A', 0, 0, 'C',
+        0, 0, 0, 0, 0, 0, 0, 0
+    );
+    __m128i complemented_vector = _mm_shuffle_epi8(nuc_complement_lookup, indices);
+    /* Do a bitwise and to remove any non-sensical bases. Only ACGT matters.*/
+    complemented_vector = _mm_and_si128(complemented_vector, ACGT_bases);
+    __m128i reverse_complemented_vector = _mm_shuffle_epi8(
+        complemented_vector, 
+        _mm_setr_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+    );
+    return reverse_complemented_vector;
+}
+
+__attribute__((__target__("sse4.1", "popcnt")))
 static size_t 
 calculate_insert_size_vector(
     const uint8_t *restrict sequence1, 
@@ -522,14 +553,12 @@ calculate_insert_size_vector(
     if (sequence2_length < 16 || sequence1_length < 16) {
         return 0;
     }
-    uint8_t seq_store[32];
-    uint8_t *start_seq = seq_store;
-    uint8_t *end_seq = ((uint8_t *)seq_store) + 16;
-    reverse_complement(start_seq, sequence2, 16);
-    reverse_complement(end_seq, sequence2 + sequence2_length - 16, 16);
+    __m128i raw_start = _mm_lddqu_si128((__m128i *)sequence2);
+    __m128i raw_end = _mm_lddqu_si128((__m128i *)(sequence2 + sequence2_length - 16));
 
-    __m128i start = _mm_lddqu_si128((__m128i *)start_seq);
-    __m128i end = _mm_lddqu_si128((__m128i *)end_seq);
+
+    __m128i start = reverse_complement_vector(raw_start);
+    __m128i end = reverse_complement_vector(raw_end);
 
     size_t run_length = sequence1_length - 15;
     for(size_t i=0; i<run_length; i++) {
@@ -537,12 +566,12 @@ calculate_insert_size_vector(
             _mm_set1_epi8(32), 
             _mm_lddqu_si128((__m128i *)(sequence1 + i)));
         if (_mm_movemask_epi8(_mm_cmpeq_epi64(word, start))) {
-            if (hamming_distance(sequence1 + i, start_seq, 16) <= 1) {
+            if (hamming_distance(sequence1 + i, &start, 16) <= 1) {
                 return i + 16;
             }
         }
         if (_mm_movemask_epi8(_mm_cmpeq_epi64(word, end)))  {
-            if (hamming_distance(sequence1 + i, end_seq, 16) <= 1) {
+            if (hamming_distance(sequence1 + i, &end, 16) <= 1) {
                 return i + sequence2_length;
             }
         }
