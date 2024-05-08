@@ -4818,6 +4818,10 @@ static int InsertSizeMetrics_add_sequence_pair_ptr(
     }
     self->total_reads += 1;
     self->insert_sizes[insert_size] += 1;
+    /* Don't store adapters when no overlap is detected. */
+    if ((insert_size) == 0) {
+        return 0;
+    }
     Py_ssize_t remainder1 = (Py_ssize_t)sequence1_length - (Py_ssize_t)insert_size;
     if (remainder1 > 0) {
         self->number_of_adapters_read1 += 1;
