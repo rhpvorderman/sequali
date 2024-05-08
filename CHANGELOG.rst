@@ -9,6 +9,7 @@ Changelog
 
 version 0.8.0-dev
 -----------------
++ A citation file was added to the repository.
 + Calculate insert sizes and used adapters based on overlap between the
   read pairs.
 + Both reads from paired-end reads are taken into consideration when
