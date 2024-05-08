@@ -4637,6 +4637,9 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->hash_table_read2 = PyMem_Calloc(self->hash_table_size, 
                                           sizeof(struct AdapterTableEntry));
     self->insert_sizes = PyMem_Calloc(self->max_insert_size + 1, sizeof(uint64_t));
+    self->total_reads = 0;
+    self->number_of_adapters_read1 = 0;
+    self->number_of_adapters_read2 = 0;
 
     if (self->hash_table_read1 == NULL || self->hash_table_read2 == NULL || 
             self->insert_sizes == NULL) {
