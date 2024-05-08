@@ -1101,7 +1101,10 @@ class PerTileQualityReport(ReportModule):
                 for start, stop in data_ranges]
             range_phreds = []
             for i, average in enumerate(range_averages):
-                phred = -10 * math.log10(average)
+                if average != 0:
+                    phred = -10 * math.log10(average)
+                else:
+                    phred = 0
                 range_phreds.append(phred)
                 # Averaging phreds takes geometric mean.
                 per_category_totals[i] += phred
