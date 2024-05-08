@@ -44,7 +44,10 @@ Features:
 + Estimate duplication rate using a `fingerprint subsampling technique which is
   also used in filesystem duplication estimation
   <https://www.usenix.org/system/files/conference/atc13/atc13-xie.pdf>`_.
-+ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences.
++ Checks for 6 illumina adapter sequences and 17 nanopore adapter sequences
+  for single read data.
++ Determines adapters by overlap analysis for paired read data.
++ Insert size metrics for paired read data.
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
@@ -67,11 +70,11 @@ Supported formats
   calculation of 10 ^ (-phred/10) is supported. All sequencers use this
   format today.
 
+  - Paired end sequencing data is supported.
   - For sequences called by illumina base callers an additional plot with the
     per tile quality will be provided.
   - For sequences called by guppy additional plots for nanopore specific
     data will be provided.
-
 - unaligned BAM. Any alignment flags are currently ignored.
 
   - For uBAM data as delivered by dorado additional nanopore plots will be
