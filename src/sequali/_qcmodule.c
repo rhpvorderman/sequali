@@ -4711,7 +4711,7 @@ InsertSizeMetrics_add_adapter(
     }
 }
 
-static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
+static const uint8_t NUCLEOTIDE_COMPLEMENT[128] = {
 // All non-ACGT become 0 so they don't match with N.
 // Control characters
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -4735,7 +4735,7 @@ reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t l
     size_t dest_index = length;
     for (size_t src_index=0; src_index<length; src_index++) {
         dest_index -= 1; 
-        dest[dest_index] = NUCLEOTIDE_REVERSE_COMPLEMENT[src[src_index]];
+        dest[dest_index] = NUCLEOTIDE_COMPLEMENT[src[src_index]];
     }
 }
 
