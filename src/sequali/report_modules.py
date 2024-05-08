@@ -1935,7 +1935,7 @@ NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
     "duplication_fractions": DuplicationCounts,
     "overrepresented_sequences": OverRepresentedSequences,
     "nanopore_metrics": NanoStatsReport,
-    "adapter_content_from_insert_sizes": AdapterFromOverlapReport,
+    "adapter_content_from_overlap": AdapterFromOverlapReport,
     "insert_size_metrics": InsertSizeMetricsReport,
 }
 

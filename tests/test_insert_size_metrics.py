@@ -69,6 +69,12 @@ def test_insert_size_metrics(sequence1, sequence2, insert_size):
     adapter_1 = sequence1[insert_size:][:INSERT_SIZE_MAX_ADAPTER_STORE_SIZE]
     if adapter_1:
         assert dict(insert_size_metrics.adapters_read1()).get(adapter_1) == 1
+        assert insert_size_metrics.number_of_adapters_read1 == 1
+    else:
+        assert insert_size_metrics.number_of_adapters_read1 == 0
     adapter_2 = sequence2[insert_size:][:INSERT_SIZE_MAX_ADAPTER_STORE_SIZE]
     if adapter_2:
         assert dict(insert_size_metrics.adapters_read2()).get(adapter_2) == 1
+        assert insert_size_metrics.number_of_adapters_read2 == 1
+    else:
+        assert insert_size_metrics.number_of_adapters_read2 == 0
