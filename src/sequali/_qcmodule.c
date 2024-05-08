@@ -4552,6 +4552,505 @@ static PyTypeObject NanoStats_Type = {
     .tp_members = NanoStats_members,
 };
 
+/***********************
+ * INSERT SIZE METRICS * 
+ ***********************/
+
+#define INSERT_SIZE_MAX_ADAPTERS 10000
+#define INSERT_SIZE_MAX_ADAPTER_STORE_SIZE 31
+
+struct AdapterTableEntry {
+    uint64_t hash;
+    uint64_t adapter_count; 
+    uint8_t adapter_length; 
+    uint8_t adapter[INSERT_SIZE_MAX_ADAPTER_STORE_SIZE];
+};
+
+typedef struct _InsertSizeMetricsStruct {
+    PyObject_HEAD 
+    uint64_t *insert_sizes;
+    uint64_t total_reads;
+    uint64_t number_of_adapters_read1;
+    uint64_t number_of_adapters_read2;
+    struct AdapterTableEntry *hash_table_read1;
+    struct AdapterTableEntry *hash_table_read2; 
+    size_t max_adapters;
+    size_t hash_table_size;
+    size_t hash_table_read1_entries;
+    size_t hash_table_read2_entries;
+    size_t max_insert_size; 
+} InsertSizeMetrics;
+
+static void
+InsertSizeMetrics_dealloc(InsertSizeMetrics *self) {
+    PyMem_Free(self->hash_table_read1);
+    PyMem_Free(self->hash_table_read2); 
+    PyMem_Free(self->insert_sizes);
+}
+
+static PyMemberDef InsertSizeMetrics_members[] = {
+    {"total_reads", T_ULONGLONG, offsetof(InsertSizeMetrics, total_reads), 
+     READONLY, "the total number of reads"},
+    {"number_of_adapters_read1", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read1), READONLY, 
+      "The number off reads in read 1 with an adapter."},
+    {"number_of_adapters_read2", T_ULONGLONG, 
+      offsetof(InsertSizeMetrics, number_of_adapters_read2), READONLY, 
+      "The number off reads in read 2 with an adapter."},
+    {NULL},
+};
+
+static PyObject *
+InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs) 
+{
+    Py_ssize_t max_adapters = INSERT_SIZE_MAX_ADAPTERS;
+    static char *format = "|n:InsertSizeMetrics.__new__";
+    static char *keywords[] = {"max_adapters", NULL};
+    if (!PyArg_ParseTupleAndKeywords(
+        args, kwargs, format, keywords, &max_adapters
+    )) {
+        return NULL;
+    }
+
+    if (max_adapters < 1) {
+        PyErr_Format(
+            PyExc_ValueError,
+            "max_adapters must be at least 1, got %zd", 
+            max_adapters
+        );
+        return NULL;
+    }
+
+    InsertSizeMetrics *self = PyObject_New(InsertSizeMetrics, type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    size_t hash_table_bits = (size_t)(log2(max_adapters * 1.5) + 1);
+
+    self->max_adapters = max_adapters;
+    self->max_insert_size = 300;
+    self->hash_table_read1_entries = 0;
+    self->hash_table_read2_entries = 0;
+    self->hash_table_size = 1 << hash_table_bits; 
+    self->hash_table_read1 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->hash_table_read2 = PyMem_Calloc(self->hash_table_size, 
+                                          sizeof(struct AdapterTableEntry));
+    self->insert_sizes = PyMem_Calloc(self->max_insert_size + 1, sizeof(uint64_t));
+
+    if (self->hash_table_read1 == NULL || self->hash_table_read2 == NULL || 
+            self->insert_sizes == NULL) {
+        /* Memory gets freed in the dealloc method. */
+        Py_DECREF(self);
+        return PyErr_NoMemory();
+    }
+    return (PyObject *)self;
+}
+
+static int 
+InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
+{
+    if (new_size <= self->max_insert_size) {
+        return 0;
+    }
+    size_t old_size = self->max_insert_size;
+    size_t new_raw_size = sizeof(uint64_t) * (new_size + 1);
+    uint64_t *tmp = PyMem_Realloc(self->insert_sizes, new_raw_size);
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    memset(tmp + old_size, 0, (new_size - old_size) * sizeof(uint64_t));
+    self->max_insert_size = new_size;
+    self->insert_sizes = tmp;
+    return 0;
+}
+
+static inline void 
+InsertSizeMetrics_add_adapter(
+    InsertSizeMetrics *self, const uint8_t *adapter, size_t adapter_length, bool read2)
+{
+    assert(adapter_length <= INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
+    uint64_t hash = MurmurHash3_x64_64(adapter, adapter_length, 0);
+    size_t hash_table_size = self->hash_table_size;
+    struct AdapterTableEntry *hash_table = self->hash_table_read1;
+    size_t *current_entries = &self->hash_table_read1_entries;
+    if (read2) {
+        hash_table = self->hash_table_read2;
+        current_entries = &self->hash_table_read2_entries;
+    }
+    bool hash_table_full = *current_entries == self->max_adapters;  
+
+    size_t hash_to_index_int = hash_table_size - 1;  // Works because size is a power of 2.
+    size_t index = hash & hash_to_index_int;
+    while (true) {
+        struct AdapterTableEntry *entry = hash_table + index; 
+        uint64_t current_hash = entry->hash; 
+        if (current_hash == hash) {
+            if (adapter_length == entry->adapter_length && 
+                memcmp(adapter, entry->adapter, adapter_length) == 0) {
+                entry->adapter_count += 1;
+                return;
+            }
+        }
+        else if (entry->adapter_count == 0) {
+            if (!hash_table_full) {
+                entry->hash = hash;
+                entry->adapter_length = adapter_length;
+                memcpy(entry->adapter, adapter, adapter_length);
+                entry->adapter_count = 1;
+                current_entries[0] += 1;
+            }
+            return;
+        } 
+        index += 1;
+        index &= hash_to_index_int;
+    }
+}
+
+static const uint8_t NUCLEOTIDE_REVERSE_COMPLEMENT[128] = {
+// All non-ACGT become 0 so they don't match with N.
+// Control characters
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+// Interpunction numbers etc
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      A,  B,  C,  D, E, F,  G,  H, I, J, K, L, M, N, O,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  P, Q, R, S,  T,  U,  V, W, X, Y, Z,  
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//      a,  b,  c,  d, e, f,  g,  h, i, j, k, l, m, n, o,
+    0, 'T', 0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 0, 0,
+//  p, q, r, s,  t,  u,  v, w, x, y, z, 
+    0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+};
+
+static inline void 
+reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t length) 
+{
+    size_t dest_index = length;
+    for (size_t src_index=0; src_index<length; src_index++) {
+        dest_index -= 1; 
+        dest[dest_index] = NUCLEOTIDE_REVERSE_COMPLEMENT[src[src_index]];
+    }
+}
+
+static inline size_t 
+hamming_distance(const uint8_t *restrict sequence1, 
+                 const uint8_t *restrict sequence2, 
+                 size_t length)
+{
+    size_t distance = 0;
+    for (size_t i=0; i<length; i++) {
+        if (sequence1[i] != sequence2[i]) {
+            distance += 1;
+        }
+    }
+    return distance;
+}
+
+/* Everything set except the bit for 32. This is the difference in ASCII 
+   between lowercase and uppercase. */
+
+#define UPPER_MASK 0xDFDFDFDFDFDFDFDFULL
+
+/**
+ * @brief Determine insert size between sequences by calculating the overlap.
+ * 
+ * @return Py_ssize_t 0, when no overlap could be determined.
+ */
+static size_t 
+calculate_insert_size(const uint8_t *restrict sequence1, 
+                      size_t sequence1_length,
+                      const uint8_t *restrict sequence2, 
+                      size_t sequence2_length) 
+{
+    /* The needle size is 16. One error is allowed. By hardcoding is it can 
+       be optimized by looking for 2 64-bit integers instead. At least one of 
+       the 64-bit integers must find a match at a position if there is only one 
+       error. This is the pigeon hole principle. This way the sequence can be
+       searched quickly, while allowing errors. */
+ 
+    if (sequence2_length < 16 || sequence1_length < 16) {
+        return 0;
+    }
+    uint8_t seq_store[32];
+    reverse_complement(seq_store, sequence2, 16);
+    uint64_t start1 = ((uint64_t *)seq_store)[0];
+    uint64_t start2 = ((uint64_t *)seq_store)[1];
+    reverse_complement(seq_store + 16, sequence2 + sequence2_length - 16, 16);
+    uint64_t end1 = ((uint64_t *)seq_store)[2];
+    uint64_t end2 = ((uint64_t *)seq_store)[3];
+
+    size_t run_length = sequence1_length - 15;
+    for(size_t i=0; i<run_length; i++) {
+        uint64_t word1 = ((uint64_t *)(sequence1 + i))[0] & UPPER_MASK;
+        uint64_t word2 = ((uint64_t *)(sequence1 + i))[1] & UPPER_MASK;
+        if (start1 == word1 || start2 == word2) {
+            if (hamming_distance(sequence1 + i, seq_store, 16) <= 1) {
+                return i + 16;
+            }
+        }
+        if (end1 == word1 || end2 == word2) {
+            if (hamming_distance(sequence1 + i, seq_store + 16, 16) <= 1) {
+                return i + sequence2_length;
+            }
+        }
+    }
+    return 0;  // No matches found.
+}
+
+static int InsertSizeMetrics_add_sequence_pair_ptr(
+    InsertSizeMetrics *self, const uint8_t *sequence1, size_t sequence1_length, 
+    const uint8_t *sequence2, size_t sequence2_length)
+{
+    
+    size_t insert_size = calculate_insert_size(sequence1, sequence1_length, 
+                                               sequence2, sequence2_length);
+    if (insert_size > self->max_insert_size) {
+        if (InsertSizeMetrics_resize(self, insert_size) != 0) {
+            return -1;
+        };
+    }
+    self->total_reads += 1;
+    self->insert_sizes[insert_size] += 1;
+    Py_ssize_t remainder1 = (Py_ssize_t)sequence1_length - (Py_ssize_t)insert_size;
+    if (remainder1 > 0) {
+        self->number_of_adapters_read1 += 1;
+        InsertSizeMetrics_add_adapter(
+            self, sequence1 + insert_size, 
+            Py_MIN(remainder1, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), false);
+    }
+    Py_ssize_t remainder2 = (Py_ssize_t)sequence2_length - (Py_ssize_t)insert_size;
+    if (remainder2 > 0) {
+        self->number_of_adapters_read2 += 1;
+        InsertSizeMetrics_add_adapter(
+            self, sequence2 + insert_size, 
+            Py_MIN(remainder2, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE), true);
+    }
+    return 0;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_sequence_pair__doc__,
+"add_sequence_pair($self, sequence1, sequence2, /)\n"
+"--\n"
+"\n"
+"Add a paired sequence to the insert size metrics. \n"
+"\n"
+"  sequence1\n"
+"    An ASCII string.\n"
+"  sequence2\n"
+"    An ASCII string.\n"
+);
+
+#define InsertSizeMetrics_add_sequence_pair_method METH_VARARGS
+
+static PyObject *
+InsertSizeMetrics_add_sequence_pair(InsertSizeMetrics *self, PyObject *args)
+{
+    PyObject *sequence1_obj = NULL;
+    PyObject *sequence2_obj = NULL;
+    if (!PyArg_ParseTuple(
+        args, "UU|:InsertSizeMetrics.add_sequence_pair", 
+        &sequence1_obj, &sequence2_obj)) {
+            return NULL;
+        }
+    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj) || 
+        !PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+        PyErr_SetString(
+            PyExc_ValueError, "Both sequences must be ASCII strings.");
+        return NULL;
+    }
+    int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+        self, 
+        PyUnicode_DATA(sequence1_obj),
+        PyUnicode_GET_LENGTH(sequence1_obj),
+        PyUnicode_DATA(sequence2_obj), 
+        PyUnicode_GET_LENGTH(sequence2_obj)
+    );
+    if (ret != 0) {
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_add_record_array_pair__doc__,
+"add_record_array_pair($self, record_array1, record_array2 /)\n"
+"--\n"
+"\n"
+"Add a pair of record arrays to the insert size metrics. \n"
+"\n"
+"  record_array1\n"
+"    A FastqRecordArrayView object. First of read pair.\n"
+"  record_array2\n"
+"    A FastqRecordArrayView object. Second of read pair.\n"
+);
+
+#define InsertSizeMetrics_add_record_array_pair_method METH_FASTCALL
+
+static PyObject *
+InsertSizeMetrics_add_record_array_pair(
+    InsertSizeMetrics *self, PyObject *const *args, Py_ssize_t nargs) 
+{
+    if (nargs != 2) {
+        PyErr_Format(PyExc_TypeError, 
+                     "InsertSizeMetrics.add_record_array_pair() "
+                     "takes exactly two arguments, got %zd", 
+                      nargs);
+    }
+    FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
+    FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
+    if (!FastqRecordArrayView_CheckExact(record_array1)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array1 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array1)->tp_name
+        );
+        return NULL;
+    }    
+    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+        PyErr_Format(
+            PyExc_TypeError, 
+            "record_array2 should be a FastqRecordArrayView object, got %s", 
+            Py_TYPE(record_array2)->tp_name
+        );
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE(record_array1);
+    if (Py_SIZE(record_array2) != number_of_records) {
+        PyErr_Format(
+            PyExc_ValueError, 
+            "record_array1 and record_array2 must be of the same size. "
+            "Got %zd and %zd respectively.", 
+            number_of_records, Py_SIZE(record_array2)
+        );
+    }
+    struct FastqMeta *records1 = record_array1->records;
+    struct FastqMeta *records2 = record_array2->records;
+    for (Py_ssize_t i=0; i < number_of_records; i++) {
+        struct FastqMeta *meta1 = records1 + i;
+        struct FastqMeta *meta2 = records2 + i; 
+        uint8_t *sequence1 = meta1->record_start + meta1->sequence_offset;
+        uint8_t *sequence2 = meta2->record_start + meta2->sequence_offset;
+        size_t sequence_length1 = meta1->sequence_length; 
+        size_t sequence_length2 = meta2->sequence_length; 
+        int ret = InsertSizeMetrics_add_sequence_pair_ptr(
+            self, sequence1, sequence_length1, sequence2, sequence_length2);
+        if (ret != 0) {
+            return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_insert_sizes__doc__,
+"insert_sizes($self)\n"
+"--\n"
+"\n"
+"Retrieve an array of the insert sizes.\n"
+);
+
+#define InsertSizeMetrics_insert_sizes_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_insert_sizes(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return PythonArray_FromBuffer('Q', self->insert_sizes, 
+        (self->max_insert_size + 1) * sizeof(uint64_t));
+}
+
+static PyObject *adapter_hash_table_to_python_list(
+    struct AdapterTableEntry *hash_table, size_t hash_table_size)
+{
+    PyObject *adapter_list = PyList_New(0);
+    struct AdapterTableEntry *entries = hash_table;
+    for (size_t i=0; i<hash_table_size; i++) {
+        struct AdapterTableEntry *entry = entries + i; 
+        uint64_t adapter_count = entry->adapter_count;
+        if (adapter_count) {
+            PyObject *adapter_tuple = Py_BuildValue(
+                "(s#K)", 
+                entry->adapter, 
+                (Py_ssize_t)entry->adapter_length,
+                adapter_count
+            );
+            if (adapter_tuple == NULL) {
+                Py_DECREF(adapter_list);
+                return NULL;
+            }
+            if (PyList_Append(adapter_list, adapter_tuple) != 0) {
+                return NULL;
+            }
+        }
+    }
+    return adapter_list;
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read1__doc__,
+"adapters_read1($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 1 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read1_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read1(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read1, self->hash_table_size);
+}
+
+PyDoc_STRVAR(InsertSizeMetrics_adapters_read2__doc__,
+"adapters_read2($self)\n"
+"--\n"
+"\n"
+"Retrieve a list of adapters for read 2 with their counts.\n"
+);
+
+#define InsertSizeMetrics_adapters_read2_method METH_NOARGS
+
+static PyObject *
+InsertSizeMetrics_adapters_read2(InsertSizeMetrics *self, PyObject *Py_UNUSED(ignore))
+{
+    return adapter_hash_table_to_python_list(
+        self->hash_table_read2, self->hash_table_size);
+}
+
+static PyMethodDef InsertSizeMetrics_methods[] = {
+    {"add_sequence_pair", (PyCFunction)InsertSizeMetrics_add_sequence_pair, 
+     InsertSizeMetrics_add_sequence_pair_method, 
+     InsertSizeMetrics_add_sequence_pair__doc__},
+    {"add_record_array_pair", 
+     (PyCFunction)InsertSizeMetrics_add_record_array_pair,
+     InsertSizeMetrics_add_record_array_pair_method,
+     InsertSizeMetrics_add_record_array_pair__doc__,
+    },
+    {"insert_sizes", (PyCFunction)InsertSizeMetrics_insert_sizes, 
+     InsertSizeMetrics_insert_sizes_method, 
+     InsertSizeMetrics_insert_sizes__doc__},
+    {"adapters_read1", (PyCFunction)InsertSizeMetrics_adapters_read1,
+     InsertSizeMetrics_adapters_read1_method, 
+     InsertSizeMetrics_adapters_read1__doc__},
+    {"adapters_read2", (PyCFunction)InsertSizeMetrics_adapters_read2,
+     InsertSizeMetrics_adapters_read2_method, 
+     InsertSizeMetrics_adapters_read2__doc__},
+
+    {NULL},
+};
+
+static PyTypeObject InsertSizeMetrics_Type = {
+    .tp_name = "_qc.InsertSizeMetrics",
+    .tp_basicsize = sizeof(InsertSizeMetrics),
+    .tp_dealloc = (destructor)InsertSizeMetrics_dealloc,
+    .tp_flags= Py_TPFLAGS_DEFAULT,
+    .tp_new = InsertSizeMetrics__new__,
+    .tp_methods = InsertSizeMetrics_methods,
+    .tp_members = InsertSizeMetrics_members,
+};
+
 /*************************
  * MODULE INITIALIZATION *
  *************************/
@@ -4658,6 +5157,9 @@ PyInit__qc(void)
         return NULL;
     }
 
+    if (python_module_add_type(m, &InsertSizeMetrics_Type) != 0) {
+        return NULL;
+    }
     PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
     PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
     PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
@@ -4676,5 +5178,6 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
+    PyModule_AddIntMacro(m, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
     return m;
 }
