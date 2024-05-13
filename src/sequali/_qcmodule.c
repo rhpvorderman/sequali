@@ -4779,11 +4779,15 @@ calculate_insert_size(const uint8_t *restrict sequence1,
     if (sequence2_length < 16 || sequence1_length < 16) {
         return 0;
     }
+    const uint8_t *restrict sequence2_end = sequence2 + sequence2_length;
+    if (memcmp(sequence2_end - 8, "GGGGGGGG", 8) == 0) {
+        return 0;
+    }
     uint8_t seq_store[32];
     uint8_t *start_seq = seq_store;
     uint8_t *end_seq = ((uint8_t *)seq_store) + 16;
     reverse_complement(start_seq, sequence2, 16);
-    reverse_complement(end_seq, sequence2 + sequence2_length - 16, 16);
+    reverse_complement(end_seq, sequence2_end - 16, 16);
 
     uint64_t start1 = ((uint64_t *)start_seq)[0];
     uint64_t start2 = ((uint64_t *)start_seq)[1];
