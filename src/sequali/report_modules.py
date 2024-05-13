@@ -1830,6 +1830,9 @@ class AdapterFromOverlapReport(ReportModule):
                 metrics.adapters_read1())
         adapters_read2 = AdapterFromOverlapReport.select_relevant_adapters(
             metrics.adapters_read2())
+        # Only count relevant adapters to prevent cruft
+        adapters_read1_count = sum(count for adapter, count in adapters_read1)
+        adapters_read2_count = sum(count for adapter, count in adapters_read2)
         longest_adapter_read1 = adapters_read1[-1][0]
         longest_adapter_read2 = adapters_read2[-1][0]
         longest_adapter_read1_match = identify_sequence_builtin(
@@ -1838,8 +1841,8 @@ class AdapterFromOverlapReport(ReportModule):
             longest_adapter_read2)[2]
         return cls(
             total_reads=metrics.total_reads,
-            number_of_adapters_read1=metrics.number_of_adapters_read1,
-            number_of_adapters_read2=metrics.number_of_adapters_read2,
+            number_of_adapters_read1=adapters_read1_count,
+            number_of_adapters_read2=adapters_read2_count,
             adapters_read1=adapters_read1,
             adapters_read2=adapters_read2,
             longest_adapter_read1=longest_adapter_read1,
