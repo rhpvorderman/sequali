@@ -111,9 +111,12 @@ def identify_sequence(
         sequence: str,
         sequence_index: Dict[str, Union[List[str], str]],
         sequence_lookup: Dict[str, str],
-        k: int = DEFAULT_K) -> Tuple[int, int, str]:
+        k: int = DEFAULT_K,
+        match_reverse_complement: bool = True,
+) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
     counted_seqs: typing.Counter[str] = collections.Counter()
+    sequence_reverse_complement = reverse_complement(sequence)
     for kmer in kmers:
         matched = sequence_index.get(kmer, [])
         if isinstance(matched, list):
@@ -126,6 +129,10 @@ def identify_sequence(
     for match, _ in matches:
         target_sequence = sequence_lookup[match]
         identity = sequence_identity(target_sequence, sequence)
+        if match_reverse_complement:
+            reverse_identity = sequence_identity(target_sequence,
+                                                 sequence_reverse_complement)
+            identity = max(identity, reverse_identity)
         if identity > best_identity:
             best_identity = identity
             best_match = match
@@ -134,7 +141,8 @@ def identify_sequence(
     return round(best_identity * len(sequence)), len(sequence), best_match
 
 
-def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
+def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K,
+                              match_reverse_complement: bool = True):
     """
     Identify a sequence using the builtin sequence libraries.
     :return: A tuple of kmer matches, the max matches and a string containing
@@ -142,7 +150,8 @@ def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
     """
     sequence_index = create_default_sequence_index(k)
     sequence_lookup = dict(default_contaminant_iterator())
-    return identify_sequence(sequence, sequence_index, sequence_lookup, k)
+    return identify_sequence(sequence, sequence_index, sequence_lookup, k,
+                             match_reverse_complement)
 
 
 class Entry(typing.NamedTuple):
