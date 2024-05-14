@@ -135,3 +135,64 @@ def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
     """
     sequence_index = create_default_sequence_index(k)
     return identify_sequence(sequence, sequence_index, k)
+
+
+class Entry(typing.NamedTuple):
+    score: int
+    query_matches: int
+
+
+def sequence_identity(target: str, query: str,
+                      match_score=1, mismatch_penalty=-1, deletion_penalty=-1,
+                      insertion_penalty=-1):
+    """
+    Calculate sequence identity based on a smith-waterman matrix. Only keep
+    two columns in memory as no walk-back is needed.
+    Identity is given as (query_length - errors / query_length).
+    """
+    # Store (character, score, errors) tuples.
+    prev_column: List[Entry] = [Entry(0, 0) for _ in range(len(query) + 1)]
+    highest_score = 0
+    most_matches = 0
+    for i, target_char in enumerate(target):
+        new_column = prev_column[:]
+        for j, query_char in enumerate(query, start=1):
+            # linear
+            prev_entry = prev_column[j - 1]
+            if target_char == query_char:
+                linear_score = prev_entry.score + match_score
+                linear_matches = prev_entry.query_matches + 1
+            else:
+                linear_score = prev_entry.score + mismatch_penalty
+                # Do not deduct matches for a mismatch
+                linear_matches = prev_entry.query_matches
+            # insertion
+            prev_ins_entry = prev_column[j]
+            prev_del_entry = new_column[j - 1]
+            insertion_score = prev_ins_entry.score + insertion_penalty
+            deletion_score = prev_del_entry.score + deletion_penalty
+
+            if linear_score >= insertion_score and linear_score >= deletion_score:
+                score = linear_score
+                matches = linear_matches
+            elif insertion_score >= deletion_score:
+                score = insertion_score
+                # When an insertion happens in the query in theory we can
+                # match all query characters still. So deduct one as a penalty.
+                matches = prev_ins_entry.query_matches - 1
+            else:
+                score = deletion_score
+                # When a deletion happens in the query, that character cannot
+                # match anything anymore. So no need to deduct a penalty.
+                matches = prev_del_entry.query_matches
+            if score < 0:
+                score = 0
+                matches = 0
+            new_column[j] = Entry(score, matches)
+            if score == highest_score and matches > most_matches:
+                most_matches = matches
+            elif score > highest_score:
+                highest_score = score
+                most_matches = matches
+        prev_column = new_column
+    return most_matches / len(query)
