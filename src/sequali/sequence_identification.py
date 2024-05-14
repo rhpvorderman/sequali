@@ -110,6 +110,7 @@ def create_default_sequence_index(k: int = DEFAULT_K
 def identify_sequence(
         sequence: str,
         sequence_index: Dict[str, Union[List[str], str]],
+        sequence_lookup: Dict[str, str],
         k: int = DEFAULT_K) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
     counted_seqs: typing.Counter[str] = collections.Counter()
@@ -119,12 +120,18 @@ def identify_sequence(
             counted_seqs.update(matched)
         else:
             counted_seqs.update([matched])
-    most_matches = 0
+    best_identity = 0.0
     best_match = "No match"
     matches = sorted(counted_seqs.items(), key=lambda tup: tup[1], reverse=True)
-    if matches:
-        best_match, most_matches = matches[0]
-    return most_matches, len(kmers), best_match
+    for match, _ in matches:
+        target_sequence = sequence_lookup[match]
+        identity = sequence_identity(target_sequence, sequence)
+        if identity > best_identity:
+            best_identity = identity
+            best_match = match
+            if identity == 1.0:
+                break
+    return round(best_identity * len(sequence)), len(sequence), best_match
 
 
 def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
@@ -134,7 +141,8 @@ def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
              the best match.
     """
     sequence_index = create_default_sequence_index(k)
-    return identify_sequence(sequence, sequence_index, k)
+    sequence_lookup = dict(default_contaminant_iterator())
+    return identify_sequence(sequence, sequence_index, sequence_lookup, k)
 
 
 class Entry(typing.NamedTuple):
