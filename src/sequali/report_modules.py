@@ -1453,7 +1453,7 @@ class OverRepresentedSequences(ReportModule):
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
-                      "<th>kmers (matched/max)</th>"
+                      "<th>nucleotides (matched/max)</th>"
                       "<th>best match</th></tr>")
         for item in self.overrepresented_sequences:
             content.write(
