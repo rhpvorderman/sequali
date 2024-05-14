@@ -34,6 +34,9 @@ def default_contaminant_iterator() -> Iterator[Tuple[str, str]]:
         yield from fasta_parser(file)
 
 
+DEFAULT_SEQUENCE_LOOKUP = dict(default_contaminant_iterator())
+
+
 def create_upper_table():
     upper_table = bytearray(b"N" * 256)
     for c in "acgtACGT":
@@ -105,7 +108,7 @@ def create_sequence_index(
 @functools.lru_cache
 def create_default_sequence_index(k: int = DEFAULT_K
                                   ) -> Dict[str, Union[List[str], str]]:
-    return create_sequence_index(default_contaminant_iterator(), k)
+    return create_sequence_index(DEFAULT_SEQUENCE_LOOKUP.items(), k)
 
 
 def identify_sequence(
@@ -150,6 +153,5 @@ def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K,
              the best match.
     """
     sequence_index = create_default_sequence_index(k)
-    sequence_lookup = dict(default_contaminant_iterator())
-    return identify_sequence(sequence, sequence_index, sequence_lookup, k,
-                             match_reverse_complement)
+    return identify_sequence(sequence, sequence_index, DEFAULT_SEQUENCE_LOOKUP,
+                             k, match_reverse_complement)
