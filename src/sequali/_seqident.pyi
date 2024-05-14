@@ -1,0 +1,3 @@
+def sequence_identity(target: str, query: str,
+                      match_score=1, mismatch_penalty=-1, deletion_penalty=-1,
+                      insertion_penalty=-1) -> float: ...
