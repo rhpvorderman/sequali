@@ -19,7 +19,7 @@ import os
 import typing
 from typing import Dict, Iterable, Iterator, List, Tuple, Union
 
-from._seqident import sequence_identity
+from ._seqident import sequence_identity
 from .util import fasta_parser
 
 DEFAULT_K = 13
@@ -152,6 +152,17 @@ def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K,
     :return: A tuple of kmer matches, the max matches and a string containing
              the best match.
     """
-    sequence_index = create_default_sequence_index(k)
-    return identify_sequence(sequence, sequence_index, DEFAULT_SEQUENCE_LOOKUP,
-                             k, match_reverse_complement)
+    while True:
+        sequence_index = create_default_sequence_index(k)
+        matches, max_matches, best_match = identify_sequence(
+            sequence, sequence_index, DEFAULT_SEQUENCE_LOOKUP, k,
+            match_reverse_complement
+        )
+        # Check if the sequence has been adequately identified, if not retry
+        # with a smaller k.
+        if matches != 0:
+            break
+        k -= 2
+        if k < 9:
+            break
+    return matches, max_matches, best_match
