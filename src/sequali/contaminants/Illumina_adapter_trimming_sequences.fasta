@@ -1,0 +1,8 @@
+>Illumina ThruSeq RNA DNA sequence for adapter trimming, read1
+AGATCGGAAGAGCACACGTCTGAACTCCAGTCA
+>Illumina ThruSeq RNA DNA sequence for adapter trimming, read2
+AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+>Illumina ThruSeq Small RNA sequence for adapter trimming
+TGGAATTCTCGGGTGCCAAGG
+>Illumina Nextera/Ampliseq sequence for adapter trimming
+CTGTCTCTTATACACATCT
