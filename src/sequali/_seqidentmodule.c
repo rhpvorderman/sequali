@@ -75,7 +75,7 @@ sequence_identity(PyObject *module, PyObject *args, PyObject *kwargs)
     if (query_length > 31) {
         PyErr_Format(
             PyExc_ValueError,
-            "Only query with lengths less than 32 are upported. Got %zd",
+            "Only query with lengths less than 32 are supported. Got %zd",
             query_length
         );
         return NULL;
