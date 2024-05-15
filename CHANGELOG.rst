@@ -7,6 +7,17 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.9.0-dev
+-----------------
++ Illumina adapter trimming sequences were added to the contaminants database
+  as these were missing from the UniVec database.
++ Sequence identity, rather than kmers matched is shown as a metric for
+  similarity in the overrepresented sequences table.
++ Overrepresented sequence classification now uses stable sorting to ensure
+  the classification results are the same on each rerun.
++ Overrepresented sequences are now classified using Smith-Waterman alignment
+  and sequence identity.
+
 version 0.8.0
 -----------------
 + A citation file was added to the repository.

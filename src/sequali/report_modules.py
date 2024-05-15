@@ -1410,6 +1410,15 @@ class OverRepresentedSequences(ReportModule):
             table. See
             <a href="https://sequali.readthedocs.io/#overrepresented-sequences-module">
             the documentation for a complete explanation.</a>
+            The sequence identity is calculated by
+            <math display="inline">
+                <mfrac>
+                    <mn>
+                        Number of matched nucleotides - gap sequences in query alignment
+                    </mn>
+                    <mn>Length of query</mn>
+                </mfrac>
+            </math>.
             </p>
             <p class="explanation">
                 The percentage shown is an estimate based on the number of
@@ -1453,7 +1462,7 @@ class OverRepresentedSequences(ReportModule):
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
-                      "<th>kmers (matched/max)</th>"
+                      "<th>sequence identity</th>"
                       "<th>best match</th></tr>")
         for item in self.overrepresented_sequences:
             content.write(
@@ -1463,7 +1472,8 @@ class OverRepresentedSequences(ReportModule):
                         {item.sequence}</td>
                     <td style="text-align:center;font-family:monospace;">
                         {item.revcomp_sequence}</td>
-                    <td>({item.most_matches}/{item.max_matches})</td>
+                    <td style="text-align:right">
+                        {item.most_matches / item.max_matches:.02%}</td>
                     <td>{html.escape(item.best_match)}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
