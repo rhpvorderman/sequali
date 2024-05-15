@@ -129,7 +129,16 @@ def identify_sequence(
             counted_seqs.update([matched])
     best_identity = 0.0
     best_match = "No match"
-    matches = sorted(counted_seqs.items(), key=lambda tup: tup[1], reverse=True)
+
+    def sort_func(x):
+        count = x[1]
+        name = x[0]
+        length = len(sequence_lookup[name])
+        # Sort descending. The highest counted sequences with the lowest length
+        # will come first. We want the sequences to be as small as possible.
+        return count, -length, name
+
+    matches = sorted(counted_seqs.items(), key=sort_func, reverse=True)
     for match, _ in matches:
         target_sequence = sequence_lookup[match]
         identity = sequence_identity(target_sequence, sequence)
