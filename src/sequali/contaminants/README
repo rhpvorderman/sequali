@@ -27,3 +27,6 @@ illumina_adapter_trimming_sequences.fasta. These sequences are common among
 a variety of commercially provided adapters. To prevent a false positive ID
 on the commercially provided adapters when only a part of the common sequence
 is found these sequences had to be added.
+
+Common human genome repeats were added on the basis of the tandem repeat
+database: https://tandem-test.bu.edu/cgi-bin/trdb/trdby.exe.
