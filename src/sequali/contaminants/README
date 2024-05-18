@@ -17,3 +17,17 @@ a lot of those that are used in Oxford nanopore sequencing. The
 oxford_nanopore.fasta file provides the sequences as represented in the
 technical documentation. All possible barcoding sequencing adapters for
 nanopore have not yet been added.
+
+Oxford Nanopore adapter and barcode sequences as listed in the
+technical documentation are included in oxford_nanopore.fasta and
+oxford_nanopore_barcodes.fasta.
+
+Illumina adapter trimming sequences are included in
+illumina.fasta. These sequences are common among
+a variety of commercially provided adapters. To prevent a false positive ID
+on the commercially provided adapters when only a part of the common sequence
+is found these sequences had to be added.
+
+
+Common human genome repeats were added on the basis of the tandem repeat
+database: https://tandem-test.bu.edu/cgi-bin/trdb/trdby.exe.

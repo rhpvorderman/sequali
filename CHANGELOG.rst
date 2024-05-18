@@ -9,6 +9,8 @@ Changelog
 
 version 0.9.0-dev
 -----------------
++ Add common human genome repeats and Illumina poly-G dark cycles to the
+  overrepresented sequences database.
 + Illumina adapter trimming sequences were added to the contaminants database
   as these were missing from the UniVec database.
 + Sequence identity, rather than kmers matched is shown as a metric for
