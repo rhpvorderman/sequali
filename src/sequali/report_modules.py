@@ -146,7 +146,10 @@ def create_toc(content: str):
             if header_level != current_level:
                 if header_level > current_level:
                     for i in range(header_level - current_level):
-                        toc.write('<li><ul class="toc_list">')
+                        # List style type: none prevents seeing two bullets in
+                        # front of the list item.
+                        toc.write('<li style="list-style-type:none;">'
+                                  '<ul class="toc_list">')
                 else:
                     for i in range(current_level - header_level):
                         toc.write("</ul></li>")
