@@ -39,6 +39,7 @@ Sequence quality metrics for FASTQ and uBAM files.
 
 Features:
 
++ `MultiQC <https://multiqc.info>`_ support since MultiQC version 1.22.
 + Low memory footprint, small install size and fast execution times.
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.

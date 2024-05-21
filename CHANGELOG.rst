@@ -9,6 +9,7 @@ Changelog
 
 version 0.9.0-dev
 -----------------
++ MultiQC support since MultiQC version 1.22
 + Sort modules for paired end reports in the same order as single end reports.
   For example, the sequence length distributions for read 1 and read 2 are now
   right after each other.
