@@ -223,6 +223,16 @@ def figurize_plot(plot: pygal.Graph):
     """
 
 
+def html_black_shades(blackness: float):
+    if blackness < 0.0 or blackness > 1.0:
+        raise ValueError(
+            f"blackness must be between 0.0 and 1.0, got {blackness:.2f}")
+    whiteness = 1.0 - blackness
+    whiteness_8bit = round(whiteness * 255)
+    whiteness_hex = f"{whiteness_8bit:02X}"
+    return "#" + 3 * whiteness_hex
+
+
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
     size = length // parts
     remainder = length % parts
@@ -1468,15 +1478,18 @@ class OverRepresentedSequences(ReportModule):
                       "<th>sequence identity</th>"
                       "<th>best match</th></tr>")
         for item in self.overrepresented_sequences:
+            sequence_identity = item.most_matches / item.max_matches
+            row_text_color = html_black_shades(sequence_identity)
             content.write(
-                f"""<tr><td style="text-align:right;">{item.count}</td>
+                f"""<tr style="color:{row_text_color};">
+                    <td style="text-align:right;">{item.count}</td>
                     <td style="text-align:right;">{item.fraction:.2%}</td>
                     <td style="text-align:center;font-family:monospace;">
                         {item.sequence}</td>
                     <td style="text-align:center;font-family:monospace;">
                         {item.revcomp_sequence}</td>
                     <td style="text-align:right">
-                        {item.most_matches / item.max_matches:.02%}</td>
+                        {sequence_identity:.02%}</td>
                     <td>{html.escape(item.best_match)}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
