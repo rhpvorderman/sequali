@@ -1896,12 +1896,12 @@ class AdapterFromOverlapReport(ReportModule):
             <th>Adapter Sequence</th><th>Best match</th></tr>
             <tr>
                 <td>Read 1</td>
-                <td>{self.longest_adapter_read1}</td>
+                <td style="font-family:monospace;">{self.longest_adapter_read1}</td>
                 <td>{self.longest_adapter_read1_match}</td>
             </tr>
             <tr>
                 <td>Read 2</td>
-                <td>{self.longest_adapter_read2}</td>
+                <td style="font-family:monospace;">{self.longest_adapter_read2}</td>
                 <td>{self.longest_adapter_read2_match}</td>
             </tr>
             </table>
@@ -1913,7 +1913,7 @@ class AdapterFromOverlapReport(ReportModule):
         for adapter, count in self.adapters_read1:
             report.write(
                 f"""<tr>
-                        <td>{adapter}</td>
+                        <td style="font-family:monospace;">{adapter}</td>
                         <td style="text-align:right;">{count}</td>
                     </tr>
                 """)
@@ -1925,7 +1925,7 @@ class AdapterFromOverlapReport(ReportModule):
         for adapter, count in self.adapters_read2:
             report.write(
                 f"""<tr>
-                        <td>{adapter}</td>
+                        <td style="font-family:monospace;">{adapter}</td>
                         <td style="text-align:right;">{count}</td>
                     </tr>
                 """)
