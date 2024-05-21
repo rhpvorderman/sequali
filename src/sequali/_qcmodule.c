@@ -4629,7 +4629,7 @@ InsertSizeMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     size_t hash_table_bits = (size_t)(log2(max_adapters * 1.5) + 1);
 
     self->max_adapters = max_adapters;
-    self->max_insert_size = 300;
+    self->max_insert_size = 0;
     self->hash_table_read1_entries = 0;
     self->hash_table_read2_entries = 0;
     self->hash_table_size = 1 << hash_table_bits; 
@@ -4664,7 +4664,7 @@ InsertSizeMetrics_resize(InsertSizeMetrics *self, size_t new_size)
         PyErr_NoMemory();
         return -1;
     }
-    memset(tmp + old_size, 0, (new_size - old_size) * sizeof(uint64_t));
+    memset(tmp + old_size + 1, 0, (new_size - old_size) * sizeof(uint64_t));
     self->max_insert_size = new_size;
     self->insert_sizes = tmp;
     return 0;

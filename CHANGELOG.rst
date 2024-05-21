@@ -23,6 +23,8 @@ version 0.9.0-dev
   the classification results are the same on each rerun.
 + Overrepresented sequences are now classified using Smith-Waterman alignment
   and sequence identity.
++ Fix an off by one error in the insert size metrics that was triggered for
+  insert sizes larger than 300 bp.
 
 version 0.8.0
 -----------------
