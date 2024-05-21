@@ -7,6 +7,25 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.9.0
+-----------------
++ MultiQC support since MultiQC version 1.22
++ Sort modules for paired end reports in the same order as single end reports.
+  For example, the sequence length distributions for read 1 and read 2 are now
+  right after each other.
++ Add common human genome repeats and Illumina poly-G dark cycles to the
+  overrepresented sequences database.
++ Illumina adapter trimming sequences were added to the contaminants database
+  as these were missing from the UniVec database.
++ Sequence identity, rather than kmers matched is shown as a metric for
+  similarity in the overrepresented sequences table.
++ Overrepresented sequence classification now uses stable sorting to ensure
+  the classification results are the same on each rerun.
++ Overrepresented sequences are now classified using Smith-Waterman alignment
+  and sequence identity.
++ Fix an off by one error in the insert size metrics that was triggered for
+  insert sizes larger than 300 bp.
+
 version 0.8.0
 -----------------
 + A citation file was added to the repository.
@@ -67,7 +86,7 @@ version 0.5.0
   understand. There were some inconsistencies in the documentation about this
   that are now fixed.
 + Add a new `meta` section to the JSON report to allow integration with
-  `MultiQC <https://github.com/multiqc/MultiQC>`_.
+  `MultiQC <https://multiqc.info>`_.
 + Add all nanopore barcode sequences and native adapters to the contaminants.
 + Add native adapters to the adapter search.
 

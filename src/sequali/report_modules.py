@@ -146,7 +146,10 @@ def create_toc(content: str):
             if header_level != current_level:
                 if header_level > current_level:
                     for i in range(header_level - current_level):
-                        toc.write('<li><ul class="toc_list">')
+                        # List style type: none prevents seeing two bullets in
+                        # front of the list item.
+                        toc.write('<li style="list-style-type:none;">'
+                                  '<ul class="toc_list">')
                 else:
                     for i in range(current_level - header_level):
                         toc.write("</ul></li>")
@@ -1410,6 +1413,15 @@ class OverRepresentedSequences(ReportModule):
             table. See
             <a href="https://sequali.readthedocs.io/#overrepresented-sequences-module">
             the documentation for a complete explanation.</a>
+            The sequence identity is calculated by
+            <math display="inline">
+                <mfrac>
+                    <mn>
+                        Number of matched nucleotides - gap sequences in query alignment
+                    </mn>
+                    <mn>Length of query</mn>
+                </mfrac>
+            </math>.
             </p>
             <p class="explanation">
                 The percentage shown is an estimate based on the number of
@@ -1453,7 +1465,7 @@ class OverRepresentedSequences(ReportModule):
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
-                      "<th>kmers (matched/max)</th>"
+                      "<th>sequence identity</th>"
                       "<th>best match</th></tr>")
         for item in self.overrepresented_sequences:
             content.write(
@@ -1463,7 +1475,8 @@ class OverRepresentedSequences(ReportModule):
                         {item.sequence}</td>
                     <td style="text-align:center;font-family:monospace;">
                         {item.revcomp_sequence}</td>
-                    <td>({item.most_matches}/{item.max_matches})</td>
+                    <td style="text-align:right">
+                        {item.most_matches / item.max_matches:.02%}</td>
                     <td>{html.escape(item.best_match)}</td></tr>""")
         content.write("</table>")
         return content.getvalue()
@@ -1883,12 +1896,12 @@ class AdapterFromOverlapReport(ReportModule):
             <th>Adapter Sequence</th><th>Best match</th></tr>
             <tr>
                 <td>Read 1</td>
-                <td>{self.longest_adapter_read1}</td>
+                <td style="font-family:monospace;">{self.longest_adapter_read1}</td>
                 <td>{self.longest_adapter_read1_match}</td>
             </tr>
             <tr>
                 <td>Read 2</td>
-                <td>{self.longest_adapter_read2}</td>
+                <td style="font-family:monospace;">{self.longest_adapter_read2}</td>
                 <td>{self.longest_adapter_read2_match}</td>
             </tr>
             </table>
@@ -1900,7 +1913,7 @@ class AdapterFromOverlapReport(ReportModule):
         for adapter, count in self.adapters_read1:
             report.write(
                 f"""<tr>
-                        <td>{adapter}</td>
+                        <td style="font-family:monospace;">{adapter}</td>
                         <td style="text-align:right;">{count}</td>
                     </tr>
                 """)
@@ -1912,7 +1925,7 @@ class AdapterFromOverlapReport(ReportModule):
         for adapter, count in self.adapters_read2:
             report.write(
                 f"""<tr>
-                        <td>{adapter}</td>
+                        <td style="font-family:monospace;">{adapter}</td>
                         <td style="text-align:right;">{count}</td>
                     </tr>
                 """)
@@ -1941,6 +1954,33 @@ NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
 
 CLASS_TO_NAME: Dict[Type[ReportModule], str] = {
     value: key for key, value in NAME_TO_CLASS.items()}
+
+CLASS_TO_ORDER = {
+    Meta: 0,
+    Summary: 1,
+    SequenceLengthDistribution: 2,
+    PerBaseQualityScoreDistribution: 3,
+    PerPositionMeanQualityAndSpread: 4,
+    PerSequenceAverageQualityScores: 5,
+    PerPositionBaseContent: 6,
+    PerPositionNContent: 7,
+    PerSequenceGCContent: 8,
+    AdapterContent: 9,
+    AdapterFromOverlapReport: 10,
+    InsertSizeMetricsReport: 11,
+    PerTileQualityReport: 12,
+    DuplicationCounts: 13,
+    OverRepresentedSequences: 14,
+    NanoStatsReport: 15,
+}
+
+
+def module_sort_key(m: ReportModule):
+    prio = CLASS_TO_ORDER[type(m)]
+    read_pair_info = ""
+    if hasattr(m, "read_pair_info"):
+        read_pair_info = getattr(m, "read_pair_info")
+    return prio, read_pair_info
 
 
 def report_modules_to_dict(report_modules: Iterable[ReportModule]):
@@ -2103,39 +2143,31 @@ def calculate_stats(
         data_ranges = list(equidistant_ranges(max_length, graph_resolution))
     modules = [
         Meta.from_filepath(filename, filename_reverse),
-    ]
-    # Generic modules for both read1 and read2 come first.
-    if insert_size_metrics:
-        modules.append(
-            AdapterFromOverlapReport.from_insert_size_metrics(insert_size_metrics))
-        modules.append(
-            InsertSizeMetricsReport.from_insert_size_metrics(insert_size_metrics))
-    if filename_reverse:
-        modules.append(
-            DuplicationCounts.from_dedup_estimator(dedup_estimator),
-        )
-    modules.extend(qc_metrics_modules(metrics, data_ranges,
-                                      read_pair_info=read_pair_info1))
-    if adapter_counter:
-        modules.append(
-            AdapterContent.from_adapter_counter_adapters_and_ranges(
-                adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1)
-        )
-    modules.append(PerTileQualityReport.from_per_tile_quality_and_ranges(
-        per_tile_quality, data_ranges, read_pair_info=read_pair_info1),)
-    if not filename_reverse:
-        modules.append(
-            DuplicationCounts.from_dedup_estimator(dedup_estimator)
-        )
-    modules.append(
+        *qc_metrics_modules(metrics, data_ranges, read_pair_info=read_pair_info1),
+        PerTileQualityReport.from_per_tile_quality_and_ranges(
+            per_tile_quality, data_ranges, read_pair_info=read_pair_info1),
         OverRepresentedSequences.from_sequence_duplication(
             sequence_duplication,
             fraction_threshold=fraction_threshold,
             min_threshold=min_threshold,
             max_threshold=max_threshold,
             read_pair_info=read_pair_info1,
+        ),
+        DuplicationCounts.from_dedup_estimator(dedup_estimator),
+        NanoStatsReport.from_nanostats(nanostats)
+    ]
+    if adapter_counter:
+        modules.append(
+            AdapterContent.from_adapter_counter_adapters_and_ranges(
+                adapter_counter, adapters, data_ranges, read_pair_info=read_pair_info1)
         )
-    )
+
+    # Generic modules for both read1 and read2 come first.
+    if insert_size_metrics:
+        modules.append(
+            AdapterFromOverlapReport.from_insert_size_metrics(insert_size_metrics))
+        modules.append(
+            InsertSizeMetricsReport.from_insert_size_metrics(insert_size_metrics))
 
     if (metrics_reverse and per_tile_quality_reverse and
             sequence_duplication_reverse):
@@ -2158,6 +2190,5 @@ def calculate_stats(
             max_threshold=max_threshold,
             read_pair_info=READ2,
         ))
-
-    modules.append(NanoStatsReport.from_nanostats(nanostats))
+    modules.sort(key=module_sort_key)
     return modules

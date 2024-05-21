@@ -19,6 +19,7 @@ import os
 import typing
 from typing import Dict, Iterable, Iterator, List, Tuple, Union
 
+from ._seqident import sequence_identity
 from .util import fasta_parser
 
 DEFAULT_K = 13
@@ -31,6 +32,12 @@ DEFAULT_CONTAMINANTS_FILES = [f.path for f in os.scandir(CONTAMINANTS_DIR)
 def default_contaminant_iterator() -> Iterator[Tuple[str, str]]:
     for file in DEFAULT_CONTAMINANTS_FILES:
         yield from fasta_parser(file)
+
+
+@functools.lru_cache
+def default_sequence_lookup() -> Dict[str, str]:
+    """Lazily evaluated and cached dictionary of all contaminants."""
+    return dict(default_contaminant_iterator())
 
 
 def create_upper_table():
@@ -104,34 +111,70 @@ def create_sequence_index(
 @functools.lru_cache
 def create_default_sequence_index(k: int = DEFAULT_K
                                   ) -> Dict[str, Union[List[str], str]]:
-    return create_sequence_index(default_contaminant_iterator(), k)
+    return create_sequence_index(default_sequence_lookup().items(), k)
 
 
 def identify_sequence(
         sequence: str,
         sequence_index: Dict[str, Union[List[str], str]],
-        k: int = DEFAULT_K) -> Tuple[int, int, str]:
+        sequence_lookup: Dict[str, str],
+        k: int = DEFAULT_K,
+        match_reverse_complement: bool = True,
+) -> Tuple[int, int, str]:
     kmers = canonical_kmers(sequence, k)
     counted_seqs: typing.Counter[str] = collections.Counter()
+    sequence_reverse_complement = reverse_complement(sequence)
     for kmer in kmers:
         matched = sequence_index.get(kmer, [])
         if isinstance(matched, list):
             counted_seqs.update(matched)
         else:
             counted_seqs.update([matched])
-    most_matches = 0
+    best_identity = 0.0
     best_match = "No match"
-    matches = sorted(counted_seqs.items(), key=lambda tup: tup[1], reverse=True)
-    if matches:
-        best_match, most_matches = matches[0]
-    return most_matches, len(kmers), best_match
+
+    def sort_func(x):
+        count = x[1]
+        name = x[0]
+        length = len(sequence_lookup[name])
+        # Sort descending. The highest counted sequences with the lowest length
+        # will come first. We want the sequences to be as small as possible.
+        return count, -length, name
+
+    matches = sorted(counted_seqs.items(), key=sort_func, reverse=True)
+    for match, _ in matches:
+        target_sequence = sequence_lookup[match]
+        identity = sequence_identity(target_sequence, sequence)
+        if match_reverse_complement:
+            reverse_identity = sequence_identity(target_sequence,
+                                                 sequence_reverse_complement)
+            identity = max(identity, reverse_identity)
+        if identity > best_identity:
+            best_identity = identity
+            best_match = match
+            if identity == 1.0:
+                break
+    return round(best_identity * len(sequence)), len(sequence), best_match
 
 
-def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K):
+def identify_sequence_builtin(sequence: str, k: int = DEFAULT_K,
+                              match_reverse_complement: bool = True):
     """
     Identify a sequence using the builtin sequence libraries.
     :return: A tuple of kmer matches, the max matches and a string containing
              the best match.
     """
-    sequence_index = create_default_sequence_index(k)
-    return identify_sequence(sequence, sequence_index, k)
+    while True:
+        sequence_index = create_default_sequence_index(k)
+        matches, max_matches, best_match = identify_sequence(
+            sequence, sequence_index, default_sequence_lookup(), k,
+            match_reverse_complement
+        )
+        # Check if the sequence has been adequately identified, if not retry
+        # with a smaller k.
+        if matches != 0:
+            break
+        k -= 2
+        if k < 9:
+            break
+    return matches, max_matches, best_match

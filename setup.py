@@ -19,6 +19,7 @@ from setuptools import Extension, setup
 
 setup(
     ext_modules=[
-        Extension("sequali._qc", ["src/sequali/_qcmodule.c"])
+        Extension("sequali._qc", ["src/sequali/_qcmodule.c"]),
+        Extension("sequali._seqident", ["src/sequali/_seqidentmodule.c"])
     ],
 )
