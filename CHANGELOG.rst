@@ -9,6 +9,9 @@ Changelog
 
 version 0.9.0-dev
 -----------------
++ Sort modules for paired end reports in the same order as single end reports.
+  For example, the sequence length distributions for read 1 and read 2 are now
+  right after each other.
 + Add common human genome repeats and Illumina poly-G dark cycles to the
   overrepresented sequences database.
 + Illumina adapter trimming sequences were added to the contaminants database
