@@ -1843,8 +1843,8 @@ class AdapterFromOverlapReport(ReportModule):
                 metrics.adapters_read1())
         adapters_read2 = AdapterFromOverlapReport.select_relevant_adapters(
             metrics.adapters_read2())
-        longest_adapter_read1 = adapters_read1[-1][0]
-        longest_adapter_read2 = adapters_read2[-1][0]
+        longest_adapter_read1 = adapters_read1[-1][0] if adapters_read1 else ""
+        longest_adapter_read2 = adapters_read2[-1][0] if adapters_read2 else ""
         longest_adapter_read1_match = identify_sequence_builtin(
             longest_adapter_read1)[2]
         longest_adapter_read2_match = identify_sequence_builtin(
