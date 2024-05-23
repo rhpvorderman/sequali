@@ -27,13 +27,21 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #ifdef __clang__
 #ifdef __has_attribute
 #define CLANG_COMPILER_HAS(attribute) __has_attribute(attribute)
-#endif 
+#endif
+#ifdef __has_builtin
+#define CLANG_COMPILER_HAS_BUILTIN(function) __has_builtin(function)
+#endif
 #endif
 #ifndef CLANG_COMPILER_HAS 
 #define CLANG_COMPILER_HAS(attribute) 0
-#endif 
+#endif
+#ifndef CLANG_COMPILER_HAS_BUILTIN
+#define CLANG_COMPILER_HAS_BUILTIN(function) 0
+#endif
 
-#define COMPILER_HAS_TARGET (GCC_AT_LEAST(4, 8) || CLANG_COMPILER_HAS(__target__))
+#define COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS \
+    (GCC_AT_LEAST(4, 8) || (CLANG_COMPILER_HAS(__target__) && \
+        CLANG_COMPILER_HAS_BUILTIN(__builtin_cpu_supports)))
 #define COMPILER_HAS_OPTIMIZE (GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize))
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -77,7 +85,7 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
     }
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
@@ -254,7 +262,7 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
     return revcomp_kmer;
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
 __attribute__((__target__("avx2")))
 static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
     /* By using a load mask, at most 3 extra bytes are loaded. Given that a 
