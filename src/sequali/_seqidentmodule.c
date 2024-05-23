@@ -96,10 +96,14 @@ get_smith_waterman_matches_default(
 
 #if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
 __attribute__((__target__("avx2")))
+/**
+ * Get the smith waterman matches by an avx2 algorithm. This goes over diagonals
+ * rather than columns, as the diagonals are independent.
+ */
 static int8_t
 get_smith_waterman_matches_avx2(
     const uint8_t *restrict target, 
-    size_t target_length, 
+    size_t target_length,
     const uint8_t *restrict query,
     size_t query_length, 
     int8_t match_score,
@@ -107,10 +111,127 @@ get_smith_waterman_matches_avx2(
     int8_t deletion_penalty, 
     int8_t insertion_penalty
 ) {
-    return get_smith_waterman_matches_default(
-        target, target_length, query, query_length, match_score, 
-        mismatch_penalty, deletion_penalty, insertion_penalty
-    );    
+
+    uint8_t *padded_target = PyMem_Calloc(target_length + 62, 1);
+    if (padded_target == NULL) {
+        return -1;
+    }
+    memcpy(padded_target + 31, target, target_length);
+    uint8_t padded_query_store[32];
+    uint8_t *padded_query = padded_query_store;
+    /* Pacters than target */
+    memset(padded_query, 0xff, sizeof(padded_query_store));
+    for (size_t i=0; i<query_length; i++) {
+        size_t index = 31 - i;
+        padded_query[index] = query[i];
+    }
+    __m256i query_vec = _mm256_lddqu_si256((__m256i *)padded_query);
+    __m256i max_matches = _mm256_setzero_si256();
+    __m256i max_score = _mm256_setzero_si256();
+    __m256i prev_diagonal_score = _mm256_setzero_si256();
+    __m256i prev_prev_diagonal_score = _mm256_setzero_si256();
+    __m256i prev_diagonal_matches = _mm256_setzero_si256();
+    __m256i prev_prev_diagonal_matches = _mm256_setzero_si256();
+    __m256i match_score_vec = _mm256_set1_epi8(match_score);
+    __m256i mismatch_penalty_vec = _mm256_set1_epi8(mismatch_penalty);
+    __m256i deletion_penalty_vec = _mm256_set1_epi8(deletion_penalty);
+    __m256i insertion_penalty_vec = _mm256_set1_epi8(insertion_penalty);
+    size_t run_length = target_length + 31; 
+    for (size_t i=0; i < run_length; i++) {
+        __m256i target_vec = _mm256_lddqu_si256((__m256i *)(padded_target + i));
+    
+        __m256i prev_linear_score = prev_prev_diagonal_score;
+        __m256i prev_linear_matches = prev_prev_diagonal_matches;
+        __m256i prev_insertion_score = prev_diagonal_score;
+        __m256i prev_insertion_matches = prev_diagonal_matches;
+        uint8_t prev_deletion_score_store[33];
+        memset(prev_deletion_score_store, 0, 33);
+        _mm256_storeu_si256((__m256i *)prev_deletion_score_store, 
+            prev_diagonal_score);
+        __m256i prev_deletion_score = _mm256_lddqu_si256(
+            (__m256i *)((uint8_t *)prev_deletion_score_store + 1));
+        uint8_t prev_deletion_matches_store[33];
+        memset(prev_deletion_matches_store, 0, 33);
+        _mm256_storeu_si256(
+            (__m256i *)prev_deletion_matches_store, 
+            prev_diagonal_matches);
+        __m256i prev_deletion_matches = _mm256_lddqu_si256(
+            (__m256i *)((uint8_t *)prev_deletion_matches_store + 1)
+        );
+
+        __m256i query_equals_target = _mm256_cmpeq_epi8(target_vec, query_vec);
+        __m256i linear_score_if_equals = _mm256_add_epi8(
+            prev_linear_score, match_score_vec);
+        __m256i linear_score_if_not_equals = _mm256_add_epi8(
+            prev_linear_score, mismatch_penalty_vec);
+        __m256i linear_matches_if_equals = _mm256_add_epi8(
+            prev_linear_matches, _mm256_set1_epi8(1));
+        __m256i linear_score = _mm256_blendv_epi8(
+            linear_score_if_not_equals, linear_score_if_equals, query_equals_target
+        );
+        __m256i linear_matches = _mm256_blendv_epi8(
+            prev_linear_matches, linear_matches_if_equals, query_equals_target
+        );
+        __m256i deletion_score = _mm256_add_epi8(
+            prev_deletion_score, deletion_penalty_vec);
+        __m256i deletion_matches = prev_deletion_matches;
+        __m256i insertion_score = _mm256_add_epi8(
+            prev_insertion_score, insertion_penalty_vec);
+        __m256i insertion_matches = _mm256_sub_epi8(
+            prev_insertion_matches, _mm256_set1_epi8(1));
+
+        __m256i insertion_greater_than_linear = _mm256_cmpgt_epi8(insertion_score, linear_score);
+        __m256i deletion_greater_than_linear = _mm256_cmpgt_epi8(deletion_score, linear_score);
+        __m256i deletion_greater_than_insertion = _mm256_cmpgt_epi8(deletion_score, insertion_score);
+        __m256i deletion_greatest = _mm256_and_si256(
+            deletion_greater_than_insertion, 
+            deletion_greater_than_linear);
+        __m256i insertion_greatest = _mm256_andnot_si256(deletion_greatest, insertion_greater_than_linear);
+        __m256i indels_greatest = _mm256_or_si256(insertion_greatest, deletion_greatest);
+        __m256i indel_score = _mm256_blendv_epi8(
+            insertion_score, deletion_score, deletion_greater_than_insertion);
+        __m256i indel_matches = _mm256_blendv_epi8(
+            insertion_matches, deletion_matches, deletion_greater_than_insertion);
+        __m256i scores = _mm256_blendv_epi8(
+            linear_score, indel_score, indels_greatest);
+        __m256i matches = _mm256_blendv_epi8(
+            linear_matches, indel_matches, indels_greatest);
+        __m256i zero_greater_than_scores = _mm256_cmpgt_epi8(
+            _mm256_setzero_si256(), scores);
+        matches = _mm256_blendv_epi8(
+            matches, _mm256_setzero_si256(), zero_greater_than_scores
+        );
+        scores = _mm256_max_epi8(scores, _mm256_setzero_si256());
+
+        __m256i equal_score = _mm256_cmpeq_epi8(scores, max_score);
+        __m256i greater_score = _mm256_cmpgt_epi8(scores, max_score);
+        __m256i tmp_max_matches = _mm256_max_epi8(matches, max_matches);
+        max_score = _mm256_max_epi8(scores, max_score);
+        max_matches = _mm256_blendv_epi8(max_matches, tmp_max_matches, equal_score);
+        max_matches = _mm256_blendv_epi8(max_matches, matches, greater_score);
+        prev_prev_diagonal_score = prev_deletion_score; 
+        prev_prev_diagonal_matches = prev_deletion_matches;
+        prev_diagonal_score = scores; 
+        prev_diagonal_matches = matches;
+    }
+    uint8_t max_score_store[32];
+    uint8_t max_matches_store[32];
+    int8_t highest_score = 0; 
+    int8_t best_matches = 0; 
+    _mm256_storeu_si256((__m256i *)max_score_store, max_score);
+    _mm256_storeu_si256((__m256i *)max_matches_store, max_matches);
+    for (size_t i=0; i<32; i++) {
+        int8_t score = max_score_store[i];
+        int8_t matches = max_matches_store[i];
+        if (score == highest_score && matches > best_matches) {
+            best_matches = matches; 
+        } else if (score > highest_score) {
+            highest_score = score; 
+            best_matches = matches;
+        }
+    }
+    PyMem_Free(padded_target);
+    return best_matches;
 }
 
 static int8_t
