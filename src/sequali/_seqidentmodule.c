@@ -42,8 +42,8 @@ get_smith_waterman_matches(
     memset(prev_column, 0, 32 * sizeof(struct Entry));
     memset(new_column, 0, 32 * sizeof(struct Entry));
     for (size_t i=0; i < target_length; i++) {
+        uint8_t target_char = target[i];
         for (size_t j=1; j < query_length + 1; j++) {
-            uint8_t target_char = target[i];
             uint8_t query_char = query[j - 1];
             struct Entry prev_entry = prev_column[j-1];
             Py_ssize_t linear_score; 
