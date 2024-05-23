@@ -191,12 +191,23 @@ get_smith_waterman_matches_avx2(
             linear_score, indel_score, indels_greatest);
         __m256i matches = _mm256_blendv_epi8(
             linear_matches, indel_matches, indels_greatest);
+        __m256i zero_greater_than_scores = _mm256_cmpgt_epi8(
+            _mm256_setzero_si256(), scores);
+        matches = _mm256_blendv_epi8(
+            matches, _mm256_setzero_si256(), zero_greater_than_scores
+        );
+        scores = _mm256_max_epi8(scores, _mm256_setzero_si256());
+
         __m256i equal_score = _mm256_cmpeq_epi8(scores, max_score);
         __m256i greater_score = _mm256_cmpgt_epi8(scores, max_score);
         __m256i tmp_max_matches = _mm256_max_epi8(matches, max_matches);
         max_score = _mm256_max_epi8(scores, max_score);
         max_matches = _mm256_blendv_epi8(max_matches, tmp_max_matches, equal_score);
         max_matches = _mm256_blendv_epi8(max_matches, matches, greater_score);
+        prev_prev_diagonal_score = prev_diagonal_score; 
+        prev_prev_diagonal_matches = prev_diagonal_matches;
+        prev_diagonal_score = scores; 
+        prev_diagonal_matches = matches;
     }
     uint8_t max_score_store[32];
     uint8_t max_matches_store[32];
