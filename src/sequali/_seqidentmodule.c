@@ -16,6 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
+#include "compiler_defs.h"
 #include "Python.h"
 
 struct Entry {
@@ -24,7 +25,7 @@ struct Entry {
 };
 
 static int8_t
-get_smith_waterman_matches(
+get_smith_waterman_matches_default(
     const uint8_t *restrict target, 
     size_t target_length, 
     const uint8_t *restrict query,
@@ -92,6 +93,89 @@ get_smith_waterman_matches(
     }
     return most_matches;
 }
+
+#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
+__attribute__((__target__("avx2")))
+static int8_t
+get_smith_waterman_matches_avx2(
+    const uint8_t *restrict target, 
+    size_t target_length, 
+    const uint8_t *restrict query,
+    size_t query_length, 
+    int8_t match_score,
+    int8_t mismatch_penalty, 
+    int8_t deletion_penalty, 
+    int8_t insertion_penalty
+) {
+    return get_smith_waterman_matches_default(
+        target, target_length, query, query_length, match_score, 
+        mismatch_penalty, deletion_penalty, insertion_penalty
+    );    
+}
+
+static int8_t
+(*get_smith_waterman_matches)(
+    const uint8_t *restrict target, 
+    size_t target_length, 
+    const uint8_t *restrict query,
+    size_t query_length, 
+    int8_t match_score,
+    int8_t mismatch_penalty, 
+    int8_t deletion_penalty, 
+    int8_t insertion_penalty
+);
+
+static int8_t get_smith_waterman_matches_dispatch(
+    const uint8_t *restrict target, 
+    size_t target_length, 
+    const uint8_t *restrict query,
+    size_t query_length, 
+    int8_t match_score,
+    int8_t mismatch_penalty, 
+    int8_t deletion_penalty, 
+    int8_t insertion_penalty
+) {
+    if (__builtin_cpu_supports("avx2")) {
+        get_smith_waterman_matches = get_smith_waterman_matches_avx2;
+    } else {
+        get_smith_waterman_matches = get_smith_waterman_matches_default;
+    }
+    return get_smith_waterman_matches(
+        target, target_length, query, query_length, match_score, 
+        mismatch_penalty, deletion_penalty, insertion_penalty
+    );
+}
+
+static int8_t
+(*get_smith_waterman_matches)(
+    const uint8_t *restrict target, 
+    size_t target_length, 
+    const uint8_t *restrict query,
+    size_t query_length, 
+    int8_t match_score,
+    int8_t mismatch_penalty, 
+    int8_t deletion_penalty, 
+    int8_t insertion_penalty
+) = get_smith_waterman_matches_dispatch;
+
+#else 
+static inline int8_t
+get_smith_waterman_matches(
+    const uint8_t *restrict target, 
+    size_t target_length, 
+    const uint8_t *restrict query,
+    size_t query_length, 
+    int8_t match_score,
+    int8_t mismatch_penalty, 
+    int8_t deletion_penalty, 
+    int8_t insertion_penalty
+) {
+    return get_smith_waterman_matches_default(
+        target, target_length, query, query_length, match_score, 
+        mismatch_penalty, deletion_penalty, insertion_penalty
+    );
+}
+#endif
 
 PyDoc_STRVAR(sequence_identity__doc__, 
 "Calculate sequence identity based on a smith-waterman matrix. Only keep\n"
