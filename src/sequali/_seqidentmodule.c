@@ -197,6 +197,9 @@ get_smith_waterman_matches_avx2(
             linear_score, indel_score, indels_greatest);
         __m256i matches = _mm256_blendv_epi8(
             linear_matches, indel_matches, indels_greatest);
+        print_si256(prev_prev_diagonal_score, "prev_prev_diagonal_score");
+        print_si256(prev_diagonal_score, "prev_diagonal_score");
+        print_si256(scores, "score");
         __m256i zero_greater_than_scores = _mm256_cmpgt_epi8(
             _mm256_setzero_si256(), scores);
         matches = _mm256_blendv_epi8(
@@ -210,9 +213,6 @@ get_smith_waterman_matches_avx2(
         max_score = _mm256_max_epi8(scores, max_score);
         max_matches = _mm256_blendv_epi8(max_matches, tmp_max_matches, equal_score);
         max_matches = _mm256_blendv_epi8(max_matches, matches, greater_score);
-        print_si256(prev_prev_diagonal_score, "prev_prev_diagonal_score");
-        print_si256(prev_diagonal_score, "prev_diagonal_score");
-        print_si256(scores, "score");
         prev_prev_diagonal_score = prev_deletion_score; 
         prev_prev_diagonal_matches = prev_deletion_matches;
         prev_diagonal_score = scores; 
