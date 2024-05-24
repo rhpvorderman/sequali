@@ -18,6 +18,7 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 
 #include "compiler_defs.h"
 #include "Python.h"
+#include "debug_vectors.h"
 
 struct Entry {
     Py_ssize_t score;
@@ -121,7 +122,10 @@ get_smith_waterman_matches_avx2(
     uint8_t *padded_query = padded_query_store;
     /* Pacters than target */
     memset(padded_query, 0xff, sizeof(padded_query_store));
-    memcpy(padded_query, query, query_length);
+    for (size_t i=0; i<query_length; i++) {
+        size_t index = 31 - i;
+        padded_query[index] = query[i];
+    }
     __m256i query_vec = _mm256_lddqu_si256((__m256i *)padded_query);
     __m256i max_matches = _mm256_setzero_si256();
     __m256i max_score = _mm256_setzero_si256();
