@@ -146,11 +146,13 @@ get_smith_waterman_matches_avx2(
         __m256i prev_insertion_score = prev_diagonal_score;
         __m256i prev_insertion_matches = prev_diagonal_matches;
         uint8_t prev_deletion_score_store[33];
+        memset(prev_deletion_score_store, 0, 33);
         _mm256_storeu_si256((__m256i *)prev_deletion_score_store, 
             prev_diagonal_score);
         __m256i prev_deletion_score = _mm256_lddqu_si256(
             (__m256i *)((uint8_t *)prev_deletion_score_store + 1));
         uint8_t prev_deletion_matches_store[33];
+        memset(prev_deletion_matches_store, 0, 33);
         _mm256_storeu_si256(
             (__m256i *)prev_deletion_matches_store, 
             prev_diagonal_matches);
