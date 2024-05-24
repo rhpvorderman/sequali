@@ -143,20 +143,20 @@ get_smith_waterman_matches_avx2(
     
         __m256i prev_linear_score = prev_prev_diagonal_score;
         __m256i prev_linear_matches = prev_prev_diagonal_matches;
-        __m256i prev_del_score = prev_diagonal_score;
-        __m256i prev_del_matches = prev_diagonal_matches;
-        uint8_t prev_insertion_score_store[33] = {0};
-        _mm256_storeu_si256(
-            (__m256i *)((uint8_t *)prev_insertion_score_store + 1), 
+        __m256i prev_insertion_score = prev_diagonal_score;
+        __m256i prev_insertion_matches = prev_diagonal_matches;
+        uint8_t prev_deletion_score_store[33];
+        _mm256_storeu_si256((__m256i *)prev_deletion_score_store, 
             prev_diagonal_score);
-        __m256i prev_insertion_score = _mm256_lddqu_si256(
-            (__m256i *)prev_insertion_score_store);
-        uint8_t prev_inseration_matches_store[33] = {0};
+        __m256i prev_deletion_score = _mm256_lddqu_si256(
+            (__m256i *)((uint8_t *)prev_deletion_score_store + 1));
+        uint8_t prev_deletion_matches_store[33];
         _mm256_storeu_si256(
-            (__m256i *)((uint8_t *)prev_inseration_matches_store + 1), 
+            (__m256i *)prev_deletion_matches_store, 
             prev_diagonal_matches);
-        __m256i prev_insertion_matches = _mm256_lddqu_si256(
-            (__m256i *)prev_inseration_matches_store);
+        __m256i prev_deletion_matches = _mm256_lddqu_si256(
+            (__m256i *)((uint8_t *)prev_deletion_matches_store + 1)
+        );
 
         __m256i query_equals_target = _mm256_cmpeq_epi8(target_vec, query_vec);
         __m256i linear_score_if_equals = _mm256_add_epi8(
@@ -172,8 +172,8 @@ get_smith_waterman_matches_avx2(
             prev_linear_matches, linear_matches_if_equals, query_equals_target
         );
         __m256i deletion_score = _mm256_add_epi8(
-            prev_del_score, deletion_penalty_vec);
-        __m256i deletion_matches = prev_del_matches;
+            prev_deletion_score, deletion_penalty_vec);
+        __m256i deletion_matches = prev_deletion_matches;
         __m256i insertion_score = _mm256_add_epi8(
             prev_insertion_score, insertion_penalty_vec);
         __m256i insertion_matches = _mm256_sub_epi8(
@@ -208,8 +208,11 @@ get_smith_waterman_matches_avx2(
         max_score = _mm256_max_epi8(scores, max_score);
         max_matches = _mm256_blendv_epi8(max_matches, tmp_max_matches, equal_score);
         max_matches = _mm256_blendv_epi8(max_matches, matches, greater_score);
-        prev_prev_diagonal_score = prev_diagonal_score; 
-        prev_prev_diagonal_matches = prev_diagonal_matches;
+        print_si256(prev_prev_diagonal_score, "prev_prev_diagonal_score");
+        print_si256(prev_diagonal_score, "prev_diagonal_score");
+        print_si256(scores, "score");
+        prev_prev_diagonal_score = prev_deletion_score; 
+        prev_prev_diagonal_matches = prev_deletion_matches;
         prev_diagonal_score = scores; 
         prev_diagonal_matches = matches;
     }
