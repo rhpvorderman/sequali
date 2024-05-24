@@ -225,6 +225,7 @@ get_smith_waterman_matches_avx2(
     for (size_t i=0; i<32; i++) {
         int8_t score = max_score_store[i];
         int8_t matches = max_matches_store[i];
+        printf("%d, %d\n", score, matches);
         if (score == highest_score && matches > best_matches) {
             best_matches = matches; 
         } else if (score > highest_score) {
