@@ -184,7 +184,7 @@ get_smith_waterman_matches_avx2(
         __m256i insertion_greater_than_linear = _mm256_cmpgt_epi8(insertion_score, linear_score);
         __m256i deletion_greater_than_linear = _mm256_cmpgt_epi8(deletion_score, insertion_score);
         __m256i deletion_greater_than_insertion = _mm256_cmpgt_epi8(deletion_score, insertion_score);
-        __m256i deletion_greatest = _mm256_or_si256(
+        __m256i deletion_greatest = _mm256_and_si256(
             deletion_greater_than_insertion, 
             deletion_greater_than_linear);
         __m256i insertion_greatest = _mm256_andnot_si256(deletion_greatest, insertion_greater_than_linear);
