@@ -225,6 +225,7 @@ get_smith_waterman_matches_avx2(
             best_matches = matches;
         }
     }
+    PyMem_Free(padded_target);
     return best_matches;
 }
 
