@@ -7,6 +7,11 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.10.0-dev
+------------------
++ Speed up sequence identity calculations on AVX2 enabled CPUs by using a
+  reverse-diagonal parallelized version of Smith-Waterman.
+
 version 0.9.1
 -----------------
 + Fix an issue where the insert size metrics module would crash when no
