@@ -95,6 +95,25 @@ get_smith_waterman_matches_default(
 }
 
 #if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
+
+/**
+ * @brief Shift everything one byte down. Similar to _mm256_bslli_epi128, but
+ * does shift over the 128-bit lanes.
+ */
+__attribute__((__target__("avx2")))
+static inline __m256i _mm256_move_one_down(__m256i vec) {
+    /* This moves the vector one down, but the entry at position 15 will be
+       missing, as the shift does not go beyond the 128-bit lanes. */
+    __m256i shifted_vec = _mm256_bsrli_epi128(vec, 1);
+    /* Rotate 64 bit integers: 1, 2, 3, 0. */
+    __m256i rotated_vec = _mm256_permute4x64_epi64(vec, 0b00111001);
+    /* shift 7 bytes up. This brings the right byte to position 15. */
+    __m256i shifted_rotated_vec = _mm256_slli_epi64(rotated_vec, 56);
+    __m256i masked_vec = _mm256_and_si256(
+        _mm256_setr_epi64x(0, -1, 0, 0), shifted_rotated_vec);
+    return _mm256_or_si256(shifted_vec, masked_vec);
+}
+
 __attribute__((__target__("avx2")))
 /**
  * Get the smith waterman matches by an avx2 algorithm. This goes over diagonals
@@ -125,10 +144,6 @@ get_smith_waterman_matches_avx2(
         size_t index = 31 - i;
         padded_query[index] = query[i];
     }
-    uint8_t prev_deletion_score_store[33];
-    memset(prev_deletion_score_store, 0, 33);
-    uint8_t prev_deletion_matches_store[33];
-    memset(prev_deletion_matches_store, 0, 33);
 
     __m256i query_vec = _mm256_lddqu_si256((__m256i *)padded_query);
     __m256i max_matches = _mm256_setzero_si256();
@@ -149,16 +164,8 @@ get_smith_waterman_matches_avx2(
         __m256i prev_linear_matches = prev_prev_diagonal_matches;
         __m256i prev_insertion_score = prev_diagonal_score;
         __m256i prev_insertion_matches = prev_diagonal_matches;
-        _mm256_storeu_si256((__m256i *)prev_deletion_score_store, 
-            prev_diagonal_score);
-        __m256i prev_deletion_score = _mm256_lddqu_si256(
-            (__m256i *)((uint8_t *)prev_deletion_score_store + 1));
-        _mm256_storeu_si256(
-            (__m256i *)prev_deletion_matches_store, 
-            prev_diagonal_matches);
-        __m256i prev_deletion_matches = _mm256_lddqu_si256(
-            (__m256i *)((uint8_t *)prev_deletion_matches_store + 1)
-        );
+        __m256i prev_deletion_score = _mm256_move_one_down(prev_diagonal_score);
+        __m256i prev_deletion_matches = _mm256_move_one_down(prev_diagonal_matches);
 
         __m256i query_equals_target = _mm256_cmpeq_epi8(target_vec, query_vec);
         __m256i linear_score_if_equals = _mm256_add_epi8(
