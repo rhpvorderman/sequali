@@ -385,6 +385,9 @@ sequence_identity(PyObject *module, PyObject *args, PyObject *kwargs)
         deletion_penalty,
         insertion_penalty
     );
+    if (most_matches < 0) {
+        return PyErr_NoMemory();
+    }
     double identity = (double)most_matches / (double)query_length;
     return PyFloat_FromDouble(identity);
 }
