@@ -9,6 +9,10 @@ Changelog
 
 version 0.10.0-dev
 ------------------
++ Overrepresented sequence analysis now only counts unique fragments per read.
+  Fragments that are duplicated inside the read are counted only once. This
+  prevents long stretches of genomic repeats getting higher reported
+  frequencies.
 + Speed up sequence identity calculations on AVX2 enabled CPUs by using a
   reverse-diagonal parallelized version of Smith-Waterman.
 
