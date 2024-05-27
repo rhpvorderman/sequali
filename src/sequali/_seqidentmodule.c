@@ -156,7 +156,7 @@ get_smith_waterman_matches_avx2(
     __m256i mismatch_penalty_vec = _mm256_set1_epi8(mismatch_penalty);
     __m256i deletion_penalty_vec = _mm256_set1_epi8(deletion_penalty);
     __m256i insertion_penalty_vec = _mm256_set1_epi8(insertion_penalty);
-    size_t run_length = target_length + 31; 
+    size_t run_length = target_length + query_length;
     for (size_t i=0; i < run_length; i++) {
         __m256i target_vec = _mm256_lddqu_si256((__m256i *)(padded_target + i));
     
