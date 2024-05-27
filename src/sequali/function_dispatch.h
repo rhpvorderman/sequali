@@ -206,7 +206,7 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
         kmer <<= 8;
         kmer |= kchunk;
     }
-    for (i=i; i<(int64_t)k; i++) {
+    for (; i<(int64_t)k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
