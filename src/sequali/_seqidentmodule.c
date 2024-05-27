@@ -196,12 +196,10 @@ get_smith_waterman_matches_avx2(
             deletion_greater_than_linear);
         __m256i insertion_greatest = _mm256_andnot_si256(deletion_greatest, insertion_greater_than_linear);
         __m256i indels_greatest = _mm256_or_si256(insertion_greatest, deletion_greatest);
-        __m256i indel_score = _mm256_blendv_epi8(
-            insertion_score, deletion_score, deletion_greater_than_insertion);
+        __m256i indel_score = _mm256_max_epi8(insertion_score, deletion_score);
         __m256i indel_matches = _mm256_blendv_epi8(
             insertion_matches, deletion_matches, deletion_greater_than_insertion);
-        __m256i scores = _mm256_blendv_epi8(
-            linear_score, indel_score, indels_greatest);
+        __m256i scores = _mm256_max_epi8(linear_score, indel_score);
         __m256i matches = _mm256_blendv_epi8(
             linear_matches, indel_matches, indels_greatest);
         __m256i zero_greater_than_scores = _mm256_cmpgt_epi8(
