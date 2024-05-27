@@ -10,5 +10,7 @@ if __name__ == "__main__":
         data = json.load(f)
     sequence_dicts = data["overrepresented_sequences"]["overrepresented_sequences"]
     for seqdict in sequence_dicts:
-        identify_sequence_builtin(seqdict["sequence"])
-
+        best_match = seqdict["best_match"]
+        total, max, found_match = identify_sequence_builtin(seqdict["sequence"])
+        if best_match != found_match:
+            raise ValueError(f"{best_match} != {found_match}")
