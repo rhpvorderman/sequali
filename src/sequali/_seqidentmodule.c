@@ -130,12 +130,16 @@ get_smith_waterman_matches_avx2(
     int8_t deletion_penalty, 
     int8_t insertion_penalty
 ) {
-
+    /* Since the algorithm goes over reversed diagonals, it needs to be padded 
+       with  the vector length - 1 on both sides. So vectors can be loaded 
+       immediately rather than have a complex initialization. */
     uint8_t *padded_target = PyMem_Calloc(target_length + 62, 1);
     if (padded_target == NULL) {
         return -1;
     }
     memcpy(padded_target + 31, target, target_length);
+
+    /* Also the query needs to be fitted inside a vector.*/
     uint8_t padded_query_store[32];
     uint8_t *padded_query = padded_query_store;
     /* Pacters than target */
@@ -144,8 +148,8 @@ get_smith_waterman_matches_avx2(
         size_t index = 31 - i;
         padded_query[index] = query[i];
     }
-
     __m256i query_vec = _mm256_lddqu_si256((__m256i *)padded_query);
+    
     __m256i max_matches = _mm256_setzero_si256();
     __m256i max_score = _mm256_setzero_si256();
     __m256i prev_diagonal_score = _mm256_setzero_si256();
@@ -156,14 +160,21 @@ get_smith_waterman_matches_avx2(
     __m256i mismatch_penalty_vec = _mm256_set1_epi8(mismatch_penalty);
     __m256i deletion_penalty_vec = _mm256_set1_epi8(deletion_penalty);
     __m256i insertion_penalty_vec = _mm256_set1_epi8(insertion_penalty);
+    
     size_t run_length = target_length + query_length;
     for (size_t i=0; i < run_length; i++) {
         __m256i target_vec = _mm256_lddqu_si256((__m256i *)(padded_target + i));
     
+        /* Normally the previous diagonals need to be loaded from arrays, but 
+           since the query length is limited at 31, the previous diagonals can  
+           be stored in registers instead. */
         __m256i prev_linear_score = prev_prev_diagonal_score;
         __m256i prev_linear_matches = prev_prev_diagonal_matches;
         __m256i prev_insertion_score = prev_diagonal_score;
         __m256i prev_insertion_matches = prev_diagonal_matches;
+        /* Rather than loading from a +1 offset from memory, instead use 
+           vector instructions to achieve the same effect. This is much faster 
+           but only works since the query is at most 31 bp. */
         __m256i prev_deletion_score = _mm256_move_one_down(prev_diagonal_score);
         __m256i prev_deletion_matches = _mm256_move_one_down(prev_diagonal_matches);
 
@@ -188,6 +199,9 @@ get_smith_waterman_matches_avx2(
         __m256i insertion_matches = _mm256_sub_epi8(
             prev_insertion_matches, _mm256_set1_epi8(1));
 
+        /* For calculating the scores, simple max instructions suffice. But the 
+           matches vector needs to line up with the score vector so some 
+           comparators and blend instructions are needed for it. */
         __m256i insertion_greater_than_linear = _mm256_cmpgt_epi8(insertion_score, linear_score);
         __m256i deletion_greater_than_linear = _mm256_cmpgt_epi8(deletion_score, linear_score);
         __m256i deletion_greater_than_insertion = _mm256_cmpgt_epi8(deletion_score, insertion_score);
