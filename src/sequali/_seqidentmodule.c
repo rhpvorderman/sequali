@@ -106,7 +106,7 @@ static inline __m256i _mm256_move_one_down(__m256i vec) {
        missing, as the shift does not go beyond the 128-bit lanes. */
     __m256i shifted_vec = _mm256_bsrli_epi128(vec, 1);
     /* Rotate 64 bit integers: 1, 2, 3, 0. */
-    __m256i rotated_vec = _mm256_permute4x64_epi64(vec, 0b00111001);
+    __m256i rotated_vec = _mm256_permute4x64_epi64(vec, 0x39);  // 0b00111001
     /* shift 7 bytes up. This brings the right byte to position 15. */
     __m256i shifted_rotated_vec = _mm256_slli_epi64(rotated_vec, 56);
     __m256i masked_vec = _mm256_and_si256(
