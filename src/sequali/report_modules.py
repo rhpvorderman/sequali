@@ -1426,8 +1426,9 @@ class OverRepresentedSequences(ReportModule):
             <p class="explanation">
                 The percentage shown is an estimate based on the number of
                 occurences of the fragment in relation to the number of
-                sampled sequences. This makes the assumption that a
-                fragment only occurs once in each sequence.
+                sampled sequences. Fragments are only counted once per
+                sequence. Fragments that occur more than once in a sequence are
+                counted as one.
             </p>
             <table>
             <tr>

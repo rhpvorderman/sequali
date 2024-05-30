@@ -3154,6 +3154,8 @@ typedef struct _SequenceDuplicationStruct {
     size_t fragment_length;
     uint64_t number_of_sequences;
     uint64_t sampled_sequences;
+    uint64_t staging_hash_table_size; 
+    uint64_t *staging_hash_table;
     uint64_t hash_table_size;
     uint64_t *hashes; 
     uint32_t *counts;
@@ -3166,6 +3168,7 @@ typedef struct _SequenceDuplicationStruct {
 static void 
 SequenceDuplication_dealloc(SequenceDuplication *self)
 {
+    PyMem_Free(self->staging_hash_table);
     PyMem_Free(self->hashes);
     PyMem_Free(self->counts);
     Py_TYPE(self)->tp_free((PyObject *)self);
@@ -3232,6 +3235,8 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->hash_table_size = hash_table_size;
     self->total_fragments = 0;
     self->fragment_length = fragment_length;
+    self->staging_hash_table_size = 0;
+    self->staging_hash_table = NULL;
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
@@ -3263,6 +3268,44 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
         /* Make sure the index round trips when it reaches hash_table_size.*/
         index &= hash_to_index_int;
     }
+}
+
+static int 
+SequenceDuplication_resize_staging(SequenceDuplication *self, uint64_t new_size)
+{
+    if (new_size <= self->staging_hash_table_size) {
+        return 0;
+    }
+    uint64_t *tmp = PyMem_Realloc(self->staging_hash_table, 
+                                  new_size * sizeof(uint64_t));
+    if (tmp == NULL) {
+        PyErr_NoMemory();
+        return -1; 
+    }
+    self->staging_hash_table = tmp;
+    self->staging_hash_table_size = new_size;
+    return 0;
+}
+
+static inline void 
+add_to_staging(uint64_t *staging_hash_table, uint64_t staging_hash_table_size, 
+               uint64_t hash) 
+{
+    /* Works because size is a power of 2 */
+    uint64_t hash_to_index_int = staging_hash_table_size - 1; 
+    uint64_t index = hash & hash_to_index_int;
+    while (true) {
+        uint64_t current_entry  = staging_hash_table[index];
+        if (current_entry == 0) {
+            staging_hash_table[index] = hash;
+            break;
+        } else if (current_entry == hash) {
+            break;
+        }
+        index += 1; 
+        index &= hash_to_index_int;
+    }
+    return;
 }
 
 static int
@@ -3299,6 +3342,16 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
        still all of the sequence is being sampled.
     */
     Py_ssize_t total_fragments = (sequence_length + fragment_length - 1) / fragment_length;
+    size_t staging_hash_bits = (size_t)ceil(log2((double)total_fragments * 1.5));
+    size_t staging_hash_size = 1ULL << staging_hash_bits;
+    if (staging_hash_size > self->staging_hash_table_size) {
+        if (SequenceDuplication_resize_staging(self, staging_hash_size) < 0) {
+            return -1;
+        }
+    }
+    uint64_t *staging_hash_table = self->staging_hash_table;
+    memset(staging_hash_table, 0 , staging_hash_size * sizeof(uint64_t));
+
     Py_ssize_t from_mid_point_fragments = total_fragments / 2;
     Py_ssize_t mid_point = sequence_length - (from_mid_point_fragments * fragment_length);
     bool warn_unknown = false;
@@ -3313,7 +3366,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         }
         fragments += 1;
         uint64_t hash = wanghash64(kmer);
-        Sequence_duplication_insert_hash(self, hash);
+        add_to_staging(staging_hash_table, staging_hash_size, hash);    
     }
 
     // Sample back sequences
@@ -3327,7 +3380,13 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
         }
         fragments += 1;
         uint64_t hash = wanghash64(kmer);
-        Sequence_duplication_insert_hash(self, hash);
+        add_to_staging(staging_hash_table, staging_hash_size, hash);    
+    }
+    for (size_t i=0; i<staging_hash_size; i++) {
+        uint64_t hash = staging_hash_table[i];
+        if (hash != 0) {
+            Sequence_duplication_insert_hash(self, hash);
+        }
     }
     if (warn_unknown) {
         PyObject *culprit = PyUnicode_DecodeASCII((char *)sequence, sequence_length, NULL);

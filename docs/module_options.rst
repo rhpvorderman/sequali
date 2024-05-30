@@ -64,9 +64,12 @@ such the adapter sequences will always be sampled in the same frame.
     sequence is sampled when the length is not divisible by the size of the
     fragments.
 
-Fragments are stored and counted in a hash table. When the hash table is full
-only fragments that are already present will be counted. To diminish the time
-spent on the module, by default 1 in 8 sequences is analysed.
+For each sequence only unique fragments within the sequence are sampled, to
+avoid overrepresenting common genomic repeats.
+unique fragments are then stored and counted in a hash table. When the hash
+table is full only fragments that are already present will be counted.
+To diminish the time spent on the module, by default 1 in 8 sequences is
+analysed.
 
 After the module is run, stored fragments are checked for their counts. If the
 count exceeds a certain threshold it is considered overrepresented. Sequali
