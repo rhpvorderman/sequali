@@ -1690,22 +1690,6 @@ QCMetrics_flush_staging(QCMetrics *self) {
     self->staging_count = 0;
 }
 
-#ifdef __SSE2__
-static inline size_t horizontal_add_epu8(__m128i vec) {
-    /* _mm_sad_epu8 calculates absolute differences between a and b and then 
-       summes the lower 8 bytes horizontally and saves it is in the lower 16 
-       bits of the lower 64-bit integer. It does the same for the upper 8 
-       bytes and stores it in the upper 64-bit integer. 
-       _mm_cvtsi128_si64 gets the lower 64-bit integer. Using 
-       _mm_bsrli_si128 we can shift the result 8 bytes to the right, resulting
-       in the upper integer being in the place of the lower integer. */
-    __m128i hadd = _mm_sad_epu8(vec, _mm_setzero_si128());
-    uint64_t lower_count = _mm_cvtsi128_si64(hadd);
-    uint64_t upper_count = _mm_cvtsi128_si64(_mm_bsrli_si128(hadd, 8));
-    return lower_count + upper_count;
-}
-#endif
-
 static inline int 
 QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
@@ -1731,71 +1715,6 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *sequence_end_ptr = sequence + sequence_length;
     // uint32_t is ample as the maximum length of a sequence is saved in a uint32_r
     uint32_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
-    #ifdef __SSE2__
-    const uint8_t *sequence_vec_end_ptr = sequence_end_ptr - sizeof(__m128i);
-    while (sequence_ptr < sequence_vec_end_ptr) {
-        /* Store nucleotide in count vectors. This means we can do at most 
-           255 loop as the 8-bit integers can become saturated. After 255 loops
-           the result is flushed. */
-        size_t remaining_length = sequence_vec_end_ptr - sequence_ptr;
-        size_t remaining_vecs = (remaining_length + 15) / sizeof(__m128i);
-        size_t iterations = Py_MIN(255, remaining_vecs);
-        register __m128i a_counts = _mm_setzero_si128();
-        register __m128i c_counts = _mm_setzero_si128();
-        register __m128i g_counts = _mm_setzero_si128();
-        register __m128i t_counts = _mm_setzero_si128();
-        register __m128i all1 = _mm_set1_epi8(1);
-        for (size_t i=0; i<iterations; i++) {
-            __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
-            // 32 is the lowercase bit. Turning it off makes everything uppercase.
-            nucleotides = _mm_andnot_si128(_mm_set1_epi8(32), nucleotides);
-            __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
-            __m128i a_positions = _mm_and_si128(a_nucs, all1);
-            a_counts = _mm_add_epi8(a_counts, a_positions);
-            __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i c_positions = _mm_and_si128(c_nucs, all1);
-            c_counts = _mm_add_epi8(c_counts, c_positions);
-            __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i g_positions = _mm_and_si128(g_nucs, all1);
-            g_counts = _mm_add_epi8(g_counts, g_positions);
-            __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i t_positions = _mm_and_si128(t_nucs, all1);
-            t_counts = _mm_add_epi8(t_counts, t_positions);
-
-            /* Manual loop unrolling gives the best result here */
-            staging_base_counts_ptr[0][NUCLEOTIDE_TO_INDEX[sequence_ptr[0]]] += 1;
-            staging_base_counts_ptr[1][NUCLEOTIDE_TO_INDEX[sequence_ptr[1]]] += 1;
-            staging_base_counts_ptr[2][NUCLEOTIDE_TO_INDEX[sequence_ptr[2]]] += 1;
-            staging_base_counts_ptr[3][NUCLEOTIDE_TO_INDEX[sequence_ptr[3]]] += 1;
-            staging_base_counts_ptr[4][NUCLEOTIDE_TO_INDEX[sequence_ptr[4]]] += 1;
-            staging_base_counts_ptr[5][NUCLEOTIDE_TO_INDEX[sequence_ptr[5]]] += 1;
-            staging_base_counts_ptr[6][NUCLEOTIDE_TO_INDEX[sequence_ptr[6]]] += 1;
-            staging_base_counts_ptr[7][NUCLEOTIDE_TO_INDEX[sequence_ptr[7]]] += 1;
-            staging_base_counts_ptr[8][NUCLEOTIDE_TO_INDEX[sequence_ptr[8]]] += 1;
-            staging_base_counts_ptr[9][NUCLEOTIDE_TO_INDEX[sequence_ptr[9]]] += 1;
-            staging_base_counts_ptr[10][NUCLEOTIDE_TO_INDEX[sequence_ptr[10]]] += 1;
-            staging_base_counts_ptr[11][NUCLEOTIDE_TO_INDEX[sequence_ptr[11]]] += 1;
-            staging_base_counts_ptr[12][NUCLEOTIDE_TO_INDEX[sequence_ptr[12]]] += 1;
-            staging_base_counts_ptr[13][NUCLEOTIDE_TO_INDEX[sequence_ptr[13]]] += 1;
-            staging_base_counts_ptr[14][NUCLEOTIDE_TO_INDEX[sequence_ptr[14]]] += 1;
-            staging_base_counts_ptr[15][NUCLEOTIDE_TO_INDEX[sequence_ptr[15]]] += 1;
-            sequence_ptr += sizeof(__m128i);
-            staging_base_counts_ptr += sizeof(__m128i);
-        }
-        size_t a_bases = horizontal_add_epu8(a_counts);
-        size_t c_bases = horizontal_add_epu8(c_counts);
-        size_t g_bases = horizontal_add_epu8(g_counts);
-        size_t t_bases = horizontal_add_epu8(t_counts);
-        size_t total = a_bases + c_bases + g_bases + t_bases;
-        base_counts[A] += a_bases;
-        base_counts[C] += c_bases;
-        base_counts[G] += g_bases;
-        base_counts[T] += t_bases;
-        // By substracting the ACGT bases from the length over which the 
-        // count was run, we get the N bases.
-        base_counts[N] += (iterations * sizeof(__m128i)) - total;
-    }
-    #endif
 
     while(sequence_ptr < sequence_end_ptr) {
         uint8_t c = *sequence_ptr;
@@ -1805,6 +1724,7 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         sequence_ptr += 1; 
         staging_base_counts_ptr += 1;
     }
+
     uint64_t at_counts = base_counts[A] + base_counts[T];
     uint64_t gc_counts = base_counts[C] + base_counts[G];
     double gc_content_percentage = (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
