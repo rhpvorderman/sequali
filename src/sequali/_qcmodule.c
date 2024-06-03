@@ -1540,27 +1540,29 @@ PyTypeObject BamParser_Type = {
    characters such as IUPAC K will map to N, unlike the fastp method where K
    will map to C. */
 
-static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
-// Control characters
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-// Interpunction numbers etc
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
-//  P, Q, R, S, T, U, V, W, X, Y, Z,  
-    0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
-//  p, q, r, s, t, u, v, w, x, y, z, 
-    0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-};
 #define N 0
 #define A 1
 #define C 2
 #define G 3
 #define T 4
+
+static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
+// Control characters
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+// Interpunction numbers etc
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
+    N, A, N, C, N, N, N, G, N, N, N, N, N, N, N, N,
+//  P, Q, R, S, T, U, V, W, X, Y, Z,  
+    N, N, N, N, T, N, N, N, N, N, N, N, N, N, N, N,
+//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
+    N, A, N, C, N, N, N, G, N, N, N, N, N, N, N, N,
+//  p, q, r, s, t, u, v, w, x, y, z, 
+    N, N, N, N, T, N, N, N, N, N, N, N, N, N, N, N, 
+};
+
 #define NUC_TABLE_SIZE 5
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
