@@ -2914,33 +2914,31 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         return 0;
     }
     tile_quality->length_counts[sequence_length - 1] += 1;
-    double *total_errors = tile_quality->total_errors;
-    double *error_cursor = total_errors;
+    double *restrict total_errors = tile_quality->total_errors;
+    double *restrict error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
-    const uint8_t *qualities_ptr = qualities;
-    #ifdef __SSE2__
-    const uint8_t *qualities_vec_end = qualities_end - sizeof(__m128i);
-    while (qualities_ptr < qualities_vec_end) {
-        __m128i phreds = _mm_loadu_si128((__m128i *)qualities_ptr);
-        __m128i too_low_phreds = _mm_cmplt_epi8(phreds, _mm_set1_epi8(phred_offset));
-        __m128i too_high_phreds = _mm_cmpgt_epi8(phreds, _mm_set1_epi8(126));
-        if (_mm_movemask_epi8(_mm_or_si128(too_low_phreds, too_high_phreds))) {
-            /* Find the culprit in the non-vectorized loop*/
-            break;
+    const uint8_t *restrict qualities_ptr = qualities;
+    const uint8_t *qualities_unroll_end = qualities_end -1;
+    while (qualities_ptr < qualities_unroll_end) {
+        uint8_t phred0 = qualities_ptr[0] - phred_offset;
+        uint8_t phred1 = qualities_ptr[1] - phred_offset;
+        uint8_t phred2 = qualities_ptr[2] - phred_offset;
+        uint8_t phred3 = qualities_ptr[3] - phred_offset;
+        if (phred0 > PHRED_MAX || phred1 > PHRED_MAX || phred2 > PHRED_MAX || phred3 > PHRED_MAX) {
+            // Let the scalar loop handle the error
+            break; 
         }
-        /* Since the actions are independent the compiler will unroll this loop */
-        for (size_t i=0; i<16; i += 2) {
-            __m128d current_errors = _mm_loadu_pd(error_cursor + i);
-            __m128d sequence_errors = _mm_setr_pd(
-                SCORE_TO_ERROR_RATE[qualities_ptr[i] - phred_offset],
-                SCORE_TO_ERROR_RATE[qualities_ptr[i+1] - phred_offset]
-            );
-            _mm_storeu_pd(error_cursor + i, _mm_add_pd(current_errors, sequence_errors));
-        }
-        error_cursor += sizeof(__m128i);
-        qualities_ptr += sizeof(__m128i);
+        double error0 = SCORE_TO_ERROR_RATE[phred0];
+        double error1 = SCORE_TO_ERROR_RATE[phred1];
+        double error2 = SCORE_TO_ERROR_RATE[phred2];
+        double error3 = SCORE_TO_ERROR_RATE[phred3];
+        error_cursor[0] += error0;
+        error_cursor[1] += error1;
+        error_cursor[2] += error2;
+        error_cursor[3] += error3;
+        qualities_ptr += 4;
+        error_cursor += 4;
     }
-    #endif
     while (qualities_ptr < qualities_end) {
         uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
