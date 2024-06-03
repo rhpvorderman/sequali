@@ -1462,7 +1462,7 @@ class OverRepresentedSequences(ReportModule):
             </table>
             """
         )
-        content.write("<table>")
+        content.write("<div class=\"overrepresented_table\"><table>")
         content.write("<tr><th>count</th><th>percentage</th>"
                       "<th>canonical sequence</th>"
                       "<th>reverse complemented sequence</th>"
@@ -1479,7 +1479,7 @@ class OverRepresentedSequences(ReportModule):
                     <td style="text-align:right">
                         {item.most_matches / item.max_matches:.02%}</td>
                     <td>{html.escape(item.best_match)}</td></tr>""")
-        content.write("</table>")
+        content.write("</table></div>")
         return content.getvalue()
 
     @classmethod

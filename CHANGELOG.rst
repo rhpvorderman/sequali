@@ -9,6 +9,8 @@ Changelog
 
 version 0.10.0-dev
 ------------------
++ Make overrepresented sequences table scrollable and smaller so it is easier
+  to skip over when lots of entries are found.
 + Overrepresented sequence analysis now only counts unique fragments per read.
   Fragments that are duplicated inside the read are counted only once. This
   prevents long stretches of genomic repeats getting higher reported
