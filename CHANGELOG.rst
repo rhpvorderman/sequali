@@ -7,6 +7,17 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.10.0
+------------------
++ Make overrepresented sequences table scrollable and smaller so it is easier
+  to skip over when lots of entries are found.
++ Overrepresented sequence analysis now only counts unique fragments per read.
+  Fragments that are duplicated inside the read are counted only once. This
+  prevents long stretches of genomic repeats getting higher reported
+  frequencies.
++ Speed up sequence identity calculations on AVX2 enabled CPUs by using a
+  reverse-diagonal parallelized version of Smith-Waterman.
+
 version 0.9.1
 -----------------
 + Fix an issue where the insert size metrics module would crash when no

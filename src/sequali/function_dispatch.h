@@ -16,33 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
-// Macros also used in htslib, very useful.
-#if defined __GNUC__
-#define GCC_AT_LEAST(major, minor) \
-    (__GNUC__ > (major) || (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
-#else 
-# define GCC_AT_LEAST(major, minor) 0
-#endif
-
-#ifdef __clang__
-#ifdef __has_attribute
-#define CLANG_COMPILER_HAS(attribute) __has_attribute(attribute)
-#endif 
-#endif
-#ifndef CLANG_COMPILER_HAS 
-#define CLANG_COMPILER_HAS(attribute) 0
-#endif 
-
-#define COMPILER_HAS_TARGET (GCC_AT_LEAST(4, 8) || CLANG_COMPILER_HAS(__target__))
-#define COMPILER_HAS_OPTIMIZE (GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize))
-
-#if defined(__x86_64__) || defined(_M_X64)
-#define BUILD_IS_X86_64 1
-#include "immintrin.h"
-#else 
-#define BUILD_IS_X86_64 0
-#endif
-
+#include "compiler_defs.h"
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>
@@ -77,7 +51,7 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
     }
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
@@ -232,7 +206,7 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
         kmer <<= 8;
         kmer |= kchunk;
     }
-    for (i=i; i<(int64_t)k; i++) {
+    for (; i<(int64_t)k; i++) {
         size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
         all_nucs |= nuc;
         kmer <<= 2;
@@ -254,7 +228,7 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
     return revcomp_kmer;
 }
 
-#if COMPILER_HAS_TARGET && BUILD_IS_X86_64
+#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
 __attribute__((__target__("avx2")))
 static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
     /* By using a load mask, at most 3 extra bytes are loaded. Given that a 

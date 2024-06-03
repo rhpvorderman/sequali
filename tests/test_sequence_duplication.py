@@ -146,7 +146,8 @@ def test_sequence_duplication_sampling_rate(divisor):
     ("GATTACAAA", {"ATC": 1, "GTA": 1, "AAA": 1}),
     ("GA", {}),
     ("GATT", {"ATC": 1, "AAT": 1}),
-    ("GATTACGATTAC", {"ATC": 2, "GTA": 2}),
+    # Fragments that are duplicated in the sequence should only be recorded once.
+    ("GATTACGATTAC", {"ATC": 1, "GTA": 1}),
 ])
 def test_sequence_duplication_all_fragments(sequence, result):
     seqdup = SequenceDuplication(fragment_length=3, sample_every=1)

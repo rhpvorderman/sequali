@@ -96,3 +96,10 @@ tr:nth-child(odd) {
 tr:hover {
     background-color: darkseagreen;
 }
+
+.overrepresented_table {
+    /* Use a non-integer height so the last row is partially visible. This
+       indicates that the table is scrollable. */
+    max-height: 35.75em;
+    overflow-y: scroll;
+}

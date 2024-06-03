@@ -53,6 +53,12 @@ def test_canonical_kmers():
     # GGTTGACTA
     # 5 out of 9 matches
     ("TGTTACGG", "GGTTGACTA", 5 / 9),
+    # 31 bp query to properly test AVX2 implementation
+    # AGATCGGAAGAGCACACGTCTGAACTCC--AGTCA
+    # ||| ||||  ||||  ||||||||||||  || ||
+    # AGA-CGGA--AGCAAGCGTCTGAACTCCCCAG-CA
+    ("AGATCGGAAGAGCACACGTCTGAACTCCAGTCA",
+     "AGACGGAAGCAAGCGTCTGAACTCCCCAGCA", 23 / 31)
 ])
 def test_sequence_identity(target, query, result):
     assert sequence_identity(target, query) == result
