@@ -1797,7 +1797,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
     const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
     uint8_t phred_offset = self->phred_offset;
-    double accumulated_error_rate = 0.0;
+    double accumulator0 = 0.0;
+    double accumulator1 = 0.0;
+    double accumulator2 = 0.0;
+    double accumulator3 = 0.0;
     while(qualities_ptr < qualities_unroll_end_ptr) {
         uint8_t q0 = qualities_ptr[0] - phred_offset;    
         uint8_t q1 = qualities_ptr[1] - phred_offset;   
@@ -1815,13 +1818,20 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         staging_phred_counts_ptr[2][q2_index] += 1;
         staging_phred_counts_ptr[3][q3_index] += 1;
         /* By writing it as multiple independent additions this takes advantage 
-           of out of order execution. */
-        accumulated_error_rate += (
-            SCORE_TO_ERROR_RATE[q0] + SCORE_TO_ERROR_RATE[q1]) + 
-            (SCORE_TO_ERROR_RATE[q2] + SCORE_TO_ERROR_RATE[q3]);
+           of out of order execution. While also making it obvious for the 
+           compiler that vectors can be used. */
+        double error_rate0 = SCORE_TO_ERROR_RATE[q0];
+        double error_rate1 = SCORE_TO_ERROR_RATE[q1];
+        double error_rate2 = SCORE_TO_ERROR_RATE[q2];
+        double error_rate3 = SCORE_TO_ERROR_RATE[q3];
+        accumulator0 += error_rate0;
+        accumulator1 += error_rate1;
+        accumulator2 += error_rate2;
+        accumulator3 += error_rate3;
         staging_phred_counts_ptr += 4;
         qualities_ptr += 4;
     }
+    double accumulated_error_rate = accumulator0 + accumulator1 + accumulator2 + accumulator3;
     while(qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;    
         if (q > PHRED_MAX) {
