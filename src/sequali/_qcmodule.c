@@ -1540,11 +1540,11 @@ PyTypeObject BamParser_Type = {
    characters such as IUPAC K will map to N, unlike the fastp method where K
    will map to C. */
 
-#define N 0
-#define A 1
-#define C 2
-#define G 3
-#define T 4
+#define A 0
+#define C 1
+#define G 2
+#define T 3
+#define N 4
 
 static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 // Control characters
