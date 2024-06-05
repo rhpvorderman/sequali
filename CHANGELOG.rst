@@ -7,6 +7,12 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.11.0-dev
+------------------
++ Replace some of the hand vectorized code with more generic code that can be
+  automatically be optimized by the compiler. This should make things faster on
+  Windows and ARM64 platforms.
+
 version 0.10.0
 ------------------
 + Make overrepresented sequences table scrollable and smaller so it is easier
