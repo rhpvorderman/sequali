@@ -1540,27 +1540,29 @@ PyTypeObject BamParser_Type = {
    characters such as IUPAC K will map to N, unlike the fastp method where K
    will map to C. */
 
+#define A 0
+#define C 1
+#define G 2
+#define T 3
+#define N 4
+
 static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 // Control characters
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
 // Interpunction numbers etc
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
+    N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
 //     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
+    N, A, N, C, N, N, N, G, N, N, N, N, N, N, N, N,
 //  P, Q, R, S, T, U, V, W, X, Y, Z,  
-    0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    N, N, N, N, T, N, N, N, N, N, N, N, N, N, N, N,
 //     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0,
+    N, A, N, C, N, N, N, G, N, N, N, N, N, N, N, N,
 //  p, q, r, s, t, u, v, w, x, y, z, 
-    0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    N, N, N, N, T, N, N, N, N, N, N, N, N, N, N, N, 
 };
-#define N 0
-#define A 1
-#define C 2
-#define G 3
-#define T 4
+
 #define NUC_TABLE_SIZE 5
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
@@ -1690,22 +1692,6 @@ QCMetrics_flush_staging(QCMetrics *self) {
     self->staging_count = 0;
 }
 
-#ifdef __SSE2__
-static inline size_t horizontal_add_epu8(__m128i vec) {
-    /* _mm_sad_epu8 calculates absolute differences between a and b and then 
-       summes the lower 8 bytes horizontally and saves it is in the lower 16 
-       bits of the lower 64-bit integer. It does the same for the upper 8 
-       bytes and stores it in the upper 64-bit integer. 
-       _mm_cvtsi128_si64 gets the lower 64-bit integer. Using 
-       _mm_bsrli_si128 we can shift the result 8 bytes to the right, resulting
-       in the upper integer being in the place of the lower integer. */
-    __m128i hadd = _mm_sad_epu8(vec, _mm_setzero_si128());
-    uint64_t lower_count = _mm_cvtsi128_si64(hadd);
-    uint64_t upper_count = _mm_cvtsi128_si64(_mm_bsrli_si128(hadd, 8));
-    return lower_count + upper_count;
-}
-#endif
-
 static inline int 
 QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
@@ -1728,85 +1714,78 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 
     staging_base_table *staging_base_counts_ptr = self->staging_base_counts;
     const uint8_t *sequence_ptr = sequence; 
-    const uint8_t *sequence_end_ptr = sequence + sequence_length;
-    // uint32_t is ample as the maximum length of a sequence is saved in a uint32_r
-    uint32_t base_counts[NUC_TABLE_SIZE] = {0, 0, 0, 0, 0};
-    #ifdef __SSE2__
-    const uint8_t *sequence_vec_end_ptr = sequence_end_ptr - sizeof(__m128i);
-    while (sequence_ptr < sequence_vec_end_ptr) {
-        /* Store nucleotide in count vectors. This means we can do at most 
-           255 loop as the 8-bit integers can become saturated. After 255 loops
-           the result is flushed. */
-        size_t remaining_length = sequence_vec_end_ptr - sequence_ptr;
-        size_t remaining_vecs = (remaining_length + 15) / sizeof(__m128i);
-        size_t iterations = Py_MIN(255, remaining_vecs);
-        register __m128i a_counts = _mm_setzero_si128();
-        register __m128i c_counts = _mm_setzero_si128();
-        register __m128i g_counts = _mm_setzero_si128();
-        register __m128i t_counts = _mm_setzero_si128();
-        register __m128i all1 = _mm_set1_epi8(1);
-        for (size_t i=0; i<iterations; i++) {
-            __m128i nucleotides = _mm_loadu_si128((__m128i *)sequence_ptr);
-            // 32 is the lowercase bit. Turning it off makes everything uppercase.
-            nucleotides = _mm_andnot_si128(_mm_set1_epi8(32), nucleotides);
-            __m128i a_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('A'));
-            __m128i a_positions = _mm_and_si128(a_nucs, all1);
-            a_counts = _mm_add_epi8(a_counts, a_positions);
-            __m128i c_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('C'));
-            __m128i c_positions = _mm_and_si128(c_nucs, all1);
-            c_counts = _mm_add_epi8(c_counts, c_positions);
-            __m128i g_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('G'));
-            __m128i g_positions = _mm_and_si128(g_nucs, all1);
-            g_counts = _mm_add_epi8(g_counts, g_positions);
-            __m128i t_nucs = _mm_cmpeq_epi8(nucleotides, _mm_set1_epi8('T'));
-            __m128i t_positions = _mm_and_si128(t_nucs, all1);
-            t_counts = _mm_add_epi8(t_counts, t_positions);
-
-            /* Manual loop unrolling gives the best result here */
-            staging_base_counts_ptr[0][NUCLEOTIDE_TO_INDEX[sequence_ptr[0]]] += 1;
-            staging_base_counts_ptr[1][NUCLEOTIDE_TO_INDEX[sequence_ptr[1]]] += 1;
-            staging_base_counts_ptr[2][NUCLEOTIDE_TO_INDEX[sequence_ptr[2]]] += 1;
-            staging_base_counts_ptr[3][NUCLEOTIDE_TO_INDEX[sequence_ptr[3]]] += 1;
-            staging_base_counts_ptr[4][NUCLEOTIDE_TO_INDEX[sequence_ptr[4]]] += 1;
-            staging_base_counts_ptr[5][NUCLEOTIDE_TO_INDEX[sequence_ptr[5]]] += 1;
-            staging_base_counts_ptr[6][NUCLEOTIDE_TO_INDEX[sequence_ptr[6]]] += 1;
-            staging_base_counts_ptr[7][NUCLEOTIDE_TO_INDEX[sequence_ptr[7]]] += 1;
-            staging_base_counts_ptr[8][NUCLEOTIDE_TO_INDEX[sequence_ptr[8]]] += 1;
-            staging_base_counts_ptr[9][NUCLEOTIDE_TO_INDEX[sequence_ptr[9]]] += 1;
-            staging_base_counts_ptr[10][NUCLEOTIDE_TO_INDEX[sequence_ptr[10]]] += 1;
-            staging_base_counts_ptr[11][NUCLEOTIDE_TO_INDEX[sequence_ptr[11]]] += 1;
-            staging_base_counts_ptr[12][NUCLEOTIDE_TO_INDEX[sequence_ptr[12]]] += 1;
-            staging_base_counts_ptr[13][NUCLEOTIDE_TO_INDEX[sequence_ptr[13]]] += 1;
-            staging_base_counts_ptr[14][NUCLEOTIDE_TO_INDEX[sequence_ptr[14]]] += 1;
-            staging_base_counts_ptr[15][NUCLEOTIDE_TO_INDEX[sequence_ptr[15]]] += 1;
-            sequence_ptr += sizeof(__m128i);
-            staging_base_counts_ptr += sizeof(__m128i);
+    size_t remaining_length = sequence_length;
+    uint64_t a_counts = 0;
+    uint64_t c_counts = 0;
+    uint64_t g_counts = 0;
+    uint64_t t_counts = 0;
+    /* A 64-bit integer can be used as 4 consecutive 16 bit integers. Using 
+       a bit of shifting, this means no memory access is needed to count 
+       the nucleotide counts for the GC content calculation. */
+    static const uint64_t count_integers[5] = {
+        1ULL, 1ULL << 16ULL, 1ULL << 32ULL, 1ULL << 48ULL, 0};
+    while (remaining_length != 0) {
+        size_t chunk_length = remaining_length;
+        if (chunk_length > (4 * UINT16_MAX)) {
+            chunk_length = 4 * UINT16_MAX;
         }
-        size_t a_bases = horizontal_add_epu8(a_counts);
-        size_t c_bases = horizontal_add_epu8(c_counts);
-        size_t g_bases = horizontal_add_epu8(g_counts);
-        size_t t_bases = horizontal_add_epu8(t_counts);
-        size_t total = a_bases + c_bases + g_bases + t_bases;
-        base_counts[A] += a_bases;
-        base_counts[C] += c_bases;
-        base_counts[G] += g_bases;
-        base_counts[T] += t_bases;
-        // By substracting the ACGT bases from the length over which the 
-        // count was run, we get the N bases.
-        base_counts[N] += (iterations * sizeof(__m128i)) - total;
-    }
-    #endif
+        remaining_length -= chunk_length;
+        size_t chunk_unroll_length = chunk_length & (~3ULL);
+        const uint8_t *chunk_unroll_end_ptr = sequence_ptr + chunk_unroll_length;
+        const uint8_t *chunk_end_ptr = sequence_ptr + chunk_length;
 
-    while(sequence_ptr < sequence_end_ptr) {
-        uint8_t c = *sequence_ptr;
-        uint8_t c_index = NUCLEOTIDE_TO_INDEX[c];
-        base_counts[c_index] += 1;
-        staging_base_counts_ptr[0][c_index] += 1;
-        sequence_ptr += 1; 
-        staging_base_counts_ptr += 1;
+        uint64_t base_counts0 = 0;
+        uint64_t base_counts1 = 0;
+        uint64_t base_counts2 = 0;
+        uint64_t base_counts3 = 0;
+        while(sequence_ptr < chunk_unroll_end_ptr) {
+            uint64_t c0 = sequence_ptr[0];
+            uint64_t c1 = sequence_ptr[1];
+            uint64_t c2 = sequence_ptr[2];
+            uint64_t c3 = sequence_ptr[3];
+            uint64_t c0_index = NUCLEOTIDE_TO_INDEX[c0];
+            uint64_t c1_index = NUCLEOTIDE_TO_INDEX[c1];
+            uint64_t c2_index = NUCLEOTIDE_TO_INDEX[c2];
+            uint64_t c3_index = NUCLEOTIDE_TO_INDEX[c3];
+            base_counts0 += count_integers[c0_index];
+            base_counts1 += count_integers[c1_index];
+            base_counts2 += count_integers[c2_index];
+            base_counts3 += count_integers[c3_index];
+            staging_base_counts_ptr[0][c0_index] += 1;
+            staging_base_counts_ptr[1][c1_index] += 1;
+            staging_base_counts_ptr[2][c2_index] += 1;
+            staging_base_counts_ptr[3][c3_index] += 1;
+            sequence_ptr += 4; 
+            staging_base_counts_ptr += 4;
+        }
+        while(sequence_ptr < chunk_end_ptr) {
+            uint64_t c = *sequence_ptr;
+            uint64_t c_index = NUCLEOTIDE_TO_INDEX[c];
+            base_counts0 += count_integers[c_index];
+            staging_base_counts_ptr[0][c_index] += 1;
+            sequence_ptr += 1; 
+            staging_base_counts_ptr += 1;
+        }
+        a_counts += (base_counts0 >> (A * 16)) & 0xFFFF;
+        c_counts += (base_counts0 >> (C * 16)) & 0xFFFF;
+        g_counts += (base_counts0 >> (G * 16)) & 0xFFFF;
+        t_counts += (base_counts0 >> (T * 16)) & 0xFFFF;
+        a_counts += (base_counts1 >> (A * 16)) & 0xFFFF;
+        c_counts += (base_counts1 >> (C * 16)) & 0xFFFF;
+        g_counts += (base_counts1 >> (G * 16)) & 0xFFFF;
+        t_counts += (base_counts1 >> (T * 16)) & 0xFFFF;
+        a_counts += (base_counts2 >> (A * 16)) & 0xFFFF;
+        c_counts += (base_counts2 >> (C * 16)) & 0xFFFF;
+        g_counts += (base_counts2 >> (G * 16)) & 0xFFFF;
+        t_counts += (base_counts2 >> (T * 16)) & 0xFFFF;
+        a_counts += (base_counts3 >> (A * 16)) & 0xFFFF;
+        c_counts += (base_counts3 >> (C * 16)) & 0xFFFF;
+        g_counts += (base_counts3 >> (G * 16)) & 0xFFFF;
+        t_counts += (base_counts3 >> (T * 16)) & 0xFFFF;
     }
-    uint64_t at_counts = base_counts[A] + base_counts[T];
-    uint64_t gc_counts = base_counts[C] + base_counts[G];
+
+    uint64_t at_counts = a_counts + t_counts;
+    uint64_t gc_counts = c_counts + g_counts;
     double gc_content_percentage = (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
     uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
     assert(gc_content_index >= 0);
@@ -1818,7 +1797,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
     const uint8_t *qualities_unroll_end_ptr = qualities_end_ptr - 4;
     uint8_t phred_offset = self->phred_offset;
-    double accumulated_error_rate = 0.0;
+    double accumulator0 = 0.0;
+    double accumulator1 = 0.0;
+    double accumulator2 = 0.0;
+    double accumulator3 = 0.0;
     while(qualities_ptr < qualities_unroll_end_ptr) {
         uint8_t q0 = qualities_ptr[0] - phred_offset;    
         uint8_t q1 = qualities_ptr[1] - phred_offset;   
@@ -1836,13 +1818,20 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         staging_phred_counts_ptr[2][q2_index] += 1;
         staging_phred_counts_ptr[3][q3_index] += 1;
         /* By writing it as multiple independent additions this takes advantage 
-           of out of order execution. */
-        accumulated_error_rate += (
-            SCORE_TO_ERROR_RATE[q0] + SCORE_TO_ERROR_RATE[q1]) + 
-            (SCORE_TO_ERROR_RATE[q2] + SCORE_TO_ERROR_RATE[q3]);
+           of out of order execution. While also making it obvious for the 
+           compiler that vectors can be used. */
+        double error_rate0 = SCORE_TO_ERROR_RATE[q0];
+        double error_rate1 = SCORE_TO_ERROR_RATE[q1];
+        double error_rate2 = SCORE_TO_ERROR_RATE[q2];
+        double error_rate3 = SCORE_TO_ERROR_RATE[q3];
+        accumulator0 += error_rate0;
+        accumulator1 += error_rate1;
+        accumulator2 += error_rate2;
+        accumulator3 += error_rate3;
         staging_phred_counts_ptr += 4;
         qualities_ptr += 4;
     }
+    double accumulated_error_rate = accumulator0 + accumulator1 + accumulator2 + accumulator3;
     while(qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;    
         if (q > PHRED_MAX) {
@@ -2914,33 +2903,31 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         return 0;
     }
     tile_quality->length_counts[sequence_length - 1] += 1;
-    double *total_errors = tile_quality->total_errors;
-    double *error_cursor = total_errors;
+    double *restrict total_errors = tile_quality->total_errors;
+    double *restrict error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
-    const uint8_t *qualities_ptr = qualities;
-    #ifdef __SSE2__
-    const uint8_t *qualities_vec_end = qualities_end - sizeof(__m128i);
-    while (qualities_ptr < qualities_vec_end) {
-        __m128i phreds = _mm_loadu_si128((__m128i *)qualities_ptr);
-        __m128i too_low_phreds = _mm_cmplt_epi8(phreds, _mm_set1_epi8(phred_offset));
-        __m128i too_high_phreds = _mm_cmpgt_epi8(phreds, _mm_set1_epi8(126));
-        if (_mm_movemask_epi8(_mm_or_si128(too_low_phreds, too_high_phreds))) {
-            /* Find the culprit in the non-vectorized loop*/
-            break;
+    const uint8_t *restrict qualities_ptr = qualities;
+    const uint8_t *qualities_unroll_end = qualities_end -1;
+    while (qualities_ptr < qualities_unroll_end) {
+        uint8_t phred0 = qualities_ptr[0] - phred_offset;
+        uint8_t phred1 = qualities_ptr[1] - phred_offset;
+        uint8_t phred2 = qualities_ptr[2] - phred_offset;
+        uint8_t phred3 = qualities_ptr[3] - phred_offset;
+        if (phred0 > PHRED_MAX || phred1 > PHRED_MAX || phred2 > PHRED_MAX || phred3 > PHRED_MAX) {
+            // Let the scalar loop handle the error
+            break; 
         }
-        /* Since the actions are independent the compiler will unroll this loop */
-        for (size_t i=0; i<16; i += 2) {
-            __m128d current_errors = _mm_loadu_pd(error_cursor + i);
-            __m128d sequence_errors = _mm_setr_pd(
-                SCORE_TO_ERROR_RATE[qualities_ptr[i] - phred_offset],
-                SCORE_TO_ERROR_RATE[qualities_ptr[i+1] - phred_offset]
-            );
-            _mm_storeu_pd(error_cursor + i, _mm_add_pd(current_errors, sequence_errors));
-        }
-        error_cursor += sizeof(__m128i);
-        qualities_ptr += sizeof(__m128i);
+        double error0 = SCORE_TO_ERROR_RATE[phred0];
+        double error1 = SCORE_TO_ERROR_RATE[phred1];
+        double error2 = SCORE_TO_ERROR_RATE[phred2];
+        double error3 = SCORE_TO_ERROR_RATE[phred3];
+        error_cursor[0] += error0;
+        error_cursor[1] += error1;
+        error_cursor[2] += error2;
+        error_cursor[3] += error3;
+        qualities_ptr += 4;
+        error_cursor += 4;
     }
-    #endif
     while (qualities_ptr < qualities_end) {
         uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
