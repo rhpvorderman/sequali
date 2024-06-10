@@ -65,6 +65,9 @@ Example reports:
   ``cutadapt -o GM24385_1_cut.fastq.gz --cut -64 --cut 64 --minimum-length 500 -Z --max-aer 0.1 GM24385_1.fastq.gz``.
   The resulting file has 64 bp cut off from both its ends and after that
   filtered for a minimum length of 500 and a maximum average error rate of 0.1.
++ `21C125_R1.fastq.gz <https://sequali.readthedocs.io/en/latest/21C125_R1.fastq.gz.html>`_;
+  Illumina NovaSeq X paired-end sequencing of *Campylobacter jejuni*. ENA accession:
+  `ERR11204024 <https://www.ebi.ac.uk/ena/browser/view/ERR11204024>`_.
 
 .. introduction end
 
