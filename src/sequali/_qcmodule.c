@@ -49,13 +49,15 @@ static PyTypeObject *PythonArray;  // array.array
  * Utils *
  *********/
 
-static inline void non_temporal_prefetch(void *address)
+static inline void non_temporal_write_prefetch(void *address)
 {
-    #ifdef __SSE2__
+    #if __GNUC__ || CLANG_COMPILER_HAS_BUILTIN(__builtin_prefetch)
+    __builtin_prefetch(address, 1, 0);
+    #elif BUILD_IS_X86_64
+    /* Fallback for known architecture */
     _mm_prefetch(address, _MM_HINT_NTA);
-    #else 
-    /* no-op for non-x86 architectures*/
-    return;
+    #else
+    /* No-op for MSVC and other compilers. MSVC builtin was not found. */
     #endif
 }
 
@@ -1671,21 +1673,21 @@ QCMetrics_flush_staging(QCMetrics *self) {
        does not pollute the cache and use non temporal prefetching. The 
        same goes for phred counts.
     */
-    non_temporal_prefetch(base_counts);
+    non_temporal_write_prefetch(base_counts);
     for (size_t i=0; i < number_of_base_slots; i++) {
         base_counts[i] += staging_base_counts[i];
         /* Fetch the next 64 byte cache line non-temporal. */
-        non_temporal_prefetch(base_counts + i + 8);
+        non_temporal_write_prefetch(base_counts + i + 8);
     }
     memset(staging_base_counts, 0, number_of_base_slots * sizeof(uint16_t));
 
     uint64_t *phred_counts = (uint64_t *)self->phred_counts;
     uint16_t *staging_phred_counts = (uint16_t *)self->staging_phred_counts;
     size_t number_of_phred_slots = self->max_length * PHRED_TABLE_SIZE;
-    non_temporal_prefetch(phred_counts);
+    non_temporal_write_prefetch(phred_counts);
     for (size_t i=0; i < number_of_phred_slots; i++) {
         phred_counts[i] += staging_phred_counts[i];
-        non_temporal_prefetch(phred_counts + i + 8);
+        non_temporal_write_prefetch(phred_counts + i + 8);
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
