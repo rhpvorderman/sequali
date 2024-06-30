@@ -67,7 +67,7 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
     const uint8_t *dest_end_ptr = dest + length;
     uint8_t *dest_cursor = dest;
     const uint8_t *encoded_cursor = encoded_sequence;
-    const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i));
+    const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i) - 1);
     __m128i nuc_lookup_vec = _mm_lddqu_si128((__m128i *)nuc_lookup);
     /* Nucleotides are encoded 4-bits per nucleotide and stored in 8-bit bytes 
        as follows: |AB|CD|EF|GH|. The 4-bit codes (going from 0-15) can be used 
