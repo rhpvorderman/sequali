@@ -1716,68 +1716,50 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 
     staging_base_table *staging_base_counts_ptr = self->staging_base_counts;
     const uint8_t *sequence_ptr = sequence; 
-    size_t remaining_length = sequence_length;
-    uint64_t a_counts = 0;
-    uint64_t c_counts = 0;
-    uint64_t g_counts = 0;
-    uint64_t t_counts = 0;
-    /* A 64-bit integer can be used as 4 consecutive 16 bit integers. Using 
+    const uint8_t *end_ptr = sequence + sequence_length;
+    const uint8_t *unroll_end_ptr = end_ptr - 3;
+    /* A 64-bit integer can be used as 2 consecutive 32 bit integers. Using 
        a bit of shifting, this means no memory access is needed to count 
-       the nucleotide counts for the GC content calculation. */
+       the nucleotide counts for the GC content calculation. 
+       We can also count at_counts and gc_counts together.  */
     static const uint64_t count_integers[5] = {
-        1ULL, 1ULL << 16ULL, 1ULL << 32ULL, 1ULL << 48ULL, 0};
-    while (remaining_length != 0) {
-        size_t chunk_length = remaining_length;
-        /* Limit chunk length at UINT16_MAX so there are no overflows. */
-        if (chunk_length > UINT16_MAX) {
-            chunk_length = UINT16_MAX;
-        }
-        remaining_length -= chunk_length;
-        size_t chunk_unroll_length = chunk_length & (~3ULL);
-        const uint8_t *chunk_unroll_end_ptr = sequence_ptr + chunk_unroll_length;
-        const uint8_t *chunk_end_ptr = sequence_ptr + chunk_length;
-
-        uint64_t base_counts0 = 0;
-        uint64_t base_counts1 = 0;
-        uint64_t base_counts2 = 0;
-        uint64_t base_counts3 = 0;
-        while(sequence_ptr < chunk_unroll_end_ptr) {
-            uint64_t c0 = sequence_ptr[0];
-            uint64_t c1 = sequence_ptr[1];
-            uint64_t c2 = sequence_ptr[2];
-            uint64_t c3 = sequence_ptr[3];
-            uint64_t c0_index = NUCLEOTIDE_TO_INDEX[c0];
-            uint64_t c1_index = NUCLEOTIDE_TO_INDEX[c1];
-            uint64_t c2_index = NUCLEOTIDE_TO_INDEX[c2];
-            uint64_t c3_index = NUCLEOTIDE_TO_INDEX[c3];
-            base_counts0 += count_integers[c0_index];
-            base_counts1 += count_integers[c1_index];
-            base_counts2 += count_integers[c2_index];
-            base_counts3 += count_integers[c3_index];
-            staging_base_counts_ptr[0][c0_index] += 1;
-            staging_base_counts_ptr[1][c1_index] += 1;
-            staging_base_counts_ptr[2][c2_index] += 1;
-            staging_base_counts_ptr[3][c3_index] += 1;
-            sequence_ptr += 4; 
-            staging_base_counts_ptr += 4;
-        }
-        while(sequence_ptr < chunk_end_ptr) {
-            uint64_t c = *sequence_ptr;
-            uint64_t c_index = NUCLEOTIDE_TO_INDEX[c];
-            base_counts0 += count_integers[c_index];
-            staging_base_counts_ptr[0][c_index] += 1;
-            sequence_ptr += 1; 
-            staging_base_counts_ptr += 1;
-        }
-        uint64_t base_counts = base_counts0 + base_counts1 + base_counts2 + base_counts3;
-        a_counts += (base_counts >> (A * 16)) & 0xFFFF;
-        c_counts += (base_counts >> (C * 16)) & 0xFFFF;
-        g_counts += (base_counts >> (G * 16)) & 0xFFFF;
-        t_counts += (base_counts >> (T * 16)) & 0xFFFF;
+    /*  A   , C            , G            , T   , N */
+        1ULL, 1ULL << 32ULL, 1ULL << 32ULL, 1ULL, 0};
+    uint64_t base_counts0 = 0;
+    uint64_t base_counts1 = 0;
+    uint64_t base_counts2 = 0;
+    uint64_t base_counts3 = 0;
+    while (sequence_ptr < unroll_end_ptr) {
+        uint64_t c0 = sequence_ptr[0];
+        uint64_t c1 = sequence_ptr[1];
+        uint64_t c2 = sequence_ptr[2];
+        uint64_t c3 = sequence_ptr[3];
+        uint64_t c0_index = NUCLEOTIDE_TO_INDEX[c0];
+        uint64_t c1_index = NUCLEOTIDE_TO_INDEX[c1];
+        uint64_t c2_index = NUCLEOTIDE_TO_INDEX[c2];
+        uint64_t c3_index = NUCLEOTIDE_TO_INDEX[c3];
+        base_counts0 += count_integers[c0_index];
+        base_counts1 += count_integers[c1_index];
+        base_counts2 += count_integers[c2_index];
+        base_counts3 += count_integers[c3_index];
+        staging_base_counts_ptr[0][c0_index] += 1;
+        staging_base_counts_ptr[1][c1_index] += 1;
+        staging_base_counts_ptr[2][c2_index] += 1;
+        staging_base_counts_ptr[3][c3_index] += 1;
+        sequence_ptr += 4; 
+        staging_base_counts_ptr += 4;
     }
-
-    uint64_t at_counts = a_counts + t_counts;
-    uint64_t gc_counts = c_counts + g_counts;
+    while(sequence_ptr < end_ptr) {
+        uint64_t c = *sequence_ptr;
+        uint64_t c_index = NUCLEOTIDE_TO_INDEX[c];
+        base_counts0 += count_integers[c_index];
+        staging_base_counts_ptr[0][c_index] += 1;
+        sequence_ptr += 1; 
+        staging_base_counts_ptr += 1;
+    }
+    uint64_t base_counts = base_counts0 + base_counts1 + base_counts2 + base_counts3;
+    uint64_t at_counts = base_counts & 0xFFFFFFFF;
+    uint64_t gc_counts = (base_counts >> 32) & 0xFFFFFFFF;
     double gc_content_percentage = (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
     uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
     assert(gc_content_index >= 0);
