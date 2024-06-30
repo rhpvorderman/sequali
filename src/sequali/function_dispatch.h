@@ -51,7 +51,13 @@ decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence, size
     }
 }
 
-#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
+static void 
+(*decode_bam_sequence)(
+    uint8_t *dest, const uint8_t *encoded_sequence, size_t length
+) = decode_bam_sequence_default;
+
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 __attribute__((__target__("ssse3")))
 static void 
 decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
@@ -87,24 +93,16 @@ decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence, size_t
     decode_bam_sequence_default(dest_cursor, encoded_cursor, dest_end_ptr - dest_cursor);
 }
 
-static void (*decode_bam_sequence)(uint8_t *dest, const uint8_t *encoded_sequence, size_t length);
 
-static void decode_bam_sequence_dispatch(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) {
+/* Constructor runs at dynamic load time */
+__attribute__((constructor))
+static void decode_bam_sequence_init_func_ptr(void) {
     if (__builtin_cpu_supports("ssse3")) {
         decode_bam_sequence = decode_bam_sequence_ssse3;
     }
     else {
         decode_bam_sequence = decode_bam_sequence_default;
     }
-    decode_bam_sequence(dest, encoded_sequence, length);
-}
-
-static void (*decode_bam_sequence)(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) = decode_bam_sequence_dispatch;
-
-#else
-static inline void decode_bam_sequence(uint8_t *dest, const uint8_t *encoded_sequence, size_t length) 
-{
-    decode_bam_sequence_default(dest, encoded_sequence, length);
 }
 #endif 
 
@@ -205,7 +203,11 @@ static int64_t sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
     return revcomp_kmer;
 }
 
-#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
+static int64_t (*sequence_to_canonical_kmer)(uint8_t *sequence, uint64_t k
+    ) = sequence_to_canonical_kmer_default;
+
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 __attribute__((__target__("avx2")))
 static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
     /* By using a load mask, at most 3 extra bytes are loaded. Given that a 
@@ -335,9 +337,9 @@ static int64_t sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k) {
     return TWOBIT_UNKNOWN_CHAR;    
 }
 
-static int64_t (*sequence_to_canonical_kmer)(uint8_t *sequence, uint64_t k);
-
-static int64_t sequence_to_canonical_kmer_dispatch(uint8_t *sequence, uint64_t k) 
+/* Constructor runs at dynamic load time */
+__attribute__((constructor))
+static void sequence_to_canonical_kmer_init_func_ptr(void) 
 {
     if (__builtin_cpu_supports("avx2")) {
         sequence_to_canonical_kmer = sequence_to_canonical_kmer_avx2;
@@ -345,14 +347,5 @@ static int64_t sequence_to_canonical_kmer_dispatch(uint8_t *sequence, uint64_t k
     else {
         sequence_to_canonical_kmer = sequence_to_canonical_kmer_default;
     }
-    return sequence_to_canonical_kmer(sequence, k);
-}
-
-static int64_t (*sequence_to_canonical_kmer)(
-    uint8_t *sequence, uint64_t k) = sequence_to_canonical_kmer_dispatch;
-
-#else 
-static inline int64_t sequence_to_canonical_kmer(uint8_t *sequence, uint64_t k) {
-    return sequence_to_canonical_kmer_default(sequence, k);
 }
 #endif
