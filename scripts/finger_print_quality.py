@@ -1,9 +1,8 @@
 import argparse
-import sys
 
 import dnaio
 
-QUAL_TO_PHRED = tuple(10 ** (-(i - 33) / 10)  for i in range(128))
+QUAL_TO_PHRED = tuple(10 ** (-(i - 33) / 10) for i in range(128))
 
 
 def fingerprint_sequence_original(sequence: str):
@@ -56,4 +55,3 @@ if __name__ == "__main__":
             expected_errors[round(prob)] += 1
     for i, count in enumerate(expected_errors):
         print(f"{i:2}\t{count:10,}")
-

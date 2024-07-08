@@ -11,7 +11,7 @@ ONT_NAIVE_BARCODES = Path(__file__).parent / "oxford_nanopore_native_barcodes.ts
 def native_barcodes_lookup() -> Dict[str, Tuple[str, str]]:
     lookup: Dict[str, Tuple[str, str]] = {}
     with open(ONT_NAIVE_BARCODES) as f:
-        header = next(f)
+        _ = next(f)  # skip header
         for line in f:
             component, forward_sequence, reverse_sequence = line.strip().split('\t')
             lookup[component] = (forward_sequence, reverse_sequence)
@@ -21,7 +21,7 @@ def native_barcodes_lookup() -> Dict[str, Tuple[str, str]]:
 def barcodes_lookup() -> Dict[str, str]:
     lookup: Dict[str, str] = {}
     with open(ONT_BARCODES) as f:
-        header = next(f)
+        _ = next(f)  # skip header
         for line in f:
             components, sequence = line.strip().split("\t")
             for component in components.split(" / "):
@@ -91,7 +91,7 @@ def all_barcodes() -> Iterator[FastaEntry]:
                          f"{barcode_name}",
                          f"ATCGCCTACCGTGAC{barcode_seq}CGTTTTTCGTGCGCCGCTTC")
     # Separate entry for RLB012A
-    barcode_name = f"RLB012A"
+    barcode_name = "RLB012A"
     barcode_seq = barcode_lookup[barcode_name]
     yield FastaEntry(f"Oxford nanopore rapid PCR barcode sequence, "
                      f"{barcode_name}",
