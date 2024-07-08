@@ -93,7 +93,13 @@ get_smith_waterman_matches_default(
     return most_matches;
 }
 
-#if COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS && BUILD_IS_X86_64
+static int8_t (*get_smith_waterman_matches)(
+    const uint8_t *restrict target, size_t target_length,
+    const uint8_t *restrict query, size_t query_length, int8_t match_score,
+    int8_t mismatch_penalty, int8_t deletion_penalty,
+    int8_t insertion_penalty) = get_smith_waterman_matches_default;
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 
 /**
  * @brief Shift everything one byte down. Similar to _mm256_bslli_epi128, but
@@ -256,16 +262,8 @@ get_smith_waterman_matches_avx2(const uint8_t *restrict target,
     return best_matches;
 }
 
-static int8_t (*get_smith_waterman_matches)(
-    const uint8_t *restrict target, size_t target_length,
-    const uint8_t *restrict query, size_t query_length, int8_t match_score,
-    int8_t mismatch_penalty, int8_t deletion_penalty, int8_t insertion_penalty);
-
-static int8_t
-get_smith_waterman_matches_dispatch(
-    const uint8_t *restrict target, size_t target_length,
-    const uint8_t *restrict query, size_t query_length, int8_t match_score,
-    int8_t mismatch_penalty, int8_t deletion_penalty, int8_t insertion_penalty)
+__attribute__((constructor)) static void
+get_smith_waterman_matches_dispatch(void)
 {
     if (__builtin_cpu_supports("avx2")) {
         get_smith_waterman_matches = get_smith_waterman_matches_avx2;
@@ -273,27 +271,6 @@ get_smith_waterman_matches_dispatch(
     else {
         get_smith_waterman_matches = get_smith_waterman_matches_default;
     }
-    return get_smith_waterman_matches(target, target_length, query, query_length,
-                                      match_score, mismatch_penalty,
-                                      deletion_penalty, insertion_penalty);
-}
-
-static int8_t (*get_smith_waterman_matches)(
-    const uint8_t *restrict target, size_t target_length,
-    const uint8_t *restrict query, size_t query_length, int8_t match_score,
-    int8_t mismatch_penalty, int8_t deletion_penalty,
-    int8_t insertion_penalty) = get_smith_waterman_matches_dispatch;
-
-#else
-static inline int8_t
-get_smith_waterman_matches(const uint8_t *restrict target, size_t target_length,
-                           const uint8_t *restrict query, size_t query_length,
-                           int8_t match_score, int8_t mismatch_penalty,
-                           int8_t deletion_penalty, int8_t insertion_penalty)
-{
-    return get_smith_waterman_matches_default(
-        target, target_length, query, query_length, match_score,
-        mismatch_penalty, deletion_penalty, insertion_penalty);
 }
 #endif
 
