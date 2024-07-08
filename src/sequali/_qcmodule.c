@@ -1548,6 +1548,7 @@ PyTypeObject BamParser_Type = {
 #define T 3
 #define N 4
 
+// clang-format off
 static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 // Control characters
     N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N,
@@ -1564,6 +1565,7 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 //  p, q, r, s, t, u, v, w, x, y, z, 
     N, N, N, N, T, N, N, N, N, N, N, N, N, N, N, N, 
 };
+// clang-format on
 
 #define NUC_TABLE_SIZE 5
 #define PHRED_LIMIT 47
@@ -4732,6 +4734,7 @@ InsertSizeMetrics_add_adapter(
     }
 }
 
+// clang-format off
 static const uint8_t NUCLEOTIDE_COMPLEMENT[128] = {
 // All non-ACGT become 0 so they don't match with N.
 // Control characters
@@ -4749,6 +4752,7 @@ static const uint8_t NUCLEOTIDE_COMPLEMENT[128] = {
 //  p, q, r, s,  t,  u,  v, w, x, y, z, 
     0, 0, 0, 0, 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
 };
+// clang-format on
 
 static inline void 
 reverse_complement(uint8_t *restrict dest, const uint8_t *restrict src, size_t length) 

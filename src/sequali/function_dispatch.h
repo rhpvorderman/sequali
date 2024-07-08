@@ -123,7 +123,7 @@ decode_bam_qualities(
 
 
 /* To be used in the sequence duplication part */
-
+// clang-format off
 static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
 // Control characters
     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
@@ -140,6 +140,7 @@ static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
 //  p, q, r, s, t, u, v, w, x, y, z,
     4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
 };
+// clang-format on
 
 #define TWOBIT_UNKNOWN_CHAR -1
 #define TWOBIT_N_CHAR -2
