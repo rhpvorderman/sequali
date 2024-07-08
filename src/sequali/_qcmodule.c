@@ -21,11 +21,12 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include "structmember.h"
 
 #include "function_dispatch.h"
-#include "math.h"
 #include "murmur3.h"
 #include "score_to_error_rate.h"
-#include "stdbool.h"
 #include "wanghash.h"
+
+#include <math.h>
+#include <stdbool.h>
 
 #ifdef __SSE2__
 #include "emmintrin.h"
