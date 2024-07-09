@@ -204,6 +204,9 @@ def make_series_unique(svg: str) -> str:
 
 
 def figurize_plot(plot: pygal.Graph):
+    # Make UUID reproducible.
+    translation_table = str.maketrans(" ", "-", "()%:;")
+    plot.uuid = plot.config.title.lower().translate(translation_table)
     svg_unicode = plot.render(is_unicode=True)
     svg_unicode = make_series_unique(svg_unicode)
     svg_tree: xml.etree.ElementTree.Element = (
@@ -341,6 +344,11 @@ class ReportModule(ABC):
     def to_html(self) -> str:
         pass
 
+    def prepend_read_info(self, title: str) -> str:
+        if hasattr(self, "read_pair_info") and self.read_pair_info is not None:
+            return f"{self.read_pair_info}: {title}"
+        return title
+
 
 @dataclasses.dataclass
 class Meta(ReportModule):
@@ -475,7 +483,7 @@ class SequenceLengthDistribution(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
-            title="Sequence length distribution",
+            title=self.prepend_read_info("Sequence length distribution"),
             x_title="sequence length",
             y_title="number of reads",
             style=ONE_SERIE_STYLE,
@@ -570,7 +578,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Line(
-            title="Per position quality percentiles",
+            title=self.prepend_read_info("Per position quality percentiles"),
             show_dots=False,
             x_title="position",
             y_title="phred score",
@@ -579,7 +587,7 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             style=pygal.style.DefaultStyle(
                 colors=["#000000"] * 12,
                 **COMMON_GRAPH_STYLE_OPTIONS,
-            ),
+                ),
             **label_settings(self.x_labels),
             **COMMON_GRAPH_OPTIONS,
         )
@@ -713,7 +721,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.StackedBar(
-            title="Per base quality distribution",
+            title=self.prepend_read_info("Per base quality distribution"),
             style=QUALITY_DISTRIBUTION_STYLE,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
@@ -750,7 +758,7 @@ class PerSequenceAverageQualityScores(ReportModule):
                 maximum_score = i
         maximum_score = max(maximum_score + 2, 40)
         plot = pygal.Bar(
-            title="Per sequence quality scores",
+            title=self.prepend_read_info("Per sequence quality scores"),
             x_labels=range(maximum_score + 1),
             x_labels_major_every=3,
             show_minor_x_labels=False,
@@ -826,7 +834,7 @@ class PerPositionBaseContent(ReportModule):
             **COMMON_GRAPH_STYLE_OPTIONS
         )
         plot = pygal.StackedLine(
-            title="Base content",
+            title=self.prepend_read_info("Base content"),
             style=style,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
@@ -908,7 +916,7 @@ class PerPositionNContent(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
-            title="Per position N content",
+            title=self.prepend_read_info("Per position N content"),
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
             x_title="position",
@@ -939,7 +947,7 @@ class PerSequenceGCContent(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Bar(
-            title="Per sequence GC content",
+            title=self.prepend_read_info("Per sequence GC content"),
             x_labels=self.x_labels,
             x_labels_major_every=3,
             show_minor_x_labels=False,
@@ -953,7 +961,7 @@ class PerSequenceGCContent(ReportModule):
 
     def smoothened_plot(self):
         plot = pygal.Line(
-            title="Per sequence GC content (smoothened)",
+            title=self.prepend_read_info("Per sequence GC content (smoothened)"),
             x_labels=self.smoothened_x_labels,
             x_labels_major_every=3,
             show_minor_x_labels=False,
@@ -1003,7 +1011,7 @@ class AdapterContent(ReportModule):
 
     def plot(self) -> pygal.Graph:
         plot = pygal.Line(
-            title="Adapter content (%)",
+            title=self.prepend_read_info("Adapter content (%)"),
             range=(0.0, 100.0),
             x_title="position",
             y_title="%",
@@ -1150,7 +1158,8 @@ class PerTileQualityReport(ReportModule):
             **COMMON_GRAPH_STYLE_OPTIONS,
         )
         scatter_plot = pygal.Line(
-            title="Deviation from geometric mean in phred units.",
+            title=self.prepend_read_info(
+                "Per tile deviation from geometric mean in phred units"),
             x_title="position",
             stroke=False,
             style=style,
