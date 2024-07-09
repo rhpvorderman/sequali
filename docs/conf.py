@@ -6,13 +6,13 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import importlib.metadata
+import sequali
 
 project = 'Sequali'
 copyright = '2023, Leiden University Medical Center'
 author = 'Ruben Vorderman'
-version = [x.version for x in importlib.metadata.distributions()
-           if x.name == "sequali"][0]
+version = sequali.__version__
+
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
