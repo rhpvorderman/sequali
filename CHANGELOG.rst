@@ -7,7 +7,7 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.11.0-dev
+version 0.10.1
 ------------------
 + Fix a bug where the average phred score per read would be rounded, not
   floored. This would lead reads with a phred score such as 9.7 to be counted
