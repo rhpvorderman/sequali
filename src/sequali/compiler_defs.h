@@ -21,7 +21,7 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define GCC_AT_LEAST(major, minor) \
     (__GNUC__ > (major) || (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
 #else
-# define GCC_AT_LEAST(major, minor) 0
+#define GCC_AT_LEAST(major, minor) 0
 #endif
 
 #ifdef __clang__
@@ -39,10 +39,13 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #define CLANG_COMPILER_HAS_BUILTIN(function) 0
 #endif
 
-#define COMPILER_HAS_TARGET_AND_BUILTIN_CPU_SUPPORTS \
-    (GCC_AT_LEAST(4, 8) || (CLANG_COMPILER_HAS(__target__) && \
-        CLANG_COMPILER_HAS_BUILTIN(__builtin_cpu_supports)))
-#define COMPILER_HAS_OPTIMIZE (GCC_AT_LEAST(4,4) || CLANG_COMPILER_HAS(optimize))
+#define COMPILER_HAS_TARGETED_DISPATCH                                             \
+    (GCC_AT_LEAST(4, 8) || (CLANG_COMPILER_HAS(__target__) &&                      \
+                            CLANG_COMPILER_HAS_BUILTIN(__builtin_cpu_supports)) && \
+                               CLANG_COMPILER_HAS(constructor))
+
+#define COMPILER_HAS_OPTIMIZE \
+    (GCC_AT_LEAST(4, 4) || CLANG_COMPILER_HAS(optimize))
 
 #if defined(__x86_64__) || defined(_M_X64)
 #define BUILD_IS_X86_64 1

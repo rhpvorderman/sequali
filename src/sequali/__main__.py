@@ -166,6 +166,10 @@ def argument_parser() -> argparse.ArgumentParser:
                              "decompression will be used. Default: 2.")
     parser.add_argument("--version", action="version",
                         version=__version__)
+    # Option to skip report creation and only run the module data gathering.
+    # For benchmarking purposes.
+    parser.add_argument("--no-report", action="store_true",
+                        help=argparse.SUPPRESS)
     return parser
 
 
@@ -278,6 +282,8 @@ def main() -> None:
             raise RuntimeError(
                 f"FASTQ Files out of sync {args.input_reverse} has "
                 f"more FASTQ records than {args.input}.")
+    if args.no_report:
+        return
     report_modules = calculate_stats(
         filename=args.input,
         metrics=metrics1,

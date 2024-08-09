@@ -42,7 +42,7 @@ def test_qc_metrics():
     phred_content = metrics.phred_scores()
     this_read_error = (10 ** -1) * 25 + (10 ** -3) * 25
     this_read_phred = -10 * math.log10(this_read_error / len(sequence))
-    phred_index = round(this_read_phred)
+    phred_index = math.floor(this_read_phred)
     assert phred_content[phred_index] == 1
     assert sum(phred_content) == 1
     phred_array = metrics.phred_count_table()
@@ -76,13 +76,20 @@ def test_qc_metrics():
 
 def test_long_sequence():
     metrics = QCMetrics()
-    # This will test the base counting in vectors properly as that is limited
-    # at 255 * 16 nucleotides (4080 bytes) and thus needs to flush the counts
-    # properly.
+
     sequence = 4096 * 'A' + 4096 * 'C'
-    qualities = 8192 * chr(20 + 33)
+    qualities = (2048 * chr(00 + 33) +
+                 2048 * chr(10 + 33) +
+                 2048 * chr(20 + 33) +
+                 2048 * chr(30 + 33))
+    errors = (2048 * (10 ** -0) +
+              2048 * (10 ** -1) +
+              2048 * (10 ** -2) +
+              2048 * (10 ** -3))
+    phred = -10 * math.log10(errors / 8192)
+    floored_phred = math.floor(phred)
     metrics.add_read(FastqRecordView("name", sequence, qualities))
-    assert metrics.phred_scores()[20] == 1
+    assert metrics.phred_scores()[floored_phred] == 1
     assert metrics.gc_content()[50] == 1
 
 
@@ -97,4 +104,4 @@ def test_average_long_quality():
     error_rate = (1 + 19999 * 10 ** -5) / 20000
     phred = -10 * math.log10(error_rate)
     metrics.add_read(FastqRecordView("name", sequence, qualities))
-    assert metrics.phred_scores()[round(phred)] == 1
+    assert metrics.phred_scores()[math.floor(phred)] == 1

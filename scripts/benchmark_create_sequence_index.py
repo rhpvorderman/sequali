@@ -1,6 +1,5 @@
 import resource
 import sys
-import gc
 
 from sequali.sequence_identification import (DEFAULT_CONTAMINANTS_FILES,
                                              create_sequence_index)
@@ -22,9 +21,12 @@ if __name__ == "__main__":
         total_key_usage += sys.getsizeof(key)
         if not isinstance(value, str):
             total_container_usage += sys.getsizeof(value)
-    print(f"dict memory usage:\t{sys.getsizeof(sequence_index) / (1024 * 1024):.2f} MiB")
+    print(f"dict memory usage:\t"
+          f"{sys.getsizeof(sequence_index) / (1024 * 1024):.2f} MiB")
     print(f"key memory usage:\t{total_key_usage / (1024 * 1024):.2f} MiB")
-    print(f"container memory usage:\t{total_container_usage / (1024 * 1024):.2f} MiB")
-    print(f"total memory usage:\t{(resource_usage.ru_maxrss - prior_mem_usage) / 1024:.2f} MiB")
+    print(f"container memory usage:\t"
+          f"{total_container_usage / (1024 * 1024):.2f} MiB")
+    print(f"total memory usage:\t"
+          f"{(resource_usage.ru_maxrss - prior_mem_usage) / 1024:.2f} MiB")
     print(f"total kmers stored:\t{len(sequence_index):,}")
     print(f"{resource_usage.ru_utime + resource_usage.ru_stime :.2f} seconds")
