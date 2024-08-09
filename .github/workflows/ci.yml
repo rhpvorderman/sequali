@@ -47,22 +47,23 @@ jobs:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         os: ["ubuntu-latest"]
         include:
           # MacOS ARM m1
           - os: "macos-latest"
             python-version: "3.8"
           - os: "macos-latest"
-            python-version: "3.12"
+            python-version: "3.13"
           # MacOS x86-64
           - os: "macos-13"
             python-version: "3.8"
           - os: "macos-13"
-            python-version: "3.12"
+            python-version: "3.13"
           - os: "windows-latest"
             python-version: "3.8"
           - os: "windows-latest"
-            python-version: "3.12"
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
         with:
