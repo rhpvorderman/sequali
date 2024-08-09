@@ -9,6 +9,9 @@ Changelog
 
 version 0.11.0-dev
 ------------------
++ Fix a bug where the average phred score per read would be rounded, not
+  floored. This would lead reads with a phred score such as 9.7 to be counted
+  towards the Q>=10 results.
 + Replace some of the hand vectorized code with more generic code that can be
   automatically be optimized by the compiler. This should make things faster on
   Windows and ARM64 platforms.

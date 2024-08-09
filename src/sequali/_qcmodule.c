@@ -1849,7 +1849,9 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     meta->accumulated_error_rate = accumulated_error_rate;
     double average_error_rate = accumulated_error_rate / (double)sequence_length;
     double average_phred = -10.0 * log10(average_error_rate);
-    uint64_t phred_score_index = (uint64_t)round(average_phred);
+    // Floor the average phred so q9.7 does not get represented as q10 but
+    // q9. Otherwise the Q>=10 count is going to be off.
+    uint64_t phred_score_index = (uint64_t)floor(average_phred);
     assert(phred_score_index >= 0);
     assert(phred_score_index <= PHRED_MAX);
     self->phred_scores[phred_score_index] += 1;
