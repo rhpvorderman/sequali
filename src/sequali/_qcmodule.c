@@ -32,12 +32,6 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include "emmintrin.h"
 #endif
 
-#if (PY_VERSION_HEX < 0x03090000)
-#define Py_SET_REFCNT(op, count) (Py_REFCNT(op) = count)
-#define Py_SET_SIZE(op, size) (Py_SIZE(op) = size)
-#define Py_SET_TYPE(op, type) (Py_TYPE(op) = type)
-#endif
-
 /* Pointers to types that will be imported in the module initialization section */
 
 static PyTypeObject *PythonArray;  // array.array
@@ -538,14 +532,11 @@ FastqRecordArrayView_FromPointerSizeAndObject(struct FastqMeta *records,
                                               PyObject *obj)
 {
     size_t size = number_of_records * sizeof(struct FastqMeta);
-    FastqRecordArrayView *self =
-        PyObject_Malloc(sizeof(FastqRecordArrayView) + size);
+    FastqRecordArrayView *self = PyObject_NewVar(
+        FastqRecordArrayView, &FastqRecordArrayView_Type, number_of_records);
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    Py_SET_REFCNT(self, 1);
-    Py_SET_TYPE(self, &FastqRecordArrayView_Type);
-    Py_SET_SIZE(self, number_of_records);
     if (records != NULL) {
         memcpy(self->records, records, size);
     }
