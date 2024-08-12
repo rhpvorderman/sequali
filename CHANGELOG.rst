@@ -7,6 +7,11 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.11.1
+------------------
++ Fix a memory leak that occurred in Python 3.12 due to a refcounting API
+  change.
+
 version 0.11.0
 ------------------
 + Make figure IDs reproducible across HTML reports.
