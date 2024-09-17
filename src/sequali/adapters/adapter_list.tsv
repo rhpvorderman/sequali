@@ -33,7 +33,7 @@ PolyA	illumina	AAAAAAAAAAAA	end
 # expensive. See https://github.com/rhpvorderman/sequali/issues/69
 
 # Ligation kit and adapter mix are indistinguishable
-Oxford nanopore ligation kit or Adapter Mix (AMX), top strand	nanopore	TTACGTATTGCT	start
+Oxford nanopore ligation kit or Adapter Mix (AMX), top strand	nanopore	GTTACGTATTGC	start
 Oxford nanopore ligation kit or Adapter Mix (AMX), bottom strand 	nanopore	GCAATACGTAAC	end
 
 Oxford nanopore cDNA RT Adapter (CRT)	nanopore	CTTGCGGGCGGC	end
