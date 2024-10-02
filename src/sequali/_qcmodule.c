@@ -1903,9 +1903,10 @@ QCMetrics_add_record_array(QCMetrics *self, FastqRecordArrayView *record_array)
             struct FastqMeta record = records[i];
             printf(
                 "ERROR:\n"
-                "%s\n",
-                "name length: %u\n", "sequence_offset: %u\n",
-                "qualities_offset: %u\n",
+                "%s\n"
+                "name length: %u\n"
+                "sequence_offset: %u\n"
+                "qualities_offset: %u\n"
                 "sequence_length: %u\n"
                 "Entire buffer: %s",
                 record.record_start, record.name_length,
