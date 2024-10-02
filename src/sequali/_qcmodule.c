@@ -1468,6 +1468,17 @@ BamParser__next__(BamParser *self)
                 name_length -= 1; /* Includes terminating NULL byte */
                 memcpy(fastq_buffer_cursor, bam_name_start, name_length);
             }
+            if (memcmp("2692c888-23ef-4198-9ffd-b79b79423ac6", bam_name_start,
+                       name_length)) {
+                printf("FOUND IT!\n");
+                PyObject *obj = PyBytes_FromStringAndSize(
+                    self->read_in_buffer, self->read_in_buffer_size);
+                PyErr_Format(PyExc_ValueError,
+                             "BAMBUFFER: %R\nFASTQBUFFER: %R\n", obj,
+                             fastq_buffer_obj);
+                Py_DECREF(obj);
+                return NULL;
+            }
             /* The + and newlines are unncessary, but also do not require much
                space and compute time. So keep the in-memory presentation as
                a FASTQ record for homogeneity with FASTQ input. */
