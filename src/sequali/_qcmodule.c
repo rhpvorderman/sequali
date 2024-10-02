@@ -358,9 +358,13 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     double accumulated_error_rate = 0.0;
     for (size_t i = 0; i < sequence_length; i++) {
         uint8_t q = qualities[i] - 33;
+        PyObject *char_obj = PyUnicode_DecodeLatin1(qualities + i, 1, NULL);
+        if (char_obj == NULL) {
+            return NULL;
+        }
         if (q > PHRED_MAX) {
-            PyErr_Format(PyExc_ValueError, "Not a valid phred character: %c",
-                         qualities[i]);
+            PyErr_Format(PyExc_ValueError, "Not a valid phred character: %R",
+                         char_obj);
             return NULL;
         }
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
@@ -1826,8 +1830,20 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     while (qualities_ptr < qualities_end_ptr) {
         uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
-            PyErr_Format(PyExc_ValueError, "Not a valid phred character: %c",
-                         *qualities_ptr);
+            PyObject *phred_obj = PyUnicode_DecodeLatin1(qualities_ptr, 1, NULL);
+            PyObject *name_obj = PyUnicode_DecodeASCII(
+                meta->record_start + 1, meta->name_length, NULL);
+            if (phred_obj == NULL || name_obj == NULL) {
+                Py_XDECREF(phred_obj);
+                Py_XDECREF(name_obj);
+                return -1;
+            }
+            PyErr_Format(PyExc_ValueError,
+                         "Not a valid phred character: %R, found at position "
+                         "%llu in read named %R.",
+                         *phred_obj, qualities_ptr - qualities, name_obj);
+            Py_DECREF(phred_obj);
+            Py_DECREF(name_obj);
             return -1;
         }
         uint8_t q_index = phred_to_index(q);
@@ -2938,8 +2954,20 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     while (qualities_ptr < qualities_end) {
         uint8_t q = *qualities_ptr - phred_offset;
         if (q > PHRED_MAX) {
-            PyErr_Format(PyExc_ValueError, "Not a valid phred character: %c",
-                         *qualities_ptr);
+            PyObject *phred_obj = PyUnicode_DecodeLatin1(qualities_ptr, 1, NULL);
+            PyObject *name_obj = PyUnicode_DecodeASCII(
+                meta->record_start + 1, meta->name_length, NULL);
+            if (phred_obj == NULL || name_obj == NULL) {
+                Py_XDECREF(phred_obj);
+                Py_XDECREF(name_obj);
+                return -1;
+            }
+            PyErr_Format(PyExc_ValueError,
+                         "Not a valid phred character: %R, found at position "
+                         "%llu in read named %R.",
+                         *phred_obj, qualities_ptr - qualities, name_obj);
+            Py_DECREF(phred_obj);
+            Py_DECREF(name_obj);
             return -1;
         }
         *error_cursor += SCORE_TO_ERROR_RATE[q];

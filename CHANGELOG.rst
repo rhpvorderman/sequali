@@ -9,6 +9,7 @@ Changelog
 
 version 0.12.0-dev
 ------------------
++ Throw a more informative error when an invalid phred value is found.
 + Update internal UniVec database to version from November 21st 2023.
 
 version 0.11.1
