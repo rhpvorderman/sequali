@@ -1900,6 +1900,17 @@ QCMetrics_add_record_array(QCMetrics *self, FastqRecordArrayView *record_array)
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         if (QCMetrics_add_meta(self, records + i) != 0) {
+            struct FastqMeta record = records[i];
+            printf(
+                "ERROR:\n"
+                "%s\n",
+                "name length: %u\n", "sequence_offset: %u\n",
+                "qualities_offset: %u\n",
+                "sequence_length: %u\n"
+                "Entire buffer: %s",
+                record.record_start, record.name_length,
+                record.sequence_offset, record.qualities_offset,
+                record.sequence_length, PyBytes_AS_STRING(record_array->obj));
             return NULL;
         }
     }
