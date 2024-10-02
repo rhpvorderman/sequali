@@ -1469,7 +1469,7 @@ BamParser__next__(BamParser *self)
                 memcpy(fastq_buffer_cursor, bam_name_start, name_length);
             }
             if (memcmp("2692c888-23ef-4198-9ffd-b79b79423ac6", bam_name_start,
-                       name_length)) {
+                       name_length) == 0) {
                 printf("FOUND IT!\n");
                 PyObject *obj = PyBytes_FromStringAndSize(
                     self->read_in_buffer, self->read_in_buffer_size);
