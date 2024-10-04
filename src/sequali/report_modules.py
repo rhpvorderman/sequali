@@ -499,15 +499,16 @@ class SequenceLengthDistribution(ReportModule):
             return ""
         return f"""
             <table>
-                <tr><td>N1</td><td style="text-align:right;">{self.q1:,}</td></tr>
-                <tr><td>N5</td><td style="text-align:right;">{self.q5:,}</td></tr>
-                <tr><td>N10</td><td style="text-align:right;">{self.q10:,}</td></tr>
-                <tr><td>N25</td><td style="text-align:right;">{self.q25:,}</td></tr>
-                <tr><td>N50</td><td style="text-align:right;">{self.q50:,}</td></tr>
-                <tr><td>N75</td><td style="text-align:right;">{self.q75:,}</td></tr>
-                <tr><td>N90</td><td style="text-align:right;">{self.q90:,}</td></tr>
-                <tr><td>N95</td><td style="text-align:right;">{self.q95:,}</td></tr>
-                <tr><td>N99</td><td style="text-align:right;">{self.q99:,}</td></tr>
+                <tr><th>Percentile</th><th>Read length</th></tr>
+                <tr><td>1</td><td style="text-align:right;">{self.q1:,}</td></tr>
+                <tr><td>5</td><td style="text-align:right;">{self.q5:,}</td></tr>
+                <tr><td>10</td><td style="text-align:right;">{self.q10:,}</td></tr>
+                <tr><td>25</td><td style="text-align:right;">{self.q25:,}</td></tr>
+                <tr><td>50</td><td style="text-align:right;">{self.q50:,}</td></tr>
+                <tr><td>75</td><td style="text-align:right;">{self.q75:,}</td></tr>
+                <tr><td>90</td><td style="text-align:right;">{self.q90:,}</td></tr>
+                <tr><td>95</td><td style="text-align:right;">{self.q95:,}</td></tr>
+                <tr><td>99</td><td style="text-align:right;">{self.q99:,}</td></tr>
             </table>
         """
 
