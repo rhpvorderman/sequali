@@ -133,3 +133,13 @@ def test_small_initial_buffer(initial_buffersize):
     with xopen.xopen(SIMPLE_BAM, "rb") as fileobj:
         parser = BamParser(fileobj, initial_buffersize=initial_buffersize)
         assert len(list(parser)) == 3
+
+
+def test_bam_parser_no_quals():
+    with xopen.xopen(DATA / "missing_quals.bam", "rb") as f:
+        parser = BamParser(f)
+        records = list(parser)
+    assert len(records) == 1
+    assert records[0][0].name() == "Myheader"
+    assert records[0][0].sequence() == "GATTACA"
+    assert records[0][0].qualities() == "!!!!!!!"
