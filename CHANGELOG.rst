@@ -7,7 +7,7 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.12.0-dev
+version 0.12.0
 ------------------
 + Properly name percentiles as such in the sequence length distribution rather
   than using N50 nomenclature which is not correct.
