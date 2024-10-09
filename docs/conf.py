@@ -30,7 +30,3 @@ html_static_path = ['_static']
 
 # Add reports to the root so they can be referenced
 html_extra_path = ['reports']
-
-html_theme_options = dict(
-    display_version=True,
-)

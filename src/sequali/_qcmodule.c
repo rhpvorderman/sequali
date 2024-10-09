@@ -1478,7 +1478,16 @@ BamParser__next__(BamParser *self)
             fastq_buffer_cursor += seq_length;
             memcpy(fastq_buffer_cursor, "\n+\n", 3);
             fastq_buffer_cursor += 3;
-            decode_bam_qualities(fastq_buffer_cursor, bam_qual_start, seq_length);
+            if (seq_length && bam_qual_start[0] == 0xff) {
+                /* If qualities are missing, all bases are set to 0xff, which
+                   is an invalid phred value. Create a quality string with only
+                   zero Phreds for a valid FASTQ representation */
+                memset(fastq_buffer_cursor, 33, seq_length);
+            }
+            else {
+                decode_bam_qualities(fastq_buffer_cursor, bam_qual_start,
+                                     seq_length);
+            }
             fastq_buffer_cursor += seq_length;
             fastq_buffer_cursor[0] = '\n';
             fastq_buffer_cursor += 1;
