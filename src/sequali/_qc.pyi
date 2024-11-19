@@ -94,7 +94,7 @@ class PerTileQuality:
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def get_tile_counts(self) -> List[Tuple[int, List[float], List[int]]]: ...
 
-class SequenceDuplication:
+class OverrepresentedSequences:
     number_of_sequences: int
     sampled_sequences: int
     collected_unique_fragments: int

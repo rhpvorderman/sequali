@@ -35,9 +35,16 @@ import pygal  # type: ignore
 import pygal.style  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import (AdapterCounter, DedupEstimator,
-                  INSERT_SIZE_MAX_ADAPTER_STORE_SIZE, InsertSizeMetrics,
-                  NanoStats, PerTileQuality, QCMetrics, SequenceDuplication)
+from ._qc import (
+    AdapterCounter,
+    DedupEstimator,
+    INSERT_SIZE_MAX_ADAPTER_STORE_SIZE,
+    InsertSizeMetrics,
+    NanoStats,
+    OverrepresentedSequences,
+    PerTileQuality,
+    QCMetrics,
+)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from ._version import __version__
 from .adapters import Adapter
@@ -1495,7 +1502,7 @@ class OverRepresentedSequences(ReportModule):
     @classmethod
     def from_sequence_duplication(
             cls,
-            seqdup: SequenceDuplication,
+            seqdup: OverrepresentedSequences,
             fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
             min_threshold: int = DEFAULT_MIN_THRESHOLD,
             max_threshold: int = DEFAULT_MAX_THRESHOLD,
@@ -2131,7 +2138,7 @@ def calculate_stats(
         filename: str,
         metrics: QCMetrics,
         per_tile_quality: PerTileQuality,
-        sequence_duplication: SequenceDuplication,
+        sequence_duplication: OverrepresentedSequences,
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
         adapters: List[Adapter],
@@ -2140,7 +2147,7 @@ def calculate_stats(
         insert_size_metrics: Optional[InsertSizeMetrics] = None,
         metrics_reverse: Optional[QCMetrics] = None,
         per_tile_quality_reverse: Optional[PerTileQuality] = None,
-        sequence_duplication_reverse: Optional[SequenceDuplication] = None,
+        sequence_duplication_reverse: Optional[OverrepresentedSequences] = None,
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
