@@ -32,6 +32,8 @@ DEFAULT_MAX_UNIQUE_FRAGMENTS: int
 DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS: int
 DEFAULT_FRAGMENT_LENGTH: int
 DEFAULT_UNIQUE_SAMPLE_EVERY: int
+DEFAULT_BASES_FROM_START: int
+DEFAULT_BASES_FROM_END: int
 DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH: int
 DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH: int
 DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET: int
@@ -106,7 +108,10 @@ class OverrepresentedSequences:
     def __init__(self,
                  max_unique_fragments: int = DEFAULT_MAX_UNIQUE_FRAGMENTS,
                  fragment_length: int = DEFAULT_FRAGMENT_LENGTH,
-                 sample_every: int = DEFAULT_UNIQUE_SAMPLE_EVERY): ...
+                 sample_every: int = DEFAULT_UNIQUE_SAMPLE_EVERY,
+                 bases_from_start: int = DEFAULT_BASES_FROM_START,
+                 bases_from_end = DEFAULT_BASES_FROM_END,
+    ): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def sequence_counts(self) -> Dict[str, int]: ...

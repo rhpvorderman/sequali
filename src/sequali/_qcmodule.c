@@ -3151,6 +3151,8 @@ kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence)
 #define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
 #define DEFAULT_FRAGMENT_LENGTH 21
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
+#define DEFAULT_BASES_FROM_START 100
+#define DEFAULT_BASES_FROM_END 100
 
 typedef struct _OverrepresentedSequencesStruct {
     PyObject_HEAD
@@ -3166,6 +3168,8 @@ typedef struct _OverrepresentedSequencesStruct {
     uint64_t number_of_unique_fragments;
     uint64_t total_fragments;
     size_t sample_every;
+    size_t bases_from_start;
+    size_t bases_from_end;
 } OverrepresentedSequences;
 
 static void
@@ -3183,9 +3187,12 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
     Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
     Py_ssize_t fragment_length = DEFAULT_FRAGMENT_LENGTH;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
+    Py_ssize_t bases_from_start = DEFAULT_BASES_FROM_START;
+    Py_ssize_t bases_from_end = DEFAULT_BASES_FROM_END;
     static char *kwargnames[] = {"max_unique_fragments", "fragment_length",
-                                 "sample_every", NULL};
-    static char *format = "|nnn:OverrepresentedSequences";
+                                 "sample_every",         "bases_from_start",
+                                 "bases_from_end",       NULL};
+    static char *format = "|nnnnn:OverrepresentedSequences";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
                                      &max_unique_fragments, &fragment_length,
                                      &sample_every)) {
@@ -3208,6 +3215,12 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
         PyErr_Format(PyExc_ValueError,
                      "sample_every must be 1 or greater. Got %zd", sample_every);
         return NULL;
+    }
+    if (bases_from_start < 1) {
+        bases_from_start = UINT32_MAX;
+    }
+    if (bases_from_end < 1) {
+        bases_from_end = UINT32_MAX;
     }
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to
        a bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
@@ -3239,6 +3252,8 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
+    self->bases_from_start = bases_from_start;
+    self->bases_from_end = bases_from_end;
     return (PyObject *)self;
 }
 
@@ -5233,6 +5248,8 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
     PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
+    PyModule_AddIntMacro(m, DEFAULT_BASES_FROM_START);
+    PyModule_AddIntMacro(m, DEFAULT_BASES_FROM_END);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
