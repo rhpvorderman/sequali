@@ -3168,8 +3168,8 @@ typedef struct _OverrepresentedSequencesStruct {
     uint64_t number_of_unique_fragments;
     uint64_t total_fragments;
     size_t sample_every;
-    size_t bases_from_start;
-    size_t bases_from_end;
+    Py_ssize_t fragments_from_start;
+    Py_ssize_t fragments_from_end;
 } OverrepresentedSequences;
 
 static void
@@ -3252,8 +3252,10 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
-    self->bases_from_start = bases_from_start;
-    self->bases_from_end = bases_from_end;
+    self->fragments_from_start =
+        (bases_from_start + fragment_length - 1) / fragment_length;
+    self->fragments_from_end =
+        (bases_from_end + fragment_length - 1) / fragment_length;
     return (PyObject *)self;
 }
 
@@ -3358,9 +3360,28 @@ OverrepresentedSequences_add_meta(OverrepresentedSequences *self,
        If the sequence length is exactly divisible by the fragment length, this
        results in exactly no overlap between front and back fragments, while
        still all of the sequence is being sampled.
+
+       If the sequence is very large the amount of samples is taken is limited
+       by a user-settable maximum.
     */
-    Py_ssize_t total_fragments =
+    /* Vader: Luke, Obi-Wan never told you about the algorithm...
+       Luke:  He told me enough! It uses integer division!
+       Vader: Yes Luke, we have to use integer division.
+       Luke:  No, that's not true! The compiler can optimize integer division
+              away for constants!
+       Vader: Search your feelings Luke! The fragment length has to be user
+              settable!
+       Luke:  NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+    */
+    Py_ssize_t max_fragments =
         (sequence_length + fragment_length - 1) / fragment_length;
+    Py_ssize_t from_mid_point_fragments = max_fragments / 2;
+    Py_ssize_t max_start_fragments = max_fragments - from_mid_point_fragments;
+    Py_ssize_t fragments_from_start =
+        Py_MIN(self->fragments_from_start, max_start_fragments);
+    Py_ssize_t fragments_from_end =
+        Py_MIN(self->fragments_from_end, from_mid_point_fragments);
+    Py_ssize_t total_fragments = fragments_from_start + fragments_from_end;
     size_t staging_hash_bits = (size_t)ceil(log2((double)total_fragments * 1.5));
     size_t staging_hash_size = 1ULL << staging_hash_bits;
     if (staging_hash_size > self->staging_hash_table_size) {
@@ -3371,12 +3392,12 @@ OverrepresentedSequences_add_meta(OverrepresentedSequences *self,
     uint64_t *staging_hash_table = self->staging_hash_table;
     memset(staging_hash_table, 0, staging_hash_size * sizeof(uint64_t));
 
-    Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point =
-        sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t start_end = fragments_from_start * fragment_length;
+    Py_ssize_t end_start =
+        sequence_length - (fragments_from_end * fragment_length);
     bool warn_unknown = false;
     // Sample front sequences
-    for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
+    for (Py_ssize_t i = 0; i < start_end; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3390,7 +3411,7 @@ OverrepresentedSequences_add_meta(OverrepresentedSequences *self,
     }
 
     // Sample back sequences
-    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
+    for (Py_ssize_t i = end_start; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
