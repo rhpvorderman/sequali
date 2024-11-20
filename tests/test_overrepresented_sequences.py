@@ -30,7 +30,7 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
     )
 
 
-def test_sequence_duplication():
+def test_overrepresented_sequences():
     max_unique_fragments = 100_000
     fragment_length = 31
     seqdup = OverrepresentedSequences(
@@ -60,7 +60,7 @@ def test_sequence_duplication():
     assert sequence_counts[fragment_length * "A"] == 2
 
 
-def test_sequence_duplication_add_read_no_view():
+def test_overrepresented_sequences_add_read_no_view():
     seqs = OverrepresentedSequences()
     with pytest.raises(TypeError) as error:
         seqs.add_read(b"ACGT")  # type: ignore
@@ -69,7 +69,8 @@ def test_sequence_duplication_add_read_no_view():
 
 
 @pytest.mark.parametrize("threshold", [-0.1, 1.1])
-def test_sequence_duplication_overrepresented_sequences_faulty_threshold(threshold):
+def test_overrepresented_sequences_overrepresented_sequences_faulty_threshold(
+        threshold):
     seqs = OverrepresentedSequences()
     with pytest.raises(ValueError) as error:
         seqs.overrepresented_sequences(threshold_fraction=threshold)
@@ -79,7 +80,7 @@ def test_sequence_duplication_overrepresented_sequences_faulty_threshold(thresho
     error.match("1.0")
 
 
-def test_sequence_duplication_overrepresented_sequences():
+def test_overrepresented_sequences_overrepresented_sequences():
     fragment_length = 31
     seqs = OverrepresentedSequences(sample_every=1, fragment_length=fragment_length)
     for i in range(100):
@@ -118,7 +119,7 @@ def test_sequence_duplication_overrepresented_sequences():
     assert overrepresented[1][2] == "C" * fragment_length
 
 
-def test_sequence_duplication_case_insensitive():
+def test_overrepresented_sequences_case_insensitive():
     fragment_length = 31
     seqs = OverrepresentedSequences(fragment_length=fragment_length, sample_every=1)
     seqs.add_read(view_from_sequence("aaTTaca" * 5))
@@ -133,7 +134,7 @@ def test_sequence_duplication_case_insensitive():
 
 
 @pytest.mark.parametrize("divisor", list(range(1, 21)))
-def test_sequence_duplication_sampling_rate(divisor):
+def test_overrepresented_sequences_sampling_rate(divisor):
     seqs = OverrepresentedSequences(sample_every=divisor)
     read = view_from_sequence("AAAA")
     number_of_sequences = 10_000
@@ -151,7 +152,7 @@ def test_sequence_duplication_sampling_rate(divisor):
     # Fragments that are duplicated in the sequence should only be recorded once.
     ("GATTACGATTAC", {"ATC": 1, "GTA": 1}),
 ])
-def test_sequence_duplication_all_fragments(sequence, result):
+def test_overrepresented_sequences_all_fragments(sequence, result):
     seqs = OverrepresentedSequences(fragment_length=3, sample_every=1)
     seqs.add_read(view_from_sequence(sequence))
     seq_counts = seqs.sequence_counts()
