@@ -1046,7 +1046,7 @@ class AdapterContent(ReportModule):
             length of the sequences used to estimate the content, values below this
             threshold are problably false positives. The legend is sorted from
             most frequent to least frequent.</p>
-            <p class="explanation">For nanopore the the adapter mix (AMX) and
+            <p class="explanation">For nanopore the adapter mix (AMX) and
             ligation kit have overlapping adapter sequences and are therefore
             indistinguishable. Please consult the
             <a href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits">
