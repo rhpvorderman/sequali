@@ -7,6 +7,14 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 0.13.0-dev
+------------------
++ Only sample the first 100 bp from the beginning and end of the read by
+  default for the overrepresented sequences analysis. This prevents a lot of
+  false positives from common human genome repeats. The amount of base pairs
+  that are sampled from the beginning and end is user settable with an option
+  to sample everything.
+
 version 0.12.0
 ------------------
 + Properly name percentiles as such in the sequence length distribution rather
