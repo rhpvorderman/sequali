@@ -9,6 +9,8 @@ Changelog
 
 version 0.13.0-dev
 ------------------
++ Python 3.13 support was added.
++ Python 3.8 is no longer supported.
 + Only sample the first 100 bp from the beginning and end of the read by
   default for the overrepresented sequences analysis. This prevents a lot of
   false positives from common human genome repeats. The amount of base pairs
