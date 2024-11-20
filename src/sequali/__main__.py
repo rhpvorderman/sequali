@@ -23,6 +23,8 @@ import sys
 
 from ._qc import (
     AdapterCounter,
+    DEFAULT_BASES_FROM_END,
+    DEFAULT_BASES_FROM_START,
     DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
@@ -34,9 +36,9 @@ from ._qc import (
     DedupEstimator,
     InsertSizeMetrics,
     NanoStats,
+    OverrepresentedSequences,
     PerTileQuality,
     QCMetrics,
-    SequenceDuplication
 )
 from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
@@ -119,6 +121,22 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"gets filled up with more sequences from the "
                              f"beginning. "
                              f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}.")
+    parser.add_argument("--overrepresentation-bases-from-start", type=int,
+                        default=DEFAULT_BASES_FROM_START,
+                        metavar="BP",
+                        help=f"The minimum amount of bases sampled from the "
+                             f"start of the read. There might be slight overshoot "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
+                             f"Default: {DEFAULT_BASES_FROM_START}")
+    parser.add_argument("--overrepresentation-bases-from-end", type=int,
+                        default=DEFAULT_BASES_FROM_END,
+                        metavar="BP",
+                        help=f"The minimum amount of bases sampled from the "
+                             f"end of the read. There might be slight overshoot "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
+                             f"Default: {DEFAULT_BASES_FROM_END}")
     parser.add_argument("--duplication-max-stored-fingerprints", type=int,
                         default=DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
                         metavar="N",
@@ -188,7 +206,7 @@ def main() -> None:
     metrics1 = QCMetrics()
     per_tile_quality1 = PerTileQuality()
     nanostats1 = NanoStats()
-    sequence_duplication1 = SequenceDuplication(
+    overrepresented_sequences1 = OverrepresentedSequences(
         max_unique_fragments=args.overrepresentation_max_unique_fragments,
         fragment_length=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
@@ -219,7 +237,7 @@ def main() -> None:
         insert_size_metrics = InsertSizeMetrics()
         metrics2 = QCMetrics()
         per_tile_quality2 = PerTileQuality()
-        sequence_duplication2 = SequenceDuplication(
+        overrepresented_sequences2 = OverrepresentedSequences(
             max_unique_fragments=args.overrepresentation_max_unique_fragments,
             fragment_length=args.overrepresentation_fragment_length,
             sample_every=args.overrepresentation_sample_every
@@ -227,7 +245,7 @@ def main() -> None:
     else:
         metrics2 = None
         per_tile_quality2 = None
-        sequence_duplication2 = None
+        overrepresented_sequences2 = None
         insert_size_metrics = None
     with contextlib.ExitStack() as exit_stack:
         reader1 = NGSFile(args.input, threads - 1)
@@ -253,7 +271,7 @@ def main() -> None:
         for record_array1 in reader1:
             metrics1.add_record_array(record_array1)
             per_tile_quality1.add_record_array(record_array1)
-            sequence_duplication1.add_record_array(record_array1)
+            overrepresented_sequences1.add_record_array(record_array1)
             nanostats1.add_record_array(record_array1)
             if paired:
                 record_array2 = reader2.read(len(record_array1))
@@ -274,7 +292,7 @@ def main() -> None:
                 insert_size_metrics.add_record_array_pair(record_array1, record_array2)  # type: ignore  # noqa: E501
                 metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                overrepresented_sequences2.add_record_array(record_array2)  # type: ignore  # noqa: E501
             else:
                 adapter_counter1.add_record_array(record_array1)   # type: ignore  # noqa: E501
                 dedup_estimator.add_record_array(record_array1)
@@ -289,14 +307,14 @@ def main() -> None:
         metrics=metrics1,
         adapter_counter=adapter_counter1,
         per_tile_quality=per_tile_quality1,
-        sequence_duplication=sequence_duplication1,
+        sequence_duplication=overrepresented_sequences1,
         dedup_estimator=dedup_estimator,
         nanostats=nanostats1,
         insert_size_metrics=insert_size_metrics,
         filename_reverse=args.input_reverse,
         metrics_reverse=metrics2,
         per_tile_quality_reverse=per_tile_quality2,
-        sequence_duplication_reverse=sequence_duplication2,
+        sequence_duplication_reverse=overrepresented_sequences2,
         adapters=adapters,
         fraction_threshold=fraction_threshold,
         min_threshold=min_threshold,

@@ -17,7 +17,7 @@
 from ._qc import A, C, G, N, T
 from ._qc import (
     AdapterCounter, BamParser, FastqParser, FastqRecordArrayView,
-    FastqRecordView, PerTileQuality, QCMetrics, SequenceDuplication
+    FastqRecordView, OverrepresentedSequences, PerTileQuality, QCMetrics,
 )
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX, TABLE_SIZE
 from ._version import __version__
@@ -32,7 +32,7 @@ __all__ = [
     "FastqRecordArrayView",
     "PerTileQuality",
     "QCMetrics",
-    "SequenceDuplication",
+    "OverrepresentedSequences",
     "NUMBER_OF_NUCS",
     "NUMBER_OF_PHREDS",
     "PHRED_MAX",

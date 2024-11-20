@@ -53,6 +53,10 @@ ends towards the middle. This means that the first and last fragment will
 always be the first 21 bp of the beginning and the last 21 bp in the end. As
 such the adapter sequences will always be sampled in the same frame.
 
+To prevent many common genome repeats from ending up in the report, Sequali
+limits the amount of sampling inwards to approximately 100 bp. With the default
+fragment size of 21 bp, this means that 5 fragments are taken from each side.
+
 .. figure:: _static/images/overrepresented_sampling.svg
 
     This figure shows how fragments are sampled in sequali. The silver elements
@@ -60,9 +64,9 @@ such the adapter sequences will always be sampled in the same frame.
     sampled. Despite the length differences between sequence #1 and sequence #2
     the fragments for the adapter and barcode sequences are the same.
     In Sequence #1 the fragments sampled from the back end overlap somewhat
-    with sequences from the front end. This is a necessity to ensure all of the
-    sequence is sampled when the length is not divisible by the size of the
-    fragments.
+    with sequences from the front end. In sequence #3 the sequence is quite
+    long so the middle is not sampled. This prevents many common genome repeats
+    from ending up in the report.
 
 For each sequence only unique fragments within the sequence are sampled, to
 avoid overrepresenting common genomic repeats.
@@ -89,6 +93,10 @@ The following command line parameters affect this module:
   store.
 + ``--overrepresentation-sample-every``: How often a sequence is sampled. Default
   is every 8 sequences.
++ ``--overrepresentation-bases-from-start``: the minimum amount of bases to
+  take from the start of the sequence. Default is 100.
++ ``--overrepresentation-bases-from-end``: the minimum amount of bases to
+  take from the end of the sequence. Default is 100.
 
 .. [#F1] A canonical k-mer is the k-mer that has the lowest sort order compared
          to itself and its reverse complement. This way the canonical-kmer is

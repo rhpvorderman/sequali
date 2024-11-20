@@ -19,7 +19,7 @@ import warnings
 
 import pytest
 
-from sequali import FastqRecordView, SequenceDuplication
+from sequali import FastqRecordView, OverrepresentedSequences
 
 
 def view_from_sequence(sequence: str) -> FastqRecordView:
@@ -30,12 +30,14 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
     )
 
 
-def test_sequence_duplication():
+def test_overrepresented_sequences():
     max_unique_fragments = 100_000
     fragment_length = 31
-    seqdup = SequenceDuplication(max_unique_fragments=max_unique_fragments,
-                                 fragment_length=fragment_length,
-                                 sample_every=1)
+    seqdup = OverrepresentedSequences(
+        max_unique_fragments=max_unique_fragments,
+        fragment_length=fragment_length,
+        sample_every=1
+    )
     # Create unique sequences by using all combinations of ACGT for the amount
     # of letters that is necessary to completely saturate the maximum unique
     # sequences
@@ -58,41 +60,42 @@ def test_sequence_duplication():
     assert sequence_counts[fragment_length * "A"] == 2
 
 
-def test_sequence_duplication_add_read_no_view():
-    seqdup = SequenceDuplication()
+def test_overrepresented_sequences_add_read_no_view():
+    seqs = OverrepresentedSequences()
     with pytest.raises(TypeError) as error:
-        seqdup.add_read(b"ACGT")  # type: ignore
+        seqs.add_read(b"ACGT")  # type: ignore
     error.match("FastqRecordView")
     error.match("bytes")
 
 
 @pytest.mark.parametrize("threshold", [-0.1, 1.1])
-def test_sequence_duplication_overrepresented_sequences_faulty_threshold(threshold):
-    seqdup = SequenceDuplication()
+def test_overrepresented_sequences_overrepresented_sequences_faulty_threshold(
+        threshold):
+    seqs = OverrepresentedSequences()
     with pytest.raises(ValueError) as error:
-        seqdup.overrepresented_sequences(threshold_fraction=threshold)
+        seqs.overrepresented_sequences(threshold_fraction=threshold)
     error.match(str(threshold))
     error.match("between")
     error.match("0.0")
     error.match("1.0")
 
 
-def test_sequence_duplication_overrepresented_sequences():
+def test_overrepresented_sequences_overrepresented_sequences():
     fragment_length = 31
-    seqdup = SequenceDuplication(sample_every=1, fragment_length=fragment_length)
+    seqs = OverrepresentedSequences(sample_every=1, fragment_length=fragment_length)
     for i in range(100):
-        seqdup.add_read(view_from_sequence("A" * fragment_length))
+        seqs.add_read(view_from_sequence("A" * fragment_length))
     for i in range(200):
-        seqdup.add_read(view_from_sequence("C" * fragment_length))
+        seqs.add_read(view_from_sequence("C" * fragment_length))
     for i in range(2000):
-        seqdup.add_read(view_from_sequence("G" * fragment_length))
+        seqs.add_read(view_from_sequence("G" * fragment_length))
     for i in range(10):
-        seqdup.add_read(view_from_sequence("T" * fragment_length))
-    seqdup.add_read(view_from_sequence("C" * (fragment_length - 1) + "A"))
+        seqs.add_read(view_from_sequence("T" * fragment_length))
+    seqs.add_read(view_from_sequence("C" * (fragment_length - 1) + "A"))
     for i in range(100_000 - (100 + 200 + 2000 + 10 + 1)):
         # Count up to 100_000 to get nice fractions for all the sequences
-        seqdup.add_read(view_from_sequence("A" * (fragment_length - 1) + "C"))
-    overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.001)
+        seqs.add_read(view_from_sequence("A" * (fragment_length - 1) + "C"))
+    overrepresented = seqs.overrepresented_sequences(threshold_fraction=0.001)
     assert overrepresented[0][2] == "A" * (fragment_length - 1) + "C"
     assert overrepresented[1][2] == "C" * fragment_length
     assert overrepresented[1][0] == 2200
@@ -100,14 +103,14 @@ def test_sequence_duplication_overrepresented_sequences():
     assert overrepresented[2][1] == 110 / 100_000
     # Assert no other sequences recorded as overrepresented.
     assert len(overrepresented) == 3
-    overrepresented = seqdup.overrepresented_sequences(threshold_fraction=0.00001)
+    overrepresented = seqs.overrepresented_sequences(threshold_fraction=0.00001)
     assert overrepresented[-1][2] == "C" * (fragment_length - 1) + "A"
-    overrepresented = seqdup.overrepresented_sequences(
+    overrepresented = seqs.overrepresented_sequences(
         threshold_fraction=0.00001,
         min_threshold=2,
     )
     assert overrepresented[-1][2] == "A" * fragment_length
-    overrepresented = seqdup.overrepresented_sequences(
+    overrepresented = seqs.overrepresented_sequences(
         threshold_fraction=0.1,
         min_threshold=2,
         max_threshold=1000,
@@ -116,29 +119,29 @@ def test_sequence_duplication_overrepresented_sequences():
     assert overrepresented[1][2] == "C" * fragment_length
 
 
-def test_sequence_duplication_case_insensitive():
+def test_overrepresented_sequences_case_insensitive():
     fragment_length = 31
-    seqdup = SequenceDuplication(fragment_length=fragment_length, sample_every=1)
-    seqdup.add_read(view_from_sequence("aaTTaca" * 5))
-    seqdup.add_read(view_from_sequence("AAttACA" * 5))
-    seqcounts = seqdup.sequence_counts()
-    assert seqdup.number_of_sequences == 2
-    assert seqdup.total_fragments == 4
-    assert seqdup.collected_unique_fragments == 2
+    seqs = OverrepresentedSequences(fragment_length=fragment_length, sample_every=1)
+    seqs.add_read(view_from_sequence("aaTTaca" * 5))
+    seqs.add_read(view_from_sequence("AAttACA" * 5))
+    seqcounts = seqs.sequence_counts()
+    assert seqs.number_of_sequences == 2
+    assert seqs.total_fragments == 4
+    assert seqs.collected_unique_fragments == 2
     assert len(seqcounts) == 2
     assert seqcounts[("AATTACA" * 5)[:fragment_length]] == 2
     assert seqcounts[("AATTACA" * 5)[-fragment_length:]] == 2
 
 
 @pytest.mark.parametrize("divisor", list(range(1, 21)))
-def test_sequence_duplication_sampling_rate(divisor):
-    seqdup = SequenceDuplication(sample_every=divisor)
+def test_overrepresented_sequences_sampling_rate(divisor):
+    seqs = OverrepresentedSequences(sample_every=divisor)
     read = view_from_sequence("AAAA")
     number_of_sequences = 10_000
     for i in range(number_of_sequences):
-        seqdup.add_read(read)
-    assert seqdup.number_of_sequences == number_of_sequences
-    assert seqdup.sampled_sequences == (number_of_sequences + divisor - 1) // divisor
+        seqs.add_read(read)
+    assert seqs.number_of_sequences == number_of_sequences
+    assert seqs.sampled_sequences == (number_of_sequences + divisor - 1) // divisor
 
 
 @pytest.mark.parametrize(["sequence", "result"], [
@@ -149,30 +152,57 @@ def test_sequence_duplication_sampling_rate(divisor):
     # Fragments that are duplicated in the sequence should only be recorded once.
     ("GATTACGATTAC", {"ATC": 1, "GTA": 1}),
 ])
-def test_sequence_duplication_all_fragments(sequence, result):
-    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
-    seqdup.add_read(view_from_sequence(sequence))
-    seq_counts = seqdup.sequence_counts()
+def test_overrepresented_sequences_all_fragments(sequence, result):
+    seqs = OverrepresentedSequences(fragment_length=3, sample_every=1)
+    seqs.add_read(view_from_sequence(sequence))
+    seq_counts = seqs.sequence_counts()
     assert seq_counts == result
 
 
 def test_very_short_sequence():
     # With 32 byte load this will overflow the used memory.
-    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
-    seqdup.add_read(view_from_sequence("ACT"))
-    assert seqdup.sequence_counts() == {"ACT": 1}
+    seqs = OverrepresentedSequences(fragment_length=3, sample_every=1)
+    seqs.add_read(view_from_sequence("ACT"))
+    assert seqs.sequence_counts() == {"ACT": 1}
 
 
 def test_non_iupac_warning():
-    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    seqs = OverrepresentedSequences(fragment_length=3, sample_every=1)
     with pytest.warns(UserWarning, match="KKK"):
-        seqdup.add_read(view_from_sequence("KKK"))
+        seqs.add_read(view_from_sequence("KKK"))
 
 
 def test_valid_does_not_warn_for_n():
-    seqdup = SequenceDuplication(fragment_length=3, sample_every=1)
+    seqs = OverrepresentedSequences(fragment_length=3, sample_every=1)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        seqdup.add_read(view_from_sequence("ACGTN"))
+        seqs.add_read(view_from_sequence("ACGTN"))
     # N does lead to a sample not being loaded.
-    assert seqdup.sampled_sequences == 1
+    assert seqs.sampled_sequences == 1
+
+
+@pytest.mark.parametrize(
+    ["bases_from_start", "bases_from_end", "result"], [
+        (0, 0, ()),
+        (1, 1, ("AAC", "CAA")),
+        (2, 2, ("AAC", "CAA")),
+        (3, 3, ("AAC", "CAA")),
+        (4, 4, ("AAC", "CAA", "CCG", "GCC")),
+        (1, 0, ("AAC",)),
+        (0, 1, ("CAA",)),
+        (100, 100, ("AAA", "AAC", "CAA", "CCG", "GCC")),
+        (-1, -1, ("AAA", "AAC", "CAA", "CCG", "GCC")),
+    ]
+)
+def test_overrepresented_sequences_sample_from_begin_and_end(
+        bases_from_start, bases_from_end, result):
+    seqs = OverrepresentedSequences(
+        fragment_length=3,
+        sample_every=1,
+        bases_from_start=bases_from_start,
+        bases_from_end=bases_from_end
+    )
+    seqs.add_read(view_from_sequence("AACCGGTTTTGGCCAA"))
+    overrepresented = [x[2] for x in seqs.overrepresented_sequences(min_threshold=1)]
+    overrepresented.sort()
+    assert tuple(overrepresented) == result

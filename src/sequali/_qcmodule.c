@@ -3135,9 +3135,9 @@ kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence)
     }
 }
 
-/*************************
- * SEQUENCE DUPLICATION *
- *************************/
+/****************************
+ * OverrepresentedSequences *
+ ****************************/
 
 /* A module that cuts the sequence in bits of k size. The canonical (lowest)
    representation of the bit is used.
@@ -3151,8 +3151,10 @@ kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence)
 #define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
 #define DEFAULT_FRAGMENT_LENGTH 21
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
+#define DEFAULT_BASES_FROM_START 100
+#define DEFAULT_BASES_FROM_END 100
 
-typedef struct _SequenceDuplicationStruct {
+typedef struct _OverrepresentedSequencesStruct {
     PyObject_HEAD
     size_t fragment_length;
     uint64_t number_of_sequences;
@@ -3166,10 +3168,12 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t number_of_unique_fragments;
     uint64_t total_fragments;
     size_t sample_every;
-} SequenceDuplication;
+    Py_ssize_t fragments_from_start;
+    Py_ssize_t fragments_from_end;
+} OverrepresentedSequences;
 
 static void
-SequenceDuplication_dealloc(SequenceDuplication *self)
+OverrepresentedSequences_dealloc(OverrepresentedSequences *self)
 {
     PyMem_Free(self->staging_hash_table);
     PyMem_Free(self->hashes);
@@ -3178,17 +3182,20 @@ SequenceDuplication_dealloc(SequenceDuplication *self)
 }
 
 static PyObject *
-SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
     Py_ssize_t fragment_length = DEFAULT_FRAGMENT_LENGTH;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
+    Py_ssize_t bases_from_start = DEFAULT_BASES_FROM_START;
+    Py_ssize_t bases_from_end = DEFAULT_BASES_FROM_END;
     static char *kwargnames[] = {"max_unique_fragments", "fragment_length",
-                                 "sample_every", NULL};
-    static char *format = "|nnn:SequenceDuplication";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-                                     &max_unique_fragments, &fragment_length,
-                                     &sample_every)) {
+                                 "sample_every",         "bases_from_start",
+                                 "bases_from_end",       NULL};
+    static char *format = "|nnnnn:OverrepresentedSequences";
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwargs, format, kwargnames, &max_unique_fragments,
+            &fragment_length, &sample_every, &bases_from_start, &bases_from_end)) {
         return NULL;
     }
     if (max_unique_fragments < 1) {
@@ -3209,6 +3216,12 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      "sample_every must be 1 or greater. Got %zd", sample_every);
         return NULL;
     }
+    if (bases_from_start < 0) {
+        bases_from_start = UINT32_MAX;
+    }
+    if (bases_from_end < 0) {
+        bases_from_end = UINT32_MAX;
+    }
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to
        a bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
        utilized for at most 2/3. (Increased business degrades performance.) */
@@ -3221,7 +3234,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         PyMem_Free(counts);
         return PyErr_NoMemory();
     }
-    SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
+    OverrepresentedSequences *self = PyObject_New(OverrepresentedSequences, type);
     if (self == NULL) {
         PyMem_Free(hashes);
         PyMem_Free(counts);
@@ -3239,11 +3252,15 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
+    self->fragments_from_start =
+        (bases_from_start + fragment_length - 1) / fragment_length;
+    self->fragments_from_end =
+        (bases_from_end + fragment_length - 1) / fragment_length;
     return (PyObject *)self;
 }
 
 static void
-Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
+Sequence_duplication_insert_hash(OverrepresentedSequences *self, uint64_t hash)
 {
     uint64_t hash_to_index_int = self->hash_table_size - 1;
     uint64_t *hashes = self->hashes;
@@ -3271,7 +3288,8 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
 }
 
 static int
-SequenceDuplication_resize_staging(SequenceDuplication *self, uint64_t new_size)
+OverrepresentedSequences_resize_staging(OverrepresentedSequences *self,
+                                        uint64_t new_size)
 {
     if (new_size <= self->staging_hash_table_size) {
         return 0;
@@ -3310,7 +3328,8 @@ add_to_staging(uint64_t *staging_hash_table, uint64_t staging_hash_table_size,
 }
 
 static int
-SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
+OverrepresentedSequences_add_meta(OverrepresentedSequences *self,
+                                  struct FastqMeta *meta)
 {
     if (self->number_of_sequences % self->sample_every != 0) {
         self->number_of_sequences += 1;
@@ -3341,25 +3360,44 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
        If the sequence length is exactly divisible by the fragment length, this
        results in exactly no overlap between front and back fragments, while
        still all of the sequence is being sampled.
+
+       If the sequence is very large the amount of samples is taken is limited
+       by a user-settable maximum.
     */
-    Py_ssize_t total_fragments =
+    /* Vader: Luke, Obi-Wan never told you about the algorithm...
+       Luke:  He told me enough! It uses integer division!
+       Vader: Yes Luke, we have to use integer division.
+       Luke:  No, that's not true! The compiler can optimize integer division
+              away for constants!
+       Vader: Search your feelings Luke! The fragment length has to be user
+              settable!
+       Luke:  NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+    */
+    Py_ssize_t max_fragments =
         (sequence_length + fragment_length - 1) / fragment_length;
+    Py_ssize_t from_mid_point_fragments = max_fragments / 2;
+    Py_ssize_t max_start_fragments = max_fragments - from_mid_point_fragments;
+    Py_ssize_t fragments_from_start =
+        Py_MIN(self->fragments_from_start, max_start_fragments);
+    Py_ssize_t fragments_from_end =
+        Py_MIN(self->fragments_from_end, from_mid_point_fragments);
+    Py_ssize_t total_fragments = fragments_from_start + fragments_from_end;
     size_t staging_hash_bits = (size_t)ceil(log2((double)total_fragments * 1.5));
     size_t staging_hash_size = 1ULL << staging_hash_bits;
     if (staging_hash_size > self->staging_hash_table_size) {
-        if (SequenceDuplication_resize_staging(self, staging_hash_size) < 0) {
+        if (OverrepresentedSequences_resize_staging(self, staging_hash_size) < 0) {
             return -1;
         }
     }
     uint64_t *staging_hash_table = self->staging_hash_table;
     memset(staging_hash_table, 0, staging_hash_size * sizeof(uint64_t));
 
-    Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point =
-        sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t start_end = fragments_from_start * fragment_length;
+    Py_ssize_t end_start =
+        sequence_length - (fragments_from_end * fragment_length);
     bool warn_unknown = false;
     // Sample front sequences
-    for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
+    for (Py_ssize_t i = 0; i < start_end; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3373,7 +3411,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     }
 
     // Sample back sequences
-    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
+    for (Py_ssize_t i = end_start; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3404,7 +3442,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     return 0;
 }
 
-PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_add_read__doc__,
              "add_read($self, read, /)\n"
              "--\n"
              "\n"
@@ -3413,10 +3451,11 @@ PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
              "  read\n"
              "    A FastqRecordView object.\n");
 
-#define SequenceDuplication_add_read_method METH_O
+#define OverrepresentedSequences_add_read_method METH_O
 
 static PyObject *
-SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
+OverrepresentedSequences_add_read(OverrepresentedSequences *self,
+                                  FastqRecordView *read)
 {
     if (!FastqRecordView_CheckExact(read)) {
         PyErr_Format(PyExc_TypeError,
@@ -3424,13 +3463,13 @@ SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
                      Py_TYPE(read)->tp_name);
         return NULL;
     }
-    if (SequenceDuplication_add_meta(self, &read->meta) != 0) {
+    if (OverrepresentedSequences_add_meta(self, &read->meta) != 0) {
         return NULL;
     }
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(SequenceDuplication_add_record_array__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_add_record_array__doc__,
              "add_record_array($self, record_array, /)\n"
              "--\n"
              "\n"
@@ -3439,11 +3478,11 @@ PyDoc_STRVAR(SequenceDuplication_add_record_array__doc__,
              "  record_array\n"
              "    A FastqRecordArrayView object.\n");
 
-#define SequenceDuplication_add_record_array_method METH_O
+#define OverrepresentedSequences_add_record_array_method METH_O
 
 static PyObject *
-SequenceDuplication_add_record_array(SequenceDuplication *self,
-                                     FastqRecordArrayView *record_array)
+OverrepresentedSequences_add_record_array(OverrepresentedSequences *self,
+                                          FastqRecordArrayView *record_array)
 {
     if (!FastqRecordArrayView_CheckExact(record_array)) {
         PyErr_Format(
@@ -3455,24 +3494,24 @@ SequenceDuplication_add_record_array(SequenceDuplication *self,
     Py_ssize_t number_of_records = Py_SIZE(record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
-        if (SequenceDuplication_add_meta(self, records + i) != 0) {
+        if (OverrepresentedSequences_add_meta(self, records + i) != 0) {
             return NULL;
         }
     }
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_sequence_counts__doc__,
              "sequence_counts($self, /)\n"
              "--\n"
              "\n"
              "Get a dictionary with sequence counts \n");
 
-#define SequenceDuplication_sequence_counts_method METH_NOARGS
+#define OverrepresentedSequences_sequence_counts_method METH_NOARGS
 
 static PyObject *
-SequenceDuplication_sequence_counts(SequenceDuplication *self,
-                                    PyObject *Py_UNUSED(ignore))
+OverrepresentedSequences_sequence_counts(OverrepresentedSequences *self,
+                                         PyObject *Py_UNUSED(ignore))
 {
     PyObject *count_dict = PyDict_New();
     if (count_dict == NULL) {
@@ -3511,7 +3550,7 @@ error:
 }
 
 PyDoc_STRVAR(
-    SequenceDuplication_overrepresented_sequences__doc__,
+    OverrepresentedSequences_overrepresented_sequences__doc__,
     "overrepresented_sequences($self, threshold=0.001)\n"
     "--\n"
     "\n"
@@ -3534,19 +3573,21 @@ PyDoc_STRVAR(
     "high "
     "    numbers of sequences.");
 
-#define SequenceDuplication_overrepresented_sequences_method \
+#define OverrepresentedSequences_overrepresented_sequences_method \
     METH_VARARGS | METH_KEYWORDS
 
 static PyObject *
-SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
-                                              PyObject *args, PyObject *kwargs)
+OverrepresentedSequences_overrepresented_sequences(OverrepresentedSequences *self,
+                                                   PyObject *args,
+                                                   PyObject *kwargs)
 {
     double threshold = 0.0001;  // 0.01 %
     Py_ssize_t min_threshold = 1;
     Py_ssize_t max_threshold = PY_SSIZE_T_MAX;
     static char *kwargnames[] = {"threshold_fraction", "min_threshold",
                                  "max_threshold", NULL};
-    static char *format = "|dnn:SequenceDuplication.overrepresented_sequences";
+    static char *format =
+        "|dnn:OverrepresentedSequences.overrepresented_sequences";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold,
                                      &min_threshold, &max_threshold)) {
         return NULL;
@@ -3627,51 +3668,53 @@ error:
     return NULL;
 }
 
-static PyMethodDef SequenceDuplication_methods[] = {
-    {"add_read", (PyCFunction)SequenceDuplication_add_read,
-     SequenceDuplication_add_read_method, SequenceDuplication_add_read__doc__},
-    {"add_record_array", (PyCFunction)SequenceDuplication_add_record_array,
-     SequenceDuplication_add_record_array_method,
-     SequenceDuplication_add_record_array__doc__},
-    {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
-     SequenceDuplication_sequence_counts_method,
-     SequenceDuplication_sequence_counts__doc__},
+static PyMethodDef OverrepresentedSequences_methods[] = {
+    {"add_read", (PyCFunction)OverrepresentedSequences_add_read,
+     OverrepresentedSequences_add_read_method,
+     OverrepresentedSequences_add_read__doc__},
+    {"add_record_array", (PyCFunction)OverrepresentedSequences_add_record_array,
+     OverrepresentedSequences_add_record_array_method,
+     OverrepresentedSequences_add_record_array__doc__},
+    {"sequence_counts", (PyCFunction)OverrepresentedSequences_sequence_counts,
+     OverrepresentedSequences_sequence_counts_method,
+     OverrepresentedSequences_sequence_counts__doc__},
     {"overrepresented_sequences",
-     (PyCFunction)(void (*)(void))SequenceDuplication_overrepresented_sequences,
-     SequenceDuplication_overrepresented_sequences_method,
-     SequenceDuplication_overrepresented_sequences__doc__},
+     (PyCFunction)(void (*)(void))OverrepresentedSequences_overrepresented_sequences,
+     OverrepresentedSequences_overrepresented_sequences_method,
+     OverrepresentedSequences_overrepresented_sequences__doc__},
     {NULL},
 };
 
-static PyMemberDef SequenceDuplication_members[] = {
+static PyMemberDef OverrepresentedSequences_members[] = {
     {"number_of_sequences", T_ULONGLONG,
-     offsetof(SequenceDuplication, number_of_sequences), READONLY,
+     offsetof(OverrepresentedSequences, number_of_sequences), READONLY,
      "The total number of sequences submitted."},
     {"sampled_sequences", T_ULONGLONG,
-     offsetof(SequenceDuplication, sampled_sequences), READONLY,
+     offsetof(OverrepresentedSequences, sampled_sequences), READONLY,
      "The total number of sequences that were analysed."},
     {"collected_unique_fragments", T_ULONGLONG,
-     offsetof(SequenceDuplication, number_of_unique_fragments), READONLY,
+     offsetof(OverrepresentedSequences, number_of_unique_fragments), READONLY,
      "The number of unique fragments collected."},
     {"max_unique_fragments", T_ULONGLONG,
-     offsetof(SequenceDuplication, max_unique_fragments), READONLY,
+     offsetof(OverrepresentedSequences, max_unique_fragments), READONLY,
      "The maximum number of unique sequences stored in the object."},
-    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, fragment_length),
+    {"fragment_length", T_BYTE, offsetof(OverrepresentedSequences, fragment_length),
      READONLY, "The length of the sampled sequences"},
-    {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every),
+    {"sample_every", T_PYSSIZET, offsetof(OverrepresentedSequences, sample_every),
      READONLY, "One in this many reads is sampled"},
-    {"total_fragments", T_ULONGLONG, offsetof(SequenceDuplication, total_fragments),
-     READONLY, "Total number of fragments."},
+    {"total_fragments", T_ULONGLONG,
+     offsetof(OverrepresentedSequences, total_fragments), READONLY,
+     "Total number of fragments."},
     {NULL},
 };
 
-static PyTypeObject SequenceDuplication_Type = {
-    .tp_name = "_qc.SequenceDuplication",
-    .tp_basicsize = sizeof(SequenceDuplication),
-    .tp_dealloc = (destructor)(SequenceDuplication_dealloc),
-    .tp_new = (newfunc)SequenceDuplication__new__,
-    .tp_members = SequenceDuplication_members,
-    .tp_methods = SequenceDuplication_methods,
+static PyTypeObject OverrepresentedSequences_Type = {
+    .tp_name = "_qc.OverrepresentedSequences",
+    .tp_basicsize = sizeof(OverrepresentedSequences),
+    .tp_dealloc = (destructor)(OverrepresentedSequences_dealloc),
+    .tp_new = (newfunc)OverrepresentedSequences__new__,
+    .tp_members = OverrepresentedSequences_members,
+    .tp_methods = OverrepresentedSequences_methods,
 };
 
 /*******************
@@ -5193,7 +5236,7 @@ PyInit__qc(void)
     if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
         return NULL;
     }
-    if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
+    if (python_module_add_type(m, &OverrepresentedSequences_Type) != 0) {
         return NULL;
     }
     if (python_module_add_type(m, &DedupEstimator_Type) != 0) {
@@ -5226,6 +5269,8 @@ PyInit__qc(void)
     PyModule_AddIntMacro(m, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
     PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
+    PyModule_AddIntMacro(m, DEFAULT_BASES_FROM_START);
+    PyModule_AddIntMacro(m, DEFAULT_BASES_FROM_END);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
     PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
