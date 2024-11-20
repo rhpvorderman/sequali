@@ -3193,9 +3193,9 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
                                  "sample_every",         "bases_from_start",
                                  "bases_from_end",       NULL};
     static char *format = "|nnnnn:OverrepresentedSequences";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-                                     &max_unique_fragments, &fragment_length,
-                                     &sample_every)) {
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwargs, format, kwargnames, &max_unique_fragments,
+            &fragment_length, &sample_every, &bases_from_start, &bases_from_end)) {
         return NULL;
     }
     if (max_unique_fragments < 1) {
@@ -3216,10 +3216,10 @@ OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kw
                      "sample_every must be 1 or greater. Got %zd", sample_every);
         return NULL;
     }
-    if (bases_from_start < 1) {
+    if (bases_from_start < 0) {
         bases_from_start = UINT32_MAX;
     }
-    if (bases_from_end < 1) {
+    if (bases_from_end < 0) {
         bases_from_end = UINT32_MAX;
     }
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to

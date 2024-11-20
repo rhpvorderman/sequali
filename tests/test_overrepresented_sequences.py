@@ -179,3 +179,30 @@ def test_valid_does_not_warn_for_n():
         seqs.add_read(view_from_sequence("ACGTN"))
     # N does lead to a sample not being loaded.
     assert seqs.sampled_sequences == 1
+
+
+@pytest.mark.parametrize(
+    ["bases_from_start", "bases_from_end", "result"], [
+        (0, 0, ()),
+        (1, 1, ("AAC", "CAA")),
+        (2, 2, ("AAC", "CAA")),
+        (3, 3, ("AAC", "CAA")),
+        (4, 4, ("AAC", "CAA", "CCG", "GCC")),
+        (1, 0, ("AAC",)),
+        (0, 1, ("CAA",)),
+        (100, 100, ("AAA", "AAC", "CAA", "CCG", "GCC")),
+        (-1, -1, ("AAA", "AAC", "CAA", "CCG", "GCC")),
+    ]
+)
+def test_overrepresented_sequences_sample_from_begin_and_end(
+        bases_from_start, bases_from_end, result):
+    seqs = OverrepresentedSequences(
+        fragment_length=3,
+        sample_every=1,
+        bases_from_start=bases_from_start,
+        bases_from_end=bases_from_end
+    )
+    seqs.add_read(view_from_sequence("AACCGGTTTTGGCCAA"))
+    overrepresented = [x[2] for x in seqs.overrepresented_sequences(min_threshold=1)]
+    overrepresented.sort()
+    assert tuple(overrepresented) == result

@@ -126,14 +126,16 @@ def argument_parser() -> argparse.ArgumentParser:
                         metavar="BP",
                         help=f"The minimum amount of bases sampled from the "
                              f"start of the read. There might be slight overshoot "
-                             f"depending on the fragment length. "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
                              f"Default: {DEFAULT_BASES_FROM_START}")
     parser.add_argument("--overrepresentation-bases-from-end", type=int,
                         default=DEFAULT_BASES_FROM_END,
                         metavar="BP",
                         help=f"The minimum amount of bases sampled from the "
                              f"end of the read. There might be slight overshoot "
-                             f"depending on the fragment length. "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
                              f"Default: {DEFAULT_BASES_FROM_END}")
     parser.add_argument("--duplication-max-stored-fingerprints", type=int,
                         default=DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
