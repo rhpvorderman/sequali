@@ -87,10 +87,12 @@ Supported formats
     per tile quality will be provided.
   - For sequences called by guppy additional plots for nanopore specific
     data will be provided.
-- unaligned BAM. Any alignment flags are currently ignored.
+- (unaligned) BAM with single reads. Read-pair information is currently ignored.
 
-  - For uBAM data as delivered by dorado additional nanopore plots will be
+  - For BAM data as delivered by dorado additional nanopore plots will be
     provided.
+  - For aligned BAM files, secondary and supplementary reads are ignored
+    similar to how ``samtools fastq`` handles the data.
 
 .. formats end
 

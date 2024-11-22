@@ -1101,6 +1101,21 @@ PyTypeObject FastqParser_Type = {
  * BAM PARSER *
  * ************/
 
+#define BAM_FPAIRED 1
+#define BAM_FPROPER_PAIR 2
+#define BAM_FUNMAP 4
+#define BAM_FMUNMAP 8
+#define BAM_FREVERSE 16
+#define BAM_FMREVERSE 32
+#define BAM_FREAD1 64
+#define BAM_FREAD2 128
+#define BAM_FSECONDARY 256
+#define BAM_FQCFAIL 512
+#define BAM_FDUP 1024
+#define BAM_FSUPPLEMENTARY 2048
+
+#define BAM_EXCLUDE_FLAGS (BAM_FSECONDARY | BAM_FSUPPLEMENTARY)
+
 typedef struct _BamParserStruct {
     PyObject_HEAD
     uint8_t *record_start;
@@ -1451,6 +1466,11 @@ BamParser__next__(BamParser *self)
             uint8_t *record_end = record_start + 4 + header->block_size;
             if (record_end > buffer_end) {
                 break;
+            }
+            if (header->flag & BAM_EXCLUDE_FLAGS) {
+                // Skip excluded records such as secondary and supplementary alignments.
+                record_start = record_end;
+                continue;
             }
             uint8_t *bam_name_start =
                 record_start + sizeof(struct BamRecordHeader);

@@ -143,3 +143,12 @@ def test_bam_parser_no_quals():
     assert records[0][0].name() == "Myheader"
     assert records[0][0].sequence() == "GATTACA"
     assert records[0][0].qualities() == "!!!!!!!"
+
+
+def test_bam_parser_skip_secondary_supplementary():
+    with xopen.xopen(DATA / "test_skip.bam", "rb") as f:
+        parser = BamParser(f)
+        records = list(parser)[0]
+        assert len(records) == 2
+        assert records[0].name() == "unmapped"
+        assert records[1].name() == "everything_but_secondary_and_supplementary"
