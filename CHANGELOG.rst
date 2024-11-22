@@ -11,6 +11,10 @@ version 0.13.0-dev
 ------------------
 + Python 3.13 support was added.
 + Python 3.8 is no longer supported.
++ Allow proper judging of aligned BAM files as input data by ignoring any
+  secondary or supplementary alignment records. This is equivalent to running
+  ``samtools fastq > input.fastq`` on the input data before submitting it to
+  sequali, except that useful tag information is retained.
 + Only sample the first 100 bp from the beginning and end of the read by
   default for the overrepresented sequences analysis. This prevents a lot of
   false positives from common human genome repeats. The amount of base pairs
