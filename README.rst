@@ -123,6 +123,48 @@ Quickstart
 This will create a report ``my.fastq.gz.html`` and a json ``my.fastq.gz.json``
 in the current working directory.
 
+To set the directory where the reports are created the ``--outdir`` flag can
+be used. This is useful when using [MultiQC](https://github.com/multiqc/multiqc).
+
+.. code-block::
+
+    sequali --out-dir /my/dir/all_sequali_reports my.fastq.gz
+
+The html and json filenames can be set separately.
+
+.. code-block::
+
+    sequali --html before_qc.html --json before_qc.json my.fastq.gz
+    sequali --html after_qc.html --json after_qc.json my.cutadapt.fastq.gz
+
+Sequali can handle paired-end data.
+
+.. code-block::
+
+    sequali /sequencing_data/sample100_R1.fastq.gz /sequencing_data/sample100_R2.fastq.gz
+
+Additionally sequali can handle BAM data. Proper pair handling is not yet supported for
+BAM data, so this is primarily useful for ONT datasets.
+
+.. code-block::
+
+    sequali /sequencing_data/sample100_dorado_called_hac_v4.30.bam
+
+Sequali by default uses one thread per compressed input file and one thread for
+the read processing, typically keeping two cores busy. Sequali can also use a single
+core, which is slower, but typically more efficient for HPC scenarios where
+multiple files can be run simultaneously. (Below a SLURM example.)
+
+.. code-block::
+
+    sbatch -c 1 --time 59 --partition short \
+    --wrap 'sequali --threads 1 /cluster-scratch/myusername/my.fastq.gz'
+
+Using a thread count higher than ``2`` has no effect. Due to the decompression
+bottleneck, bringing the full power of multithreading to Sequali has limited
+utility whilst having a disproportionally high cost in additional code
+complexity.
+
 .. quickstart end
 
 For all command line options checkout the
