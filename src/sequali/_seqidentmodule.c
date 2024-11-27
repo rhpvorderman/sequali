@@ -16,9 +16,13 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
+#define Py_LIMITED_API 0x030B0000
+#define PY_SSIZE_T_CLEAN
 #include "Python.h"
 
 #include "compiler_defs.h"
+
+#include <string.h>
 
 struct Entry {
     Py_ssize_t score;
@@ -304,20 +308,25 @@ sequence_identity(PyObject *module, PyObject *args, PyObject *kwargs)
                                      &deletion_penalty, &insertion_penalty)) {
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(target_obj)) {
+    Py_ssize_t target_length = PyUnicode_GetLength(target_obj);
+    Py_ssize_t query_length = PyUnicode_GetLength(query_obj);
+    Py_ssize_t target_utf8_length = 0;
+    Py_ssize_t query_utf8_length = 0;
+    const uint8_t *target = (const uint8_t *)PyUnicode_AsUTF8AndSize(
+        target_obj, &target_utf8_length);
+    const uint8_t *query =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(query_obj, &query_utf8_length);
+    if (target_length != target_utf8_length) {
         PyErr_Format(PyExc_ValueError,
                      "Only ascii strings are allowed. Got %R", target_obj);
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(query_obj)) {
+    if (query_length != query_utf8_length) {
         PyErr_Format(PyExc_ValueError,
                      "Only ascii strings are allowed. Got %R", target_obj);
         return NULL;
     }
-    const uint8_t *target = PyUnicode_DATA(target_obj);
-    const uint8_t *query = PyUnicode_DATA(query_obj);
-    Py_ssize_t target_length = PyUnicode_GET_LENGTH(target_obj);
-    Py_ssize_t query_length = PyUnicode_GET_LENGTH(query_obj);
+
     if (query_length > 31) {
         PyErr_Format(
             PyExc_ValueError,
