@@ -16,10 +16,18 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
-#define Py_LIMITED_API 0x030B0000
+#define Py_LIMITED_API 0x030A0000
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 #include "structmember.h"
+
+/* Buffer constants have remained the same and it is a shame not to be
+   available for python versions below 3.11 for just these two missing
+   constants. */
+#ifndef PyBUF_READ
+#define PyBUF_READ 0x100
+#define PyBUF_WRITE 0x200
+#endif
 
 #include "function_dispatch.h"
 #include "murmur3.h"

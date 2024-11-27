@@ -16,7 +16,7 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
-#define Py_LIMITED_API 0x030B0000
+#define Py_LIMITED_API 0x030A0000
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 
