@@ -350,21 +350,21 @@ static PyMethodDef _seqident_methods[] = {
     {NULL},
 };
 
+static PyModuleDef_Slot _seqident_module_slots[] = {
+    {0, NULL},
+};
+
 static struct PyModuleDef _seqident_module = {
     PyModuleDef_HEAD_INIT,
-    "_seqident",
-    NULL, /* Module documentation*/
-    -1,
-    _seqident_methods,
-    .m_slots = NULL,
+    .m_name = "_seqident",
+    .m_doc = NULL,
+    .m_size = 0,
+    .m_methods = _seqident_methods,
+    .m_slots = _seqident_module_slots,
 };
 
 PyMODINIT_FUNC
 PyInit__seqident(void)
 {
-    PyObject *m = PyModule_Create(&_seqident_module);
-    if (m == NULL) {
-        return NULL;
-    }
-    return m;
+    return PyModuleDef_Init(&_seqident_module);
 }
