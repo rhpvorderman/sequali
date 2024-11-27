@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=60", "setuptools-scm>=8.0"]
+requires = ["setuptools>=60", "setuptools-scm>=8.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -30,7 +30,7 @@ classifiers = [
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-requires-python = ">3.8"
+requires-python = ">=3.10"
 dependencies = [
         "xopen>=2.0.0",
         "pygal>=3.0.4",
