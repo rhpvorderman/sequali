@@ -400,7 +400,7 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (original_sequence_length != sequence_length) {
         PyErr_Format(PyExc_ValueError,
                      "sequence should contain only ASCII characters: %R",
-                     name_obj);
+                     sequence_obj);
         return NULL;
     }
 
@@ -411,7 +411,7 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (original_qualities_length != qualities_length) {
         PyErr_Format(PyExc_ValueError,
                      "qualities should contain only ASCII characters: %R",
-                     name_obj);
+                     sequence_obj);
         return NULL;
     }
 
