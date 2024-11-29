@@ -20,6 +20,7 @@ version 0.13.0-dev
   false positives from common human genome repeats. The amount of base pairs
   that are sampled from the beginning and end is user settable with an option
   to sample everything.
++ Extended the README with a few usage examples.
 
 version 0.12.0
 ------------------
