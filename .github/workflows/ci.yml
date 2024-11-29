@@ -21,17 +21,17 @@ jobs:
           - twine_check
           - docs
           - lint
-          - pedantic_compile
+          - strict_compile
           - html5validator
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Set up Python 3.9
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: "3.10"
       - name: Install tox
         run: pip install --upgrade tox
       - name: Run tox -e ${{ matrix.tox_env }}
@@ -42,7 +42,6 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
@@ -51,16 +50,16 @@ jobs:
         include:
           # MacOS ARM m1
           - os: "macos-latest"
-            python-version: "3.9"
+            python-version: "3.10"
           - os: "macos-latest"
             python-version: "3.13"
           # MacOS x86-64
           - os: "macos-13"
-            python-version: "3.9"
+            python-version: "3.10"
           - os: "macos-13"
             python-version: "3.13"
           - os: "windows-latest"
-            python-version: "3.9"
+            python-version: "3.10"
           - os: "windows-latest"
             python-version: "3.13"
     steps:
@@ -117,6 +116,8 @@ jobs:
           submodules: recursive
       - uses: actions/setup-python@v4
         name: Install Python
+        with:
+          python-version: "3.12"
       - name: Install cibuildwheel twine wheel
         run: python -m pip install cibuildwheel twine wheel
       - name: Set up QEMU
@@ -127,6 +128,7 @@ jobs:
       - name: Build wheels
         run: cibuildwheel --output-dir dist
         env:
+          CIBW_BUILD: "cp310*"  # Only build for the stable ABI.
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp3*"  # Skip 32 bit, pypy
           CIBW_ENVIRONMENT_LINUX: >-
             CFLAGS="-g0 -DNDEBUG"
