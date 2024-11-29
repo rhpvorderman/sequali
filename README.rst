@@ -41,6 +41,8 @@ Features:
 
 + `MultiQC <https://multiqc.info>`_ support since MultiQC version 1.22.
 + Low memory footprint, small install size and fast execution times.
+    + Sequali typically needs less than 2 GB of memory and 3-30 minutes runtime
+      when run on 2 cores (the default).
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
 + Overrepresentation analysis using 21 bp sequence fragments. Overrepresented
