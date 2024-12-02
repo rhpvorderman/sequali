@@ -345,13 +345,11 @@ struct FastqMeta {
         uint32_t qualities_length;
     };
     uint32_t qualities_offset;
+    uint32_t tags_offset;
+    uint32_t tags_length;
     /* Store the accumulated error once calculated so it can be reused by
        the NanoStats module */
     double accumulated_error_rate;
-    // Nanopore specific metadata
-    time_t start_time;
-    float duration;
-    int32_t channel;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -375,10 +373,11 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *name_obj = NULL;
     PyObject *sequence_obj = NULL;
     PyObject *qualities_obj = NULL;
-    static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
-    static char *format = "UUU|:FastqRecordView";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-                                     &name_obj, &sequence_obj, &qualities_obj)) {
+    PyObject *tags_obj = NULL;
+    static char *kwargnames[] = {"name", "sequence", "qualities", "tags", NULL};
+    static char *format = "UUU|S:FastqRecordView";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &name_obj,
+                                     &sequence_obj, &qualities_obj, &tags_obj)) {
         return NULL;
     }
     // Unicode check already performed by the parser, so error checking can be
@@ -422,8 +421,14 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             sequence_length, qualities_length);
         return NULL;
     }
-
-    size_t total_length = name_length + sequence_length + qualities_length + 6;
+    Py_ssize_t tags_length = 0;
+    char *tags = NULL;
+    if (tags_obj != NULL) {
+        tags_length = PyBytes_Size(tags_obj);
+        tags = PyBytes_AsString(tags_obj);
+    }
+    size_t total_length =
+        name_length + sequence_length + qualities_length + 6 + tags_length;
     if (total_length > UINT32_MAX) {
         // lengths are saved as uint32_t types so throw an error;
         PyErr_Format(
@@ -460,10 +465,9 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->meta.sequence_offset = 2 + name_length;
     self->meta.sequence_length = sequence_length;
     self->meta.qualities_offset = 5 + name_length + sequence_length;
+    self->meta.tags_offset = name_length + sequence_length * 2 + 6;
+    self->meta.tags_length = tags_length;
     self->meta.accumulated_error_rate = accumulated_error_rate;
-    self->meta.duration = 0.0;
-    self->meta.start_time = 0;
-    self->meta.channel = -1;
     self->obj = bytes_obj;
 
     buffer[0] = '@';
@@ -482,6 +486,8 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     memcpy(buffer + cursor, qualities, sequence_length);
     cursor += sequence_length;
     buffer[cursor] = '\n';
+    cursor += 1;
+    memcpy(buffer + cursor, tags, tags_length);
     return (PyObject *)self;
 }
 
@@ -526,6 +532,19 @@ FastqRecordView_qualities(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
         self->meta.sequence_length, NULL);
 }
 
+PyDoc_STRVAR(FastqRecordView_tags__doc__,
+             "tags($self)\n"
+             "--\n"
+             "\n"
+             "Returns the raw tags as a bytes object.\n");
+static PyObject *
+FastqRecordView_tags(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
+{
+    return PyBytes_FromStringAndSize(
+        (char *)self->meta.record_start + self->meta.tags_offset,
+        self->meta.tags_length);
+}
+
 static PyMethodDef FastqRecordView_methods[] = {
     {"name", (PyCFunction)FastqRecordView_name, METH_NOARGS,
      FastqRecordView_name__doc__},
@@ -533,6 +552,8 @@ static PyMethodDef FastqRecordView_methods[] = {
      FastqRecordView_sequence__doc__},
     {"qualities", (PyCFunction)FastqRecordView_qualities, METH_NOARGS,
      FastqRecordView_qualities__doc__},
+    {"tags", (PyCFunction)FastqRecordView_tags, METH_NOARGS,
+     FastqRecordView_tags__doc__},
     {NULL}};
 
 static PyMemberDef FastqRecordView_members[] = {
@@ -635,8 +656,9 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
             return NULL;
         }
         FastqRecordView *record = (FastqRecordView *)item;
-        size_t memory_size =
-            6 + record->meta.name_length + record->meta.sequence_length * 2;
+        size_t memory_size = 6 + record->meta.name_length +
+                             record->meta.sequence_length * 2 +
+                             record->meta.tags_length;
         total_memory_size += memory_size;
         Py_DECREF(item);
     }
@@ -677,6 +699,8 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
         record_ptr += meta.sequence_length;
         record_ptr[0] = '\n';
         record_ptr += 1;
+        memcpy(record_ptr, meta.record_start + meta.tags_offset, meta.tags_length);
+        record_ptr += meta.tags_length;
         memcpy(metas + i, &record->meta, sizeof(struct FastqMeta));
         Py_DECREF(record);
     }
@@ -1123,10 +1147,9 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
             meta->sequence_offset = sequence_start - record_start;
             meta->sequence_length = sequence_length;
             meta->qualities_offset = qualities_start - record_start;
+            meta->tags_offset = qualities_end + 1 - record_start;
+            meta->tags_length = 0;
             meta->accumulated_error_rate = 0.0;
-            meta->channel = -1;
-            meta->duration = 0.0;
-            meta->start_time = 0;
             record_start = qualities_end + 1;
         }
     }
@@ -1373,101 +1396,6 @@ struct BamRecordHeader {
     int32_t tlen;
 };
 
-static int
-bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length,
-                       struct FastqMeta *meta)
-{
-    meta->channel = -1;
-    meta->duration = 0.0;
-    meta->start_time = 0;
-    while (tags_length > 0) {
-        if (tags_length < 4) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
-            return -1;
-        }
-        const uint8_t *tag_id = tags;
-        uint8_t tag_type = tags[2];
-        bool is_array = false;
-        const uint8_t *value_start = tags + 3;
-        uint32_t array_length = 1;
-        if (tag_type == 'B') {
-            is_array = true;
-            value_start = tags + 8;
-            tag_type = tags[3];
-            if (tags_length < 8) {
-                PyErr_SetString(PyExc_ValueError, "truncated tags");
-                return -1;
-            }
-            array_length = *(uint32_t *)(tags + 4);
-        };
-        size_t value_length;
-        switch (tag_type) {
-            case 'A':
-                value_length = 1;
-                break;
-            case 'c':
-            case 'C':
-                /* A very annoying habit of htslib to store a tag in the
-                   smallest possible size rather than being consistent. */
-                value_length = 1;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
-                    meta->channel = *(uint8_t *)(value_start);
-                }
-                break;
-            case 's':
-            case 'S':
-                value_length = 2;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
-                    meta->channel = *(uint16_t *)(value_start);
-                }
-                break;
-            case 'I':
-            case 'i':
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
-                    meta->channel = *(uint32_t *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'f':
-                if (memcmp(tag_id, "du", 2) == 0 && tags_length >= 7) {
-                    meta->duration = *(float *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'Z':
-            case 'H':
-                if (is_array) {
-                    PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
-                                 tag_type);
-                    return -1;
-                }
-                uint8_t *string_end = memchr(value_start, 0, tags_length - 3);
-                if (string_end == NULL) {
-                    PyErr_SetString(PyExc_ValueError, "truncated tags");
-                    return -1;
-                }
-                value_length =
-                    (string_end - value_start) + 1;  // +1 for terminating null
-                if (memcmp(tag_id, "st", 2) == 0) {
-                    meta->start_time = time_string_to_timestamp(value_start);
-                }
-                break;
-            default:
-                PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
-                return -1;
-        }
-        size_t this_tag_length =
-            (value_start - tags) + array_length * value_length;
-        if (this_tag_length > tags_length) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
-            return -1;
-        }
-        tags = tags + this_tag_length;
-        tags_length -= this_tag_length;
-    }
-    return 0;
-}
-
 static PyObject *
 BamParser__next__(BamParser *self)
 {
@@ -1629,7 +1557,8 @@ BamParser__next__(BamParser *self)
             fastq_buffer_cursor += seq_length;
             fastq_buffer_cursor[0] = '\n';
             fastq_buffer_cursor += 1;
-
+            memcpy(fastq_buffer_cursor, tag_start, tags_length);
+            fastq_buffer_cursor += tags_length;
             parsed_records += 1;
             if (parsed_records > self->meta_buffer_size) {
                 struct FastqMeta *tmp = PyMem_Realloc(
@@ -1644,15 +1573,15 @@ BamParser__next__(BamParser *self)
             uint32_t sequence_offset = 1 + name_length + 1;  // For '@' and '\n'
             uint32_t qualities_offset =
                 sequence_offset + seq_length + 3;  // for '\n+\n'
+            uint32_t tags_offset = qualities_offset + seq_length + 1;
             meta->record_start = fastq_buffer_record_start;
             meta->name_length = name_length;
             meta->sequence_offset = sequence_offset;
             meta->sequence_length = seq_length;
             meta->qualities_offset = qualities_offset;
+            meta->tags_offset = tags_offset;
+            meta->tags_length = tags_length;
             meta->accumulated_error_rate = 0.0;
-            if (bam_tags_to_fastq_meta(tag_start, tags_length, meta) < 0) {
-                return NULL;
-            }
             record_start = record_end;
             fastq_buffer_record_start = fastq_buffer_cursor;
         }
@@ -4773,6 +4702,100 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length,
     return 0;
 }
 
+static int
+NanoInfo_from_tags(const uint8_t *tags, size_t tags_length, struct NanoInfo *info)
+{
+    info->channel_id = -1;
+    info->duration = 0.0;
+    info->start_time = 0;
+    while (tags_length > 0) {
+        if (tags_length < 4) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return -1;
+        }
+        const uint8_t *tag_id = tags;
+        uint8_t tag_type = tags[2];
+        bool is_array = false;
+        const uint8_t *value_start = tags + 3;
+        uint32_t array_length = 1;
+        if (tag_type == 'B') {
+            is_array = true;
+            value_start = tags + 8;
+            tag_type = tags[3];
+            if (tags_length < 8) {
+                PyErr_SetString(PyExc_ValueError, "truncated tags");
+                return -1;
+            }
+            array_length = *(uint32_t *)(tags + 4);
+        };
+        size_t value_length;
+        switch (tag_type) {
+            case 'A':
+                value_length = 1;
+                break;
+            case 'c':
+            case 'C':
+                /* A very annoying habit of htslib to store a tag in the
+                   smallest possible size rather than being consistent. */
+                value_length = 1;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
+                    info->channel_id = *(uint8_t *)(value_start);
+                }
+                break;
+            case 's':
+            case 'S':
+                value_length = 2;
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
+                    info->channel_id = *(uint16_t *)(value_start);
+                }
+                break;
+            case 'I':
+            case 'i':
+                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
+                    info->channel_id = *(uint32_t *)(value_start);
+                }
+                value_length = 4;
+                break;
+            case 'f':
+                if (memcmp(tag_id, "du", 2) == 0 && tags_length >= 7) {
+                    info->duration = *(float *)(value_start);
+                }
+                value_length = 4;
+                break;
+            case 'Z':
+            case 'H':
+                if (is_array) {
+                    PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
+                                 tag_type);
+                    return -1;
+                }
+                uint8_t *string_end = memchr(value_start, 0, tags_length - 3);
+                if (string_end == NULL) {
+                    PyErr_SetString(PyExc_ValueError, "truncated tags");
+                    return -1;
+                }
+                value_length =
+                    (string_end - value_start) + 1;  // +1 for terminating null
+                if (memcmp(tag_id, "st", 2) == 0) {
+                    info->start_time = time_string_to_timestamp(value_start);
+                }
+                break;
+            default:
+                PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
+                return -1;
+        }
+        size_t this_tag_length =
+            (value_start - tags) + array_length * value_length;
+        if (this_tag_length > tags_length) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return -1;
+        }
+        tags = tags + this_tag_length;
+        tags_length -= this_tag_length;
+    }
+    return 0;
+}
+
 /**
  * @brief Add a FASTQ record to the NanoStats module
  *
@@ -4803,11 +4826,11 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     size_t sequence_length = meta->sequence_length;
     info->length = sequence_length;
 
-    if (meta->channel != -1) {
-        /* Already parsed from BAM */
-        info->channel_id = meta->channel;
-        info->duration = meta->duration;
-        info->start_time = meta->start_time;
+    if (meta->tags_length) {
+        if (NanoInfo_from_tags(meta->record_start + meta->tags_offset,
+                               meta->tags_length, info) != 0) {
+            return -1;
+        }
     }
     else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length,
                                   info) != 0) {

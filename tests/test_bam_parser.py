@@ -41,12 +41,15 @@ def test_bam_parser():
     assert records[0].name() == "Myheader"
     assert records[0].sequence() == "GATTACA"
     assert records[0].qualities() == "HHHHHHH"
+    assert records[0].tags() == b"RGZA\x00"
     assert records[1].name() == "AnotherHeader"
     assert records[1].sequence() == "ACATTAG"
     assert records[1].qualities() == "KKKKKKK"
+    assert records[1].tags() == b"RGZA\x00"
     assert records[2].name() == "YetAnotherHeader"
     assert records[2].sequence() == "AAAATTTT"
     assert records[2].qualities() == "XKLLCCCC"
+    assert records[2].tags() == b"RGZA\x00"
     assert len(records) == 3
 
 
@@ -64,6 +67,9 @@ def test_bam_parser_sequences_with_extended_header():
     assert (records[0].qualities() ==
             "CCCFFFFFHFFHHJIJJIJGGJJJJJJJJJJJJJIGHIIEHIJJJJJJIJJJJIBGGIIIHIIII"
             "HHHHDD;9CCDEDDDDDDDDDDEDDDDDDDDDDDDD")
+    assert (records[0].tags() ==
+            b"X0C\x01X1C\x00MDZ72G28\x00PGZMarkDuplicates\x00RGZ1\x00XGC\x00"
+            b"AMC%NMC\x01SMC%XMC\x01XOC\x00XTAU")
     assert records[1].name() == "HWI-D00119:50:H7AP8ADXX:1:2104:18479:82511"
     assert (records[1].sequence() ==
             "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCTCTCCATGCATTTGGTATTTTCGTCT"
@@ -71,6 +77,9 @@ def test_bam_parser_sequences_with_extended_header():
     assert (records[1].qualities() ==
             "CCCFFFFFHFFHHJJJJIJJJJIIJJJJJGIJJJJGIJJJJJJJJGJIJJIJJJGHIJJJJJJJI"
             "HHHHDD@>CDDEDDDDDDDDDDEDDCDDDDD?BBD9")
+    assert (records[1].tags() ==
+            b"X0C\x01X1C\x00MDZ72G28\x00PGZMarkDuplicates\x00RGZ1\x00XGC\x00"
+            b"AMC%NMC\x01SMC%XMC\x01XOC\x00XTAU")
     assert records[2].name() == "HWI-D00119:50:H7AP8ADXX:1:2105:7076:23015"
     assert (records[2].sequence() ==
             "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCTCTCCATGCATTTGGTATTTTCGTCT"
@@ -78,6 +87,9 @@ def test_bam_parser_sequences_with_extended_header():
     assert (records[2].qualities() ==
             "@@CFFFDFGFHHHJIIJIJIJJJJJJJIIJJJJIIJIJFIIJJJJIIIGIJJJJDHIJIIJIJJJ"
             "HHGGCB>BDDDDDDDDDDDBDDEDDDDDDDDDDDDD")
+    assert (records[2].tags() ==
+            b"X0C\x01X1C\x00MDZ72G28\x00PGZMarkDuplicates\x00RGZ1\x00XGC\x00"
+            b"AMC%NMC\x01SMC%XMC\x01XOC\x00XTAU")
 
 
 @pytest.mark.parametrize("end", range(len(COMPLETE_HEADER) + 1,
@@ -143,6 +155,7 @@ def test_bam_parser_no_quals():
     assert records[0][0].name() == "Myheader"
     assert records[0][0].sequence() == "GATTACA"
     assert records[0][0].qualities() == "!!!!!!!"
+    assert records[0][0].tags() == b"RGZA\x00"
 
 
 def test_bam_parser_skip_secondary_supplementary():
