@@ -11,6 +11,7 @@ version 0.13.0-dev
 ------------------
 + Python 3.13 support was added.
 + Python 3.8 and 3.9 are no longer supported.
++ Add a N50 and N90 statistic to the sequence length distribution report.
 + Allow proper judging of aligned BAM files as input data by ignoring any
   secondary or supplementary alignment records. This is equivalent to running
   ``samtools fastq > input.fastq`` on the input data before submitting it to

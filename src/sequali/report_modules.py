@@ -486,6 +486,8 @@ class SequenceLengthDistribution(ReportModule):
     q90: int
     q95: int
     q99: int
+    n50: int
+    n90: int
     read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
@@ -505,6 +507,13 @@ class SequenceLengthDistribution(ReportModule):
                 self.q75, self.q90, self.q95, self.q99}) == 1:
             return ""
         return f"""
+            <p class="explanation">
+            See this
+            <a
+            href="https://en.wikipedia.org/wiki/N50,_L50,_and_related_statistics"
+            >wikipedia lemma</a>
+                for an explanation about contiguity statistics.
+            </p>
             <table>
                 <tr><th>Percentile</th><th>Read length</th></tr>
                 <tr><td>1</td><td style="text-align:right;">{self.q1:,}</td></tr>
@@ -516,6 +525,11 @@ class SequenceLengthDistribution(ReportModule):
                 <tr><td>90</td><td style="text-align:right;">{self.q90:,}</td></tr>
                 <tr><td>95</td><td style="text-align:right;">{self.q95:,}</td></tr>
                 <tr><td>99</td><td style="text-align:right;">{self.q99:,}</td></tr>
+            </table>
+            <table>
+                <tr><th>Contiguity</th><th>Read length</th></tr>
+                <tr><td>N90</td><td style="text-align:right;">{self.n90:,}</td></tr>
+                <tr><td>N50</td><td style="text-align:right;">{self.n50:,}</td></tr>
             </table>
         """
 
@@ -574,8 +588,22 @@ class SequenceLengthDistribution(ReportModule):
             if done:
                 break
 
+        total_bases = sum(base_count_tables)
+        half_bases = total_bases // 2
+        ten_percent_bases = int(total_bases * 0.1)
+        sum_bases = 0
+        N50 = None
+        N90 = None
+        for length, number in enumerate(sequence_lengths):
+            sum_bases += length * number
+            if N90 is None and sum_bases >= ten_percent_bases:
+                N90 = length
+            if N50 is None and sum_bases >= half_bases:
+                N50 = length
+                break
         return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
-                   *percentile_lengths, read_pair_info=read_pair_info)  # type: ignore
+                   *percentile_lengths, n50=N50, n90=N90,  # type: ignore
+                   read_pair_info=read_pair_info)  # type: ignore
 
 
 @dataclasses.dataclass
