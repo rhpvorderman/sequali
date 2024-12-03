@@ -335,8 +335,10 @@ time_string_to_timestamp(const uint8_t *time_string)
 */
 
 struct FastqMeta {
-    uint8_t *record_start;
-    // name_offset is always 1, so no variable needed
+    union {
+        uint8_t *record_start;
+        uint8_t *name;  // Name is always at the start of the record.
+    };
     uint32_t name_length;
     uint32_t sequence_offset;
     // Sequence length and qualities length should be the same
@@ -427,8 +429,7 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         tags_length = PyBytes_Size(tags_obj);
         tags = PyBytes_AsString(tags_obj);
     }
-    size_t total_length =
-        name_length + sequence_length + qualities_length + 6 + tags_length;
+    size_t total_length = name_length + sequence_length * 2 + tags_length;
     if (total_length > UINT32_MAX) {
         // lengths are saved as uint32_t types so throw an error;
         PyErr_Format(
@@ -462,31 +463,20 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     uint8_t *buffer = (uint8_t *)PyBytes_AsString(bytes_obj);  // No check needed.
     self->meta.record_start = buffer;
     self->meta.name_length = name_length;
-    self->meta.sequence_offset = 2 + name_length;
+    self->meta.sequence_offset = name_length;
     self->meta.sequence_length = sequence_length;
-    self->meta.qualities_offset = 5 + name_length + sequence_length;
-    self->meta.tags_offset = name_length + sequence_length * 2 + 6;
+    self->meta.qualities_offset = name_length + sequence_length;
+    self->meta.tags_offset = name_length + sequence_length * 2;
     self->meta.tags_length = tags_length;
     self->meta.accumulated_error_rate = accumulated_error_rate;
     self->obj = bytes_obj;
 
-    buffer[0] = '@';
-    memcpy(buffer + 1, name, name_length);
-    size_t cursor = 1 + name_length;
-    buffer[cursor] = '\n';
-    cursor += 1;
+    memcpy(buffer, name, name_length);
+    size_t cursor = name_length;
     memcpy(buffer + cursor, sequence, sequence_length);
     cursor += sequence_length;
-    buffer[cursor] = '\n';
-    cursor += 1;
-    buffer[cursor] = '+';
-    cursor += 1;
-    buffer[cursor] = '\n';
-    cursor += 1;
     memcpy(buffer + cursor, qualities, sequence_length);
     cursor += sequence_length;
-    buffer[cursor] = '\n';
-    cursor += 1;
     memcpy(buffer + cursor, tags, tags_length);
     return (PyObject *)self;
 }
@@ -500,7 +490,7 @@ PyDoc_STRVAR(FastqRecordView_name__doc__,
 static PyObject *
 FastqRecordView_name(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    return PyUnicode_DecodeASCII((char *)self->meta.record_start + 1,
+    return PyUnicode_DecodeASCII((char *)self->meta.name,
                                  self->meta.name_length, NULL);
 }
 
@@ -656,7 +646,7 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
             return NULL;
         }
         FastqRecordView *record = (FastqRecordView *)item;
-        size_t memory_size = 6 + record->meta.name_length +
+        size_t memory_size = record->meta.name_length +
                              record->meta.sequence_length * 2 +
                              record->meta.tags_length;
         total_memory_size += memory_size;
@@ -681,24 +671,14 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
         FastqRecordView *record =
             (FastqRecordView *)PySequence_GetItem(view_fastseq, i);
         struct FastqMeta meta = record->meta;
-        record_ptr[0] = '@';
-        record_ptr += 1;
-        memcpy(record_ptr, meta.record_start + 1, meta.name_length);
+        memcpy(record_ptr, meta.record_start, meta.name_length);
         record_ptr += meta.name_length;
-        record_ptr[0] = '\n';
-        record_ptr += 1;
         memcpy(record_ptr, meta.record_start + meta.sequence_offset,
                meta.sequence_length);
         record_ptr += meta.sequence_length;
-        record_ptr[0] = '\n';
-        record_ptr[1] = '+';
-        record_ptr[2] = '\n';
-        record_ptr += 3;
         memcpy(record_ptr, meta.record_start + meta.qualities_offset,
                meta.sequence_length);
         record_ptr += meta.sequence_length;
-        record_ptr[0] = '\n';
-        record_ptr += 1;
         memcpy(record_ptr, meta.record_start + meta.tags_offset, meta.tags_length);
         record_ptr += meta.tags_length;
         memcpy(metas + i, &record->meta, sizeof(struct FastqMeta));
@@ -751,17 +731,21 @@ FastqRecordArrayView__length__(FastqRecordArrayView *self)
  * @param name2_length The length of the second name
  */
 static inline bool
-fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length)
+fastq_names_are_mates(const char *name1, const char *name2,
+                      size_t name1_length, size_t name2_length)
 {
-    /* strcspn will return the length of the string if none of the complement
-       characters is found, so name1_length is not necessary as a parameter.*/
-    size_t id_length = strcspn(name1, " \t\n");
+    size_t id_length = 0;
+    for (; id_length < name1_length; id_length++) {
+        if (name1[id_length] == ' ' || name1[id_length] == '\t') {
+            break;
+        }
+    }
     if (name2_length < id_length) {
         return false;
     }
     if (name2_length > id_length) {
         char id2_sep = name2[id_length];
-        if (!(id2_sep == ' ' || id2_sep == '\t' || id2_sep == '\n')) {
+        if (!(id2_sep == ' ' || id2_sep == '\t')) {
             return false;
         }
     }
@@ -815,10 +799,11 @@ FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
     for (Py_ssize_t i = 0; i < length; i++) {
         struct FastqMeta *record1 = self_records + i;
         struct FastqMeta *record2 = other_records + i;
-        char *name1 = (char *)record1->record_start + 1;
-        char *name2 = (char *)record2->record_start + 1;
+        char *name1 = (char *)record1->name;
+        char *name2 = (char *)record2->name;
+        size_t name1_length = record1->name_length;
         size_t name2_length = record2->name_length;
-        if (!fastq_names_are_mates(name1, name2, name2_length)) {
+        if (!fastq_names_are_mates(name1, name2, name1_length, name2_length)) {
             Py_RETURN_FALSE;
         }
     }
@@ -1085,12 +1070,13 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
                 Py_DECREF(new_buffer_obj);
                 return NULL;
             }
+            uint8_t *name_start = record_start + 1;
             uint8_t *name_end =
-                memchr(record_start, '\n', buffer_end - record_start);
+                memchr(name_start, '\n', buffer_end - record_start);
             if (name_end == NULL) {
                 break;
             }
-            size_t name_length = name_end - (record_start + 1);
+            size_t name_length = name_end - name_start;
             uint8_t *sequence_start = name_end + 1;
             uint8_t *sequence_end =
                 memchr(sequence_start, '\n', buffer_end - sequence_start);
@@ -1121,8 +1107,8 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
             }
             size_t qualities_length = qualities_end - qualities_start;
             if (sequence_length != qualities_length) {
-                PyObject *record_name_obj = PyUnicode_DecodeASCII(
-                    (char *)record_start + 1, name_length, NULL);
+                PyObject *record_name_obj =
+                    PyUnicode_DecodeASCII((char *)name_start, name_length, NULL);
                 PyErr_Format(PyExc_ValueError,
                              "Record sequence and qualities do not have equal "
                              "length, %R",
@@ -1142,12 +1128,12 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
                 self->meta_buffer_size = parsed_records;
             }
             struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
-            meta->record_start = record_start;
+            meta->record_start = name_start;
             meta->name_length = name_length;
-            meta->sequence_offset = sequence_start - record_start;
+            meta->sequence_offset = sequence_start - name_start;
             meta->sequence_length = sequence_length;
-            meta->qualities_offset = qualities_start - record_start;
-            meta->tags_offset = qualities_end + 1 - record_start;
+            meta->qualities_offset = qualities_start - name_start;
+            meta->tags_offset = qualities_end - name_start;
             meta->tags_length = 0;
             meta->accumulated_error_rate = 0.0;
             record_start = qualities_end + 1;
@@ -1406,7 +1392,7 @@ BamParser__next__(BamParser *self)
     record_start = self->read_in_buffer;
     buffer_end = record_start + leftover_size;
     size_t parsed_records = 0;
-    PyObject *fastq_buffer_obj = NULL;
+    PyObject *read_data_obj = NULL;
     struct QCModuleState *state = get_qc_module_state_from_obj(self);
     if (state == NULL) {
         return NULL;
@@ -1431,7 +1417,7 @@ BamParser__next__(BamParser *self)
             uint8_t *tmp_read_in_buffer =
                 PyMem_Realloc(self->read_in_buffer, minimum_space_required);
             if (tmp_read_in_buffer == NULL) {
-                Py_XDECREF(fastq_buffer_obj);
+                Py_XDECREF(read_data_obj);
                 return PyErr_NoMemory();
             }
             self->read_in_buffer = tmp_read_in_buffer;
@@ -1447,7 +1433,7 @@ BamParser__next__(BamParser *self)
             PyObject_CallMethod(self->file_obj, "readinto", "O", buffer_view);
         Py_DECREF(buffer_view);
         if (read_bytes_obj == NULL) {
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
         Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
@@ -1456,7 +1442,7 @@ BamParser__next__(BamParser *self)
         if (new_buffer_size == 0) {
             // Entire file is read
             PyErr_SetNone(PyExc_StopIteration);
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
         else if (read_bytes == 0) {
@@ -1466,7 +1452,7 @@ BamParser__next__(BamParser *self)
                          "Incomplete record at the end of file %R",
                          remaining_obj);
             Py_DECREF(remaining_obj);
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
 
@@ -1480,28 +1466,28 @@ BamParser__next__(BamParser *self)
            of the bam record. Quality always maps one to one, but sequence is
            compressed and maps one to two. So that is a 3:4 ratio for BAM:FASTQ.
         */
-        Py_ssize_t fastq_buffer_size = (new_buffer_size * 4 + 2) / 3;
-        if (fastq_buffer_obj == NULL) {
-            fastq_buffer_obj = PyBytes_FromStringAndSize(NULL, fastq_buffer_size);
-            if (fastq_buffer_obj == NULL) {
-                Py_XDECREF(fastq_buffer_obj);
+        Py_ssize_t read_data_size = (new_buffer_size * 4 + 2) / 3;
+        if (read_data_obj == NULL) {
+            read_data_obj = PyBytes_FromStringAndSize(NULL, read_data_size);
+            if (read_data_obj == NULL) {
+                Py_XDECREF(read_data_obj);
                 return PyErr_NoMemory();
             }
         }
         else {
-            PyObject *old_fastq_buffer_obj = fastq_buffer_obj;
-            fastq_buffer_obj = PyBytes_FromStringAndSize(NULL, fastq_buffer_size);
-            if (fastq_buffer_obj == NULL) {
-                Py_DECREF(old_fastq_buffer_obj);
+            PyObject *old_read_data_obj = read_data_obj;
+            read_data_obj = PyBytes_FromStringAndSize(NULL, read_data_size);
+            if (read_data_obj == NULL) {
+                Py_DECREF(old_read_data_obj);
                 return NULL;
             }
-            memcpy(PyBytes_AsString(fastq_buffer_obj),
-                   PyBytes_AsString(old_fastq_buffer_obj),
-                   PyBytes_Size(old_fastq_buffer_obj));
-            Py_DECREF(old_fastq_buffer_obj);
+            memcpy(PyBytes_AsString(read_data_obj),
+                   PyBytes_AsString(old_read_data_obj),
+                   PyBytes_Size(old_read_data_obj));
+            Py_DECREF(old_read_data_obj);
         }
-        uint8_t *fastq_buffer_record_start =
-            (uint8_t *)PyBytes_AsString(fastq_buffer_obj);
+        uint8_t *read_data_record_start =
+            (uint8_t *)PyBytes_AsString(read_data_obj);
 
         while (1) {
             if (record_start + 4 >= buffer_end) {
@@ -1526,39 +1512,29 @@ BamParser__next__(BamParser *self)
             uint32_t seq_length = header->l_seq;
             uint32_t encoded_seq_length = (seq_length + 1) / 2;
             uint8_t *bam_qual_start = bam_seq_start + encoded_seq_length;
-            fastq_buffer_record_start[0] = '@';
-            uint8_t *fastq_buffer_cursor = fastq_buffer_record_start + 1;
             uint8_t *tag_start = bam_qual_start + seq_length;
             size_t tags_length = record_end - tag_start;
+
+            uint8_t *read_data_cursor = read_data_record_start;
             if (name_length > 0) {
                 name_length -= 1; /* Includes terminating NULL byte */
-                memcpy(fastq_buffer_cursor, bam_name_start, name_length);
+                memcpy(read_data_cursor, bam_name_start, name_length);
             }
-            /* The + and newlines are unncessary, but also do not require much
-               space and compute time. So keep the in-memory presentation as
-               a FASTQ record for homogeneity with FASTQ input. */
-            fastq_buffer_cursor += name_length;
-            fastq_buffer_cursor[0] = '\n';
-            fastq_buffer_cursor += 1;
-            decode_bam_sequence(fastq_buffer_cursor, bam_seq_start, seq_length);
-            fastq_buffer_cursor += seq_length;
-            memcpy(fastq_buffer_cursor, "\n+\n", 3);
-            fastq_buffer_cursor += 3;
+            read_data_cursor += name_length;
+            decode_bam_sequence(read_data_cursor, bam_seq_start, seq_length);
+            read_data_cursor += seq_length;
             if (seq_length && bam_qual_start[0] == 0xff) {
                 /* If qualities are missing, all bases are set to 0xff, which
                    is an invalid phred value. Create a quality string with only
                    zero Phreds for a valid FASTQ representation */
-                memset(fastq_buffer_cursor, 33, seq_length);
+                memset(read_data_cursor, 33, seq_length);
             }
             else {
-                decode_bam_qualities(fastq_buffer_cursor, bam_qual_start,
-                                     seq_length);
+                decode_bam_qualities(read_data_cursor, bam_qual_start, seq_length);
             }
-            fastq_buffer_cursor += seq_length;
-            fastq_buffer_cursor[0] = '\n';
-            fastq_buffer_cursor += 1;
-            memcpy(fastq_buffer_cursor, tag_start, tags_length);
-            fastq_buffer_cursor += tags_length;
+            read_data_cursor += seq_length;
+            memcpy(read_data_cursor, tag_start, tags_length);
+            read_data_cursor += tags_length;
             parsed_records += 1;
             if (parsed_records > self->meta_buffer_size) {
                 struct FastqMeta *tmp = PyMem_Realloc(
@@ -1570,11 +1546,10 @@ BamParser__next__(BamParser *self)
                 self->meta_buffer_size = parsed_records;
             }
             struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
-            uint32_t sequence_offset = 1 + name_length + 1;  // For '@' and '\n'
-            uint32_t qualities_offset =
-                sequence_offset + seq_length + 3;  // for '\n+\n'
-            uint32_t tags_offset = qualities_offset + seq_length + 1;
-            meta->record_start = fastq_buffer_record_start;
+            uint32_t sequence_offset = name_length;
+            uint32_t qualities_offset = sequence_offset + seq_length;
+            uint32_t tags_offset = qualities_offset + seq_length;
+            meta->record_start = read_data_record_start;
             meta->name_length = name_length;
             meta->sequence_offset = sequence_offset;
             meta->sequence_length = seq_length;
@@ -1583,15 +1558,15 @@ BamParser__next__(BamParser *self)
             meta->tags_length = tags_length;
             meta->accumulated_error_rate = 0.0;
             record_start = record_end;
-            fastq_buffer_record_start = fastq_buffer_cursor;
+            read_data_record_start = read_data_cursor;
         }
     }
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     PyObject *record_array = FastqRecordArrayView_FromPointerSizeAndObject(
-        self->meta_buffer, parsed_records, fastq_buffer_obj,
+        self->meta_buffer, parsed_records, read_data_obj,
         FastqRecordArrayView_Type);
-    Py_DECREF(fastq_buffer_obj);
+    Py_DECREF(read_data_obj);
     return record_array;
 }
 
@@ -3000,7 +2975,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *record_start = meta->record_start;
-    const uint8_t *header = record_start + 1;
+    const uint8_t *header = record_start;
     size_t header_length = meta->name_length;
     const uint8_t *qualities = record_start + meta->qualities_offset;
     size_t sequence_length = meta->sequence_length;
@@ -4832,10 +4807,9 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
             return -1;
         }
     }
-    else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length,
-                                  info) != 0) {
-        PyObject *header_obj = PyUnicode_DecodeASCII(
-            (const char *)meta->record_start + 1, meta->name_length, NULL);
+    else if (NanoInfo_from_header(meta->name, meta->name_length, info) != 0) {
+        PyObject *header_obj = PyUnicode_DecodeASCII((const char *)meta->name,
+                                                     meta->name_length, NULL);
         if (header_obj == NULL) {
             return -1;
         }
