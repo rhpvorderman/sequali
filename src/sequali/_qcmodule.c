@@ -719,6 +719,51 @@ FastqRecordArrayView__length__(FastqRecordArrayView *self)
     return Py_SIZE((PyObject *)self);
 }
 
+static inline bool
+is_space(char c)
+{
+    return (c == ' ' || c == '\t');
+}
+
+#define FIND_SPACE_CHUNK_SIZE 8
+/**
+ * @brief strcspn(str, " \t") replacement with length. Returns the offset of
+ * ' ' or '\t' or the length of the string.
+ *
+ * @param str
+ * @param length
+ * @return size_t
+ */
+static inline size_t
+find_space(const char *restrict str, size_t length)
+{
+    const char *restrict cursor = str;
+    const char *end = str + length;
+    const char *vec_end = end - (FIND_SPACE_CHUNK_SIZE - 1);
+    while (cursor < vec_end) {
+        /* Fixed size for loop allows compiler to use inline vectors. */
+        uint8_t results[FIND_SPACE_CHUNK_SIZE];
+        for (size_t i = 0; i < FIND_SPACE_CHUNK_SIZE; i++) {
+            /* Set all bits when is_space is true. This is the same result as
+               when _mm_cmpeq_epi8 is used. Hence an extra AND instruction is
+               prevented. */
+            results[i] = is_space(cursor[i]) ? 255 : 0;
+        }
+        uint64_t *result = (uint64_t *)results;
+        if (result[0]) {
+            break;
+        }
+        cursor += 8;
+    }
+    while (cursor < end) {
+        if (is_space(*cursor)) {
+            break;
+        }
+        cursor++;
+    }
+    return cursor - str;
+}
+
 /**
  * @brief Compare two FASTQ record names to see if they are mates.
  *
@@ -734,12 +779,7 @@ static inline bool
 fastq_names_are_mates(const char *name1, const char *name2,
                       size_t name1_length, size_t name2_length)
 {
-    size_t id_length = 0;
-    for (; id_length < name1_length; id_length++) {
-        if (name1[id_length] == ' ' || name1[id_length] == '\t') {
-            break;
-        }
-    }
+    size_t id_length = find_space(name1, name1_length);
     if (name2_length < id_length) {
         return false;
     }
