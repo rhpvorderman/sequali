@@ -34,12 +34,15 @@ def test_fastq_parser():
     assert records[0].name() == "Myheader/1"
     assert records[0].sequence() == "GATTACA"
     assert records[0].qualities() == "HHHHHHH"
+    assert records[0].tags() == b""
     assert records[1].name() == "AnotherHeader/1"
     assert records[1].sequence() == "ACATTAG"
     assert records[1].qualities() == "KKKKKKK"
+    assert records[1].tags() == b""
     assert records[2].name() == "YetAnotherHeader/1"
     assert records[2].sequence() == "AAAATTTT"
     assert records[2].qualities() == "XKLLCCCC"
+    assert records[2].tags() == b""
     assert len(records) == 3
 
 
