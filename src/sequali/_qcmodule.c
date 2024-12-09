@@ -4717,6 +4717,90 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length,
     return 0;
 }
 
+static Py_ssize_t
+get_tag_int_value(const uint8_t *tag)
+{
+    uint8_t tag_type = tag[2];
+    uint8_t *value_start = tag + 3;
+    switch (tag_type) {
+        case 'c':
+            return ((int8_t *)value_start)[0];
+        case 'C':
+            return ((uint8_t *)value_start)[0];
+        case 's':
+            return ((int16_t *)value_start)[0];
+        case 'S':
+            return ((uint16_t *)value_start)[0];
+        case 'i':
+            return ((int32_t *)value_start)[0];
+        case 'I':
+            return ((uint32_t *)value_start)[0];
+        default:
+            return PY_SSIZE_T_MIN;
+    }
+}
+
+static Py_ssize_t
+tag_length(const uint8_t *tag, size_t maximum_tag_length)
+{
+    uint8_t tag_type = tag[2];
+    uint8_t *value_start = tag + 3;
+    size_t value_length;
+    bool is_array = false;
+    uint32_t array_length = 1;
+    if (tag_type == 'B') {
+        is_array = true;
+        value_start = tag + 8;
+        tag_type = tag[3];
+        if (maximum_tag_length < 8) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return NULL;
+        }
+        array_length = *(uint32_t *)(tag + 4);
+    };
+
+    switch (tag_type) {
+        case 'A':
+        case 'c':
+        case 'C':
+            value_length = 1;
+            break;
+        case 's':
+        case 'S':
+            value_length = 2;
+            break;
+        case 'I':
+        case 'i':
+        case 'f':
+            value_length = 4;
+            break;
+        case 'Z':
+        case 'H':
+            if (is_array) {
+                PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
+                             tag_type);
+                return NULL;
+            }
+            uint8_t *string_end = memchr(value_start, 0, maximum_tag_length - 3);
+            if (string_end == NULL) {
+                PyErr_SetString(PyExc_ValueError, "truncated tags");
+                return -1;
+            }
+            value_length =
+                (string_end - value_start) + 1;  // +1 for terminating null
+            break;
+        default:
+            PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
+            return -1;
+    }
+    size_t this_tag_length = (value_start - tag) + array_length * value_length;
+    if (this_tag_length > maximum_tag_length) {
+        PyErr_SetString(PyExc_ValueError, "truncated tags");
+        return -1;
+    }
+    return this_tag_length;
+}
+
 struct TagInfo {
     int32_t channel_id;
     float duration;
@@ -4724,91 +4808,44 @@ struct TagInfo {
 };
 
 static int
-NanoInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
+TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
 {
     info->channel_id = -1;
     info->duration = 0.0;
     info->start_time = 0;
+
     while (tags_length > 0) {
         if (tags_length < 4) {
             PyErr_SetString(PyExc_ValueError, "truncated tags");
             return -1;
         }
-        const uint8_t *tag_id = tags;
-        uint8_t tag_type = tags[2];
-        bool is_array = false;
-        const uint8_t *value_start = tags + 3;
-        uint32_t array_length = 1;
-        if (tag_type == 'B') {
-            is_array = true;
-            value_start = tags + 8;
-            tag_type = tags[3];
-            if (tags_length < 8) {
-                PyErr_SetString(PyExc_ValueError, "truncated tags");
+        if (memcmp(tags, "ch", 2) == 0) {
+            Py_ssize_t channel_id = get_tag_int_value(tags);
+            if (channel_id == PY_SSIZE_T_MIN) {
                 return -1;
             }
-            array_length = *(uint32_t *)(tags + 4);
-        };
-        size_t value_length;
-        switch (tag_type) {
-            case 'A':
-                value_length = 1;
-                break;
-            case 'c':
-            case 'C':
-                /* A very annoying habit of htslib to store a tag in the
-                   smallest possible size rather than being consistent. */
-                value_length = 1;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
-                    info->channel_id = *(uint8_t *)(value_start);
-                }
-                break;
-            case 's':
-            case 'S':
-                value_length = 2;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
-                    info->channel_id = *(uint16_t *)(value_start);
-                }
-                break;
-            case 'I':
-            case 'i':
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
-                    info->channel_id = *(uint32_t *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'f':
-                if (memcmp(tag_id, "du", 2) == 0 && tags_length >= 7) {
-                    info->duration = *(float *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'Z':
-            case 'H':
-                if (is_array) {
-                    PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
-                                 tag_type);
-                    return -1;
-                }
-                uint8_t *string_end = memchr(value_start, 0, tags_length - 3);
-                if (string_end == NULL) {
-                    PyErr_SetString(PyExc_ValueError, "truncated tags");
-                    return -1;
-                }
-                value_length =
-                    (string_end - value_start) + 1;  // +1 for terminating null
-                if (memcmp(tag_id, "st", 2) == 0) {
-                    info->start_time = time_string_to_timestamp(value_start);
-                }
-                break;
-            default:
-                PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
-                return -1;
+            info->channel_id = channel_id;
         }
-        size_t this_tag_length =
-            (value_start - tags) + array_length * value_length;
-        if (this_tag_length > tags_length) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
+        else if (memcmp(tags, "st", 2) == 0) {
+            if (tags[2] != 'Z') {
+                PyErr_Format(PyExc_RuntimeError,
+                             "Wrong tag type for 'st' expected 'Z' got '%c'",
+                             tags[2]);
+                return -1;
+            }
+            info->start_time = time_string_to_timestamp(tags + 3);
+        }
+        else if (memcmp(tags, "du", 2) == 0) {
+            if (tags[2] != 'f') {
+                PyErr_Format(PyExc_RuntimeError,
+                             "Wrong tag type for 'st' expected 'f' got '%c'",
+                             tags[2]);
+                return -1;
+            }
+            info->duration = ((float *)(tags + 3))[0];
+        }
+        size_t this_tag_length = tag_length(tags, tags_length);
+        if (this_tag_length == -1) {
             return -1;
         }
         tags = tags + this_tag_length;
@@ -4849,8 +4886,8 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
 
     if (meta->tags_length) {
         struct TagInfo tag_info;
-        if (NanoInfo_from_tags(meta->record_start + meta->tags_offset,
-                               meta->tags_length, &tag_info) != 0) {
+        if (TagInfo_from_tags(meta->record_start + meta->tags_offset,
+                              meta->tags_length, &tag_info) != 0) {
             return -1;
         }
         info->channel_id = tag_info.channel_id;
