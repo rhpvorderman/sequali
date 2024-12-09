@@ -4717,8 +4717,14 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length,
     return 0;
 }
 
+struct TagInfo {
+    int32_t channel_id;
+    float duration;
+    time_t start_time;
+};
+
 static int
-NanoInfo_from_tags(const uint8_t *tags, size_t tags_length, struct NanoInfo *info)
+NanoInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
 {
     info->channel_id = -1;
     info->duration = 0.0;
@@ -4842,10 +4848,14 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     info->length = sequence_length;
 
     if (meta->tags_length) {
+        struct TagInfo tag_info;
         if (NanoInfo_from_tags(meta->record_start + meta->tags_offset,
-                               meta->tags_length, info) != 0) {
+                               meta->tags_length, &tag_info) != 0) {
             return -1;
         }
+        info->channel_id = tag_info.channel_id;
+        info->duration = tag_info.duration;
+        info->start_time = tag_info.start_time;
     }
     else if (NanoInfo_from_header(meta->name, meta->name_length, info) != 0) {
         PyObject *header_obj = PyUnicode_DecodeASCII((const char *)meta->name,
