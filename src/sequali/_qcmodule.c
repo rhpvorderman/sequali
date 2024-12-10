@@ -4478,6 +4478,7 @@ struct NanoInfo {
     float duration;
     int32_t channel_id;
     uint32_t length;
+    uint64_t parent_id;
     double cumulative_error_rate;
 };
 
@@ -4743,6 +4744,10 @@ get_tag_int_value(const uint8_t *tag)
 static Py_ssize_t
 tag_length(const uint8_t *tag, size_t maximum_tag_length)
 {
+    if (maximum_tag_length < 4) {
+        PyErr_SetString(PyExc_ValueError, "truncated tags");
+        return -1;
+    }
     uint8_t tag_type = tag[2];
     uint8_t *value_start = tag + 3;
     size_t value_length;
@@ -4805,7 +4810,30 @@ struct TagInfo {
     int32_t channel_id;
     float duration;
     time_t start_time;
+    char parent_uuid[36];
 };
+
+/**
+ * @brief Throw a Python RuntimeError for an unexpected typecode and return -1
+ */
+static inline int
+tag_wrong_typecode(char *tag, char expected_typecode, char actual_typecode)
+{
+    PyErr_Format(PyExc_RuntimeError,
+                 "Wrong tag type for '%s' expected '%c' got '%c'", tag,
+                 expected_typecode, actual_typecode);
+    return -1;
+}
+
+/**
+ * @brief correct memcmp shorthand for ease of writing.
+ */
+static inline bool
+has_tag_id(uint8_t *tag, char *expected_tag)
+{
+    return memcmp(tag, expected_tag, strlen(expected_tag)) == 0;
+    ;
+}
 
 static int
 TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
@@ -4813,40 +4841,51 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
     info->channel_id = -1;
     info->duration = 0.0;
     info->start_time = 0;
+    memset(info->parent_uuid, 0, sizeof(info->parent_uuid));
 
     while (tags_length > 0) {
-        if (tags_length < 4) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
+        size_t this_tag_length = tag_length(tags, tags_length);
+        if (this_tag_length == -1) {
             return -1;
         }
-        if (memcmp(tags, "ch", 2) == 0) {
-            Py_ssize_t channel_id = get_tag_int_value(tags);
+        const uint8_t *tag = tags;
+        uint8_t typecode = tags[2];
+
+        if (has_tag_id(tag, "ch")) {
+            Py_ssize_t channel_id = get_tag_int_value(tag);
             if (channel_id == PY_SSIZE_T_MIN) {
                 return -1;
             }
             info->channel_id = channel_id;
         }
-        else if (memcmp(tags, "st", 2) == 0) {
-            if (tags[2] != 'Z') {
-                PyErr_Format(PyExc_RuntimeError,
-                             "Wrong tag type for 'st' expected 'Z' got '%c'",
-                             tags[2]);
-                return -1;
+        else if (has_tag_id(tag, "st")) {
+            if (typecode != 'Z') {
+                return tag_wrong_typecode("st", 'Z', typecode);
             }
             info->start_time = time_string_to_timestamp(tags + 3);
         }
-        else if (memcmp(tags, "du", 2) == 0) {
-            if (tags[2] != 'f') {
-                PyErr_Format(PyExc_RuntimeError,
-                             "Wrong tag type for 'st' expected 'f' got '%c'",
-                             tags[2]);
-                return -1;
+        else if (has_tag_id(tag, "du")) {
+            if (typecode != 'f') {
+                return tag_wrong_typecode("du", 'f', typecode);
             }
             info->duration = ((float *)(tags + 3))[0];
         }
-        size_t this_tag_length = tag_length(tags, tags_length);
-        if (this_tag_length == -1) {
-            return -1;
+        else if (has_tag_id(tag, "pi")) {
+            if (typecode != "Z") {
+                return tag_wrong_typecode("pi", "Z", typecode);
+            }
+            const uint8_t *value = tag + 3;
+            // -3 for tag id, typecode. -1 for terminating 0.
+            size_t value_length = this_tag_length - 4;
+            if (value_length != 36) {
+                PyErr_Format(PyExc_RuntimeError,
+                             "pi tag should have a valid uuid4 format with 36 "
+                             "characters. "
+                             " Counted %zu.",
+                             value_length);
+                return -1;
+            }
+            memcpy(info->parent_uuid, value, 36);
         }
         tags = tags + this_tag_length;
         tags_length -= this_tag_length;
