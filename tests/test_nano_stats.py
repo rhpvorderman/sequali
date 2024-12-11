@@ -58,29 +58,32 @@ def test_nano_stats_from_tags():
     duration = 2.5
     timestamp_string = b"2021-09-30T11:34:08Z\x00"
     readgroup_string = b"SS_A1\x00"
+    parent_id = b"8D8AC610-566D-4EF0-9C22-186B2A5ED793\x00"
     tags = struct.pack(
         f"<"
         f"3sB"
         f"3sH"
         f"3s{len(timestamp_string)}s"
         f"3s{len(readgroup_string)}s"
-        f"3sf",
+        f"3sf"
+        f"3s{len(parent_id)}s",
         b"rnC", read_number,
         b"chS", channel_id,
         b"stZ", timestamp_string,
         b"RGZ", readgroup_string,
         b"duf", duration,
+        b"piZ", parent_id,
     )
     view = FastqRecordView("cb1dab45-aa4c-43fc-a91e-ad0ecc92f5c9",
                            "ACGT",
                            "AAAA",
                            tags)
-    print(tags)
     tm = datetime.datetime.fromisoformat("2021-09-30T11:34:08")
     tm = tm.replace(tzinfo=datetime.timezone.utc)
     timestamp = tm.timestamp()
     nanostats = NanoStats()
     nanostats.add_read(view)
+    parent_id_hash = int(parent_id[:8] + parent_id[-9:-1], 16)
     assert nanostats.minimum_time == timestamp
     assert nanostats.maximum_time == timestamp
     nano_info_list = list(nanostats.nano_info_iterator())
@@ -91,3 +94,4 @@ def test_nano_stats_from_tags():
     assert info.length == len(view.sequence())
     assert info.cumulative_error_rate == cumulative_error_rate
     assert info.duration == duration
+    assert info.parent_id_hash == parent_id_hash

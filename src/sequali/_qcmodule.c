@@ -4478,8 +4478,8 @@ struct NanoInfo {
     float duration;
     int32_t channel_id;
     uint32_t length;
-    uint64_t parent_id;
     double cumulative_error_rate;
+    uint64_t parent_id_hash;
 };
 
 typedef struct {
@@ -4513,6 +4513,12 @@ NanoporeReadInfo_get_duration(NanoporeReadInfo *self, void *closure)
     return PyFloat_FromDouble((double)self->info.duration);
 }
 
+static PyObject *
+NanoporeReadInfo_get_parent_id_hash(NanoporeReadInfo *self, void *closure)
+{
+    return PyLong_FromUnsignedLongLong(self->info.parent_id_hash);
+}
+
 static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL,
      "unix UTC timestamp for start time", NULL},
@@ -4522,6 +4528,8 @@ static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
      NULL, "sum off all the bases' error rates.", NULL},
     {"duration", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
+    {"parent_id_hash", (getter)NanoporeReadInfo_get_parent_id_hash, NULL, NULL,
+     NULL},
     {NULL},
 };
 
@@ -4722,7 +4730,7 @@ static Py_ssize_t
 get_tag_int_value(const uint8_t *tag)
 {
     uint8_t tag_type = tag[2];
-    uint8_t *value_start = tag + 3;
+    const uint8_t *value_start = tag + 3;
     switch (tag_type) {
         case 'c':
             return ((int8_t *)value_start)[0];
@@ -4749,7 +4757,7 @@ tag_length(const uint8_t *tag, size_t maximum_tag_length)
         return -1;
     }
     uint8_t tag_type = tag[2];
-    uint8_t *value_start = tag + 3;
+    const uint8_t *value_start = tag + 3;
     size_t value_length;
     bool is_array = false;
     uint32_t array_length = 1;
@@ -4759,7 +4767,7 @@ tag_length(const uint8_t *tag, size_t maximum_tag_length)
         tag_type = tag[3];
         if (maximum_tag_length < 8) {
             PyErr_SetString(PyExc_ValueError, "truncated tags");
-            return NULL;
+            return -1;
         }
         array_length = *(uint32_t *)(tag + 4);
     };
@@ -4784,7 +4792,7 @@ tag_length(const uint8_t *tag, size_t maximum_tag_length)
             if (is_array) {
                 PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
                              tag_type);
-                return NULL;
+                return -1;
             }
             uint8_t *string_end = memchr(value_start, 0, maximum_tag_length - 3);
             if (string_end == NULL) {
@@ -4810,8 +4818,40 @@ struct TagInfo {
     int32_t channel_id;
     float duration;
     time_t start_time;
-    char parent_uuid[36];
+    uint64_t parent_id_hash;
 };
+
+/**
+ * @brief "Hash" a uuid4 by using the first 8 digits and last 8 digits for
+ * 64 random bits. Return 0 on error.
+ */
+static uint64_t
+uuid4_hash(char *uuid)
+{
+    /* UUID4 takes the form of,
+        xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx
+        ^^^^^^^^                    ^^^^^^^^
+        These hexadecimal digits are used, 16 in total. M should be 4. N can
+        be 8,9,A,B,C,D. The rest of the digits are andom.
+     */
+    if (uuid[8] != '-' || uuid[13] != '-' ||
+        uuid[14] != '4' ||  // UUID version 4 check.
+        uuid[18] != '-' || uuid[23] != '-' || uuid[36] != 0) {
+        return 0;
+    }
+    char *end_ptr = uuid;
+    uint64_t first_bit = strtoull(uuid, &end_ptr, 16);
+    if (end_ptr - uuid != 8) {
+        // strtoull stops at first non-hexadecimal. This should be at position 8.
+        return 0;
+    }
+    uint64_t last_bit = strtoull(uuid + 28, &end_ptr, 16);
+    if (end_ptr - uuid != 36) {
+        // first non-hexadecimal should be at string end.
+        return 0;
+    }
+    return (first_bit << 32) | (last_bit & 0xFFFFFFFFULL);
+}
 
 /**
  * @brief Throw a Python RuntimeError for an unexpected typecode and return -1
@@ -4829,7 +4869,7 @@ tag_wrong_typecode(char *tag, char expected_typecode, char actual_typecode)
  * @brief correct memcmp shorthand for ease of writing.
  */
 static inline bool
-has_tag_id(uint8_t *tag, char *expected_tag)
+has_tag_id(const uint8_t *restrict tag, char *expected_tag)
 {
     return memcmp(tag, expected_tag, strlen(expected_tag)) == 0;
     ;
@@ -4841,10 +4881,9 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
     info->channel_id = -1;
     info->duration = 0.0;
     info->start_time = 0;
-    memset(info->parent_uuid, 0, sizeof(info->parent_uuid));
-
+    info->parent_id_hash = 0;
     while (tags_length > 0) {
-        size_t this_tag_length = tag_length(tags, tags_length);
+        Py_ssize_t this_tag_length = tag_length(tags, tags_length);
         if (this_tag_length == -1) {
             return -1;
         }
@@ -4871,8 +4910,8 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
             info->duration = ((float *)(tags + 3))[0];
         }
         else if (has_tag_id(tag, "pi")) {
-            if (typecode != "Z") {
-                return tag_wrong_typecode("pi", "Z", typecode);
+            if (typecode != 'Z') {
+                return tag_wrong_typecode("pi", 'Z', typecode);
             }
             const uint8_t *value = tag + 3;
             // -3 for tag id, typecode. -1 for terminating 0.
@@ -4885,7 +4924,7 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
                              value_length);
                 return -1;
             }
-            memcpy(info->parent_uuid, value, 36);
+            info->parent_id_hash = uuid4_hash((char *)value);
         }
         tags = tags + this_tag_length;
         tags_length -= this_tag_length;
@@ -4932,6 +4971,7 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
         info->channel_id = tag_info.channel_id;
         info->duration = tag_info.duration;
         info->start_time = tag_info.start_time;
+        info->parent_id_hash = tag_info.parent_id_hash;
     }
     else if (NanoInfo_from_header(meta->name, meta->name_length, info) != 0) {
         PyObject *header_obj = PyUnicode_DecodeASCII((const char *)meta->name,
