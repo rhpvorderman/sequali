@@ -1569,6 +1569,8 @@ class NanoStatsReport(ReportModule):
     per_channel_bases: Dict[int, int]
     per_channel_quality: Dict[int, float]
     translocation_speed: List[int]
+    reads_with_parent: Optional[int] = None
+    total_reads: Optional[int] = None
     skipped_reason: Optional[str] = None
 
     @staticmethod
@@ -1582,15 +1584,17 @@ class NanoStatsReport(ReportModule):
     def from_nanostats(cls, nanostats: NanoStats):
         if nanostats.skipped_reason:
             return cls(
-                [],
-                [],
-                [],
-                [],
-                [],
-                {},
-                {},
-                [],
-                nanostats.skipped_reason
+                x_labels=[],
+                time_bases=[],
+                time_reads=[],
+                time_active_channels=[],
+                qual_percentages_over_time=[],
+                per_channel_bases={},
+                per_channel_quality={},
+                translocation_speed=[],
+                reads_with_parent=None,
+                total_reads=None,
+                skipped_reason=nanostats.skipped_reason,
             )
         run_start_time = nanostats.minimum_time
         run_end_time = nanostats.maximum_time
@@ -1613,7 +1617,11 @@ class NanoStatsReport(ReportModule):
         per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
         per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
         translocation_speeds = [0] * 81
+        total_reads = nanostats.number_of_reads
+        reads_with_parent = 0
         for readinfo in nanostats.nano_info_iterator():
+            if readinfo.parent_id_hash:
+                reads_with_parent += 1
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
             length = readinfo.length
@@ -1662,7 +1670,9 @@ class NanoStatsReport(ReportModule):
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
             translocation_speed=translocation_speeds,
-            skipped_reason=nanostats.skipped_reason
+            skipped_reason=nanostats.skipped_reason,
+            total_reads=total_reads,
+            reads_with_parent=reads_with_parent if reads_with_parent > 0 else None,
         )
 
     def time_bases_plot(self):
@@ -1777,6 +1787,40 @@ class NanoStatsReport(ReportModule):
         {figurize_plot(plot)}
         """
 
+    def read_split_section(self):
+        section = io.StringIO()
+        section.write(html_header("Chimeric read splitting", 1))
+        section.write(
+            """
+            <p class="explanation">Dorado performs read splitting when it finds
+            adapter sequences in the middle of the signal. The read is split
+            and the original signal uuid is saved in the 'pi' tag.</p>
+            """
+        )
+        if self.reads_with_parent is None:
+            section.write("<p>No 'pi' tags were found.</p>")
+            return section.getvalue()
+
+        graph_options = dict(**COMMON_GRAPH_OPTIONS)
+        graph_options["height"] = 300
+        plot = pygal.HorizontalStackedBar(
+            title="Split reads",
+            x_tile="Number of reads",
+            legend_at_bottom=True,
+            style=MULTIPLE_SERIES_STYLE,
+            **graph_options,
+        )
+        plot.add("Reads originating from a split", [
+            {"value": self.reads_with_parent,
+             "label": "Reads originating from a split"}
+        ])
+        plot.add("Unsplit reads", [
+            {"value": self.total_reads - self.reads_with_parent,
+             "label": "Unsplit reads"}
+        ])
+        section.write(figurize_plot(plot))
+        return section.getvalue()
+
     def to_html(self) -> str:
         if self.skipped_reason:
             return f"""
@@ -1796,6 +1840,7 @@ class NanoStatsReport(ReportModule):
         {html_header("Per channel base yield versus quality", 2)}
         {figurize_plot(self.channel_plot())}
         {self.translocation_section()}
+        {self.read_split_section()}
         """
 
 
