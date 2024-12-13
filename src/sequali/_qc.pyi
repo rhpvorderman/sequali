@@ -156,6 +156,7 @@ class NanoporeReadInfo:
     length: int
     cumulative_error_rate: float
     duration: float
+    parent_id_hash: int
 
 class NanoStats:
     number_of_reads: int
