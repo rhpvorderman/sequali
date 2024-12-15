@@ -2153,49 +2153,6 @@ typedef struct AdapterSequenceStruct {
     bitmask_t found_mask;
 } AdapterSequence;
 
-/* Because we use NUCLEOTIDE_TO_INDEX we can save the bitmasks in the struct
-   itself. There are only 5 nucleotides (ACGTN) so this uses 40 bytes. With
-   init_mask and found_mask costing 8 bytes each the entire struct up to
-   number of sequences fits on one cache line of 64 bytes. Except for the
-   sequences pointer, but that is only used in case of a match. That makes
-   accessing the bitmasks very quick memorywise. */
-typedef struct MachineWordPatternMatcherStruct {
-    bitmask_t init_mask;
-    bitmask_t found_mask;
-    bitmask_t bitmasks[NUC_TABLE_SIZE];
-    size_t number_of_sequences;
-    AdapterSequence *sequences;
-} MachineWordPatternMatcher;
-
-static void
-MachineWordPatternMatcher_destroy(MachineWordPatternMatcher *matcher)
-{
-    PyMem_Free(matcher->sequences);
-    matcher->sequences = NULL;
-}
-
-#ifdef __SSE2__
-typedef struct AdapterSequenceSSE2Struct {
-    size_t adapter_index;
-    size_t adapter_length;
-    __m128i found_mask;
-} AdapterSequenceSSE2;
-
-typedef struct MachineWordPatternMatcherSSE2Struct {
-    __m128i init_mask;
-    __m128i found_mask;
-    __m128i bitmasks[NUC_TABLE_SIZE];
-    size_t number_of_sequences;
-    AdapterSequenceSSE2 *sequences;
-} MachineWordPatternMatcherSSE2;
-
-static void
-MachineWordPatternMatcherSSE2_destroy(MachineWordPatternMatcherSSE2 *matcher)
-{
-    PyMem_Free(matcher->sequences);
-}
-#endif
-
 typedef struct AdapterCounterStruct {
     PyObject_HEAD
     size_t number_of_adapters;
@@ -2204,11 +2161,10 @@ typedef struct AdapterCounterStruct {
     uint64_t **adapter_counter;
     PyObject *adapters;
     size_t number_of_matchers;
-    MachineWordPatternMatcher *matchers;
-    size_t number_of_sse2_matchers;
-#ifdef __SSE2__
-    MachineWordPatternMatcherSSE2 *sse2_matchers;
-#endif
+    bitmask_t *init_masks;
+    bitmask_t *found_masks;
+    bitmask_t (*bitmasks)[NUC_TABLE_SIZE];
+    AdapterSequence **adapter_sequences;
 } AdapterCounter;
 
 static void
@@ -2221,107 +2177,23 @@ AdapterCounter_dealloc(AdapterCounter *self)
         }
     }
     PyMem_Free(self->adapter_counter);
-    for (size_t i = 0; i < self->number_of_matchers; i++) {
-        MachineWordPatternMatcher_destroy(self->matchers + i);
+    if (self->adapter_sequences != NULL) {
+        for (size_t i = 0; i < self->number_of_matchers; i++) {
+            PyMem_Free(self->adapter_sequences[i]);
+        }
     }
-    PyMem_Free(self->matchers);
+    PyMem_Free(self->found_masks);
+    PyMem_Free(self->init_masks);
+    PyMem_Free(self->bitmasks);
+    PyMem_Free(self->adapter_sequences);
 
-#ifdef __SSE2__
-    for (size_t i = 0; i < self->number_of_sse2_matchers; i++) {
-        MachineWordPatternMatcherSSE2_destroy(self->sse2_matchers + i);
-    }
-    PyMem_Free(self->sse2_matchers);
-#endif
     PyTypeObject *tp = Py_TYPE((PyObject *)self);
     PyObject_Free(self);
     Py_XDECREF((PyObject *)tp);
 }
 
-#ifdef __SSE2__
-int
-AdapterCounter_SSE2_convert(AdapterCounter *self)
-{
-    self->number_of_sse2_matchers = self->number_of_matchers / 2;
-    if (self->number_of_sse2_matchers == 0) {
-        return 0;
-    }
-    MachineWordPatternMatcherSSE2 *tmp = PyMem_Malloc(
-        self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
-    if (tmp == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    self->sse2_matchers = tmp;
-    memset(self->sse2_matchers, 0,
-           self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
-    for (size_t i = 0; i < self->number_of_sse2_matchers; i++) {
-        MachineWordPatternMatcherSSE2 *sse2_matcher = self->sse2_matchers + i;
-        MachineWordPatternMatcher *normal_matcher1 = self->matchers + (i * 2);
-        MachineWordPatternMatcher *normal_matcher2 = self->matchers + (i * 2 + 1);
-        sse2_matcher->init_mask = _mm_set_epi64x(normal_matcher1->init_mask,
-                                                 normal_matcher2->init_mask);
-        sse2_matcher->found_mask = _mm_set_epi64x(normal_matcher1->found_mask,
-                                                  normal_matcher2->found_mask);
-        for (size_t j = 0; j < NUC_TABLE_SIZE; j++) {
-            sse2_matcher->bitmasks[j] = _mm_set_epi64x(
-                normal_matcher1->bitmasks[j], normal_matcher2->bitmasks[j]);
-        }
-        sse2_matcher->number_of_sequences = normal_matcher1->number_of_sequences +
-                                            normal_matcher2->number_of_sequences;
-        AdapterSequenceSSE2 *seq_tmp = PyMem_Malloc(
-            sse2_matcher->number_of_sequences * sizeof(AdapterSequenceSSE2));
-        if (seq_tmp == NULL) {
-            PyErr_NoMemory();
-            return -1;
-        }
-        sse2_matcher->sequences = seq_tmp;
-        for (size_t j = 0; j < normal_matcher1->number_of_sequences; j++) {
-            AdapterSequenceSSE2 *sse2_adapter = sse2_matcher->sequences + j;
-            AdapterSequence *normal_adapter = normal_matcher1->sequences + j;
-            sse2_adapter->adapter_index = normal_adapter->adapter_index;
-            sse2_adapter->adapter_length = normal_adapter->adapter_length;
-            sse2_adapter->found_mask =
-                _mm_set_epi64x(normal_adapter->found_mask, 0);
-        };
-        for (size_t j = 0; j < normal_matcher2->number_of_sequences; j++) {
-            size_t offset = normal_matcher1->number_of_sequences;
-            AdapterSequenceSSE2 *sse2_adapter =
-                sse2_matcher->sequences + j + offset;
-            AdapterSequence *normal_adapter = normal_matcher2->sequences + j;
-            sse2_adapter->adapter_index = normal_adapter->adapter_index;
-            sse2_adapter->adapter_length = normal_adapter->adapter_length;
-            sse2_adapter->found_mask =
-                _mm_set_epi64x(0, normal_adapter->found_mask);
-        };
-    }
-
-    for (size_t i = 0; i < (self->number_of_sse2_matchers * 2); i++) {
-        MachineWordPatternMatcher_destroy(self->matchers + i);
-    }
-    size_t number_of_remaining_matchers = self->number_of_matchers % 2;
-    if (number_of_remaining_matchers == 0) {
-        self->number_of_matchers = 0;
-        PyMem_FREE(self->matchers);
-        self->matchers = NULL;
-        return 0;
-    }
-    MachineWordPatternMatcher *matcher_tmp =
-        PyMem_Malloc(sizeof(MachineWordPatternMatcher));
-    if (matcher_tmp == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    memcpy(matcher_tmp, self->matchers + (self->number_of_sse2_matchers * 2),
-           sizeof(MachineWordPatternMatcher));
-    PyMem_FREE(self->matchers);
-    self->matchers = matcher_tmp;
-    self->number_of_matchers = 1;
-    return 0;
-}
-#endif
-
 static void
-populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length)
+populate_bitmask(bitmask_t bitmask[NUC_TABLE_SIZE], char *word, size_t word_length)
 {
     for (size_t i = 0; i < word_length; i++) {
         char c = word[i];
@@ -2352,6 +2224,8 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return NULL;
     }
     size_t number_of_adapters = PyTuple_Size(adapters);
+    size_t number_of_matchers = 1;
+    size_t matcher_length = 0;
     if (number_of_adapters < 1) {
         PyErr_SetString(PyExc_ValueError, "At least one adapter is expected");
         goto error;
@@ -2380,26 +2254,34 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                          MAX_SEQUENCE_SIZE, adapter_length, adapter);
             goto error;
         }
+        if (matcher_length + adapter_length > MAX_SEQUENCE_SIZE) {
+            matcher_length = adapter_length;
+            number_of_matchers += 1;
+        }
+        else {
+            matcher_length += adapter_length;
+        }
     }
     self = PyObject_New(AdapterCounter, type);
-    uint64_t **counter_tmp =
-        PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
-    if (counter_tmp == NULL) {
+    self->adapter_counter = PyMem_Calloc(number_of_adapters, sizeof(uint64_t *));
+    /* Ensure there is enough space to always do vector loads. */
+    size_t matcher_array_size = number_of_matchers + 3;
+    self->found_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
+    self->init_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
+    self->adapter_sequences =
+        PyMem_Calloc(matcher_array_size, sizeof(AdapterSequence *));
+    self->bitmasks =
+        PyMem_Calloc(matcher_array_size, NUC_TABLE_SIZE * sizeof(bitmask_t));
+    if (self->adapter_counter == NULL || self->found_masks == NULL ||
+        self->init_masks == NULL || self->adapter_sequences == NULL ||
+        self->bitmasks == NULL) {
         PyErr_NoMemory();
         goto error;
     }
-    memset(counter_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
-    self->adapter_counter = counter_tmp;
-    self->adapters = NULL;
-    self->matchers = NULL;
     self->max_length = 0;
     self->number_of_adapters = number_of_adapters;
-    self->number_of_matchers = 0;
+    self->number_of_matchers = number_of_matchers;
     self->number_of_sequences = 0;
-    self->number_of_sse2_matchers = 0;
-#ifdef __SSE2__
-    self->sse2_matchers = NULL;
-#endif
     size_t adapter_index = 0;
     size_t matcher_index = 0;
     PyObject *adapter;
@@ -2407,22 +2289,10 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     char machine_word[MACHINE_WORD_BITS];
     matcher_index = 0;
     while (adapter_index < number_of_adapters) {
-        self->number_of_matchers += 1;
-        MachineWordPatternMatcher *tmp =
-            PyMem_Realloc(self->matchers, sizeof(MachineWordPatternMatcher) *
-                                              self->number_of_matchers);
-        if (tmp == NULL) {
-            PyErr_NoMemory();
-            goto error;
-        }
-        self->matchers = tmp;
-        memset(self->matchers + matcher_index, 0,
-               sizeof(MachineWordPatternMatcher));
         bitmask_t found_mask = 0;
         bitmask_t init_mask = 0;
         size_t adapter_in_word_index = 0;
         size_t word_index = 0;
-        MachineWordPatternMatcher *matcher = self->matchers + matcher_index;
         memset(machine_word, 0, MACHINE_WORD_BITS);
         while (adapter_index < number_of_adapters) {
             adapter = PyTuple_GetItem(adapters, adapter_index);
@@ -2439,31 +2309,29 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                 .adapter_length = adapter_length,
                 .found_mask = 1ULL << (word_index - 1), /* Last character */
             };
-            AdapterSequence *adapt_tmp =
-                PyMem_Realloc(matcher->sequences, (adapter_in_word_index + 1) *
-                                                      sizeof(AdapterSequence));
+            AdapterSequence empty_adapter_sequence = {0, 0, 0};
+            AdapterSequence *adapt_tmp = PyMem_Realloc(
+                self->adapter_sequences[matcher_index],
+                (adapter_in_word_index + 2) * sizeof(AdapterSequence));
             if (adapt_tmp == NULL) {
                 PyErr_NoMemory();
                 goto error;
             }
-            matcher->sequences = adapt_tmp;
-            matcher->sequences[adapter_in_word_index] = adapter_sequence;
+            self->adapter_sequences[matcher_index] = adapt_tmp;
+            self->adapter_sequences[matcher_index][adapter_in_word_index] =
+                adapter_sequence;
+            self->adapter_sequences[matcher_index][adapter_in_word_index + 1] =
+                empty_adapter_sequence;
             found_mask |= adapter_sequence.found_mask;
             adapter_in_word_index += 1;
             adapter_index += 1;
         }
-        populate_bitmask(matcher->bitmasks, machine_word, word_index);
-        matcher->found_mask = found_mask;
-        matcher->init_mask = init_mask;
-        matcher->number_of_sequences = adapter_in_word_index;
+        populate_bitmask(self->bitmasks[matcher_index], machine_word, word_index);
+        self->found_masks[matcher_index] = found_mask;
+        self->init_masks[matcher_index] = init_mask;
         matcher_index += 1;
     }
     self->adapters = adapters;
-#ifdef __SSE2__
-    if (AdapterCounter_SSE2_convert(self) != 0) {
-        return NULL;
-    }
-#endif
     return (PyObject *)self;
 
 error:
@@ -2517,50 +2385,60 @@ bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2)
     __m128i res = _mm_adds_epu8(and, _mm_set1_epi8(127));
     return _mm_movemask_epi8(res);
 }
+#endif
 
-static inline __m128i
-update_adapter_count_array_sse2(size_t position, __m128i R, __m128i already_found,
-                                MachineWordPatternMatcherSSE2 *matcher,
-                                uint64_t **adapter_counter)
+static inline bitmask_t
+update_adapter_count_array(size_t position, bitmask_t match,
+                           bitmask_t already_found,
+                           AdapterSequence *adapter_sequences,
+                           uint64_t **adapter_counter)
 {
-    size_t number_of_adapters = matcher->number_of_sequences;
-    for (size_t i = 0; i < number_of_adapters; i++) {
-        AdapterSequenceSSE2 *adapter = matcher->sequences + i;
-        __m128i adapter_found_mask = adapter->found_mask;
-        if (bitwise_and_nonzero_si128(adapter_found_mask, already_found)) {
+    size_t adapter_index = 0;
+    while (true) {
+        AdapterSequence *adapter = adapter_sequences + adapter_index;
+        size_t adapter_length = adapter->adapter_length;
+        if (adapter_length == 0) {
+            break;
+        }
+        bitmask_t adapter_found_mask = adapter->found_mask;
+        if (adapter_found_mask & already_found) {
+            adapter_index += 1;
             continue;
         }
-        if (bitwise_and_nonzero_si128(R, adapter_found_mask)) {
-            size_t found_position = position - adapter->adapter_length + 1;
+        if (match & adapter_found_mask) {
+            size_t found_position = position - adapter_length + 1;
             adapter_counter[adapter->adapter_index][found_position] += 1;
-            // Make sure we only find the adapter once at the earliest position;
-            already_found = _mm_or_si128(already_found, adapter_found_mask);
+            already_found |= adapter_found_mask;
         }
+        adapter_index += 1;
     }
     return already_found;
 }
-#endif
 
-static inline uint64_t
-update_adapter_count_array(size_t position, uint64_t R, uint64_t already_found,
-                           MachineWordPatternMatcher *matcher,
-                           uint64_t **adapter_counter)
+static void
+find_single_matcher(const uint8_t *sequence, size_t sequence_length,
+                    const bitmask_t *restrict init_masks,
+                    const bitmask_t *restrict found_masks,
+                    const bitmask_t (*bitmasks)[NUC_TABLE_SIZE],
+                    AdapterSequence **adapter_sequences_store,
+                    uint64_t **adapter_counter)
 {
-    size_t number_of_adapters = matcher->number_of_sequences;
-    for (size_t k = 0; k < number_of_adapters; k++) {
-        AdapterSequence *adapter = matcher->sequences + k;
-        bitmask_t adapter_found_mask = adapter->found_mask;
-        if (adapter_found_mask & already_found) {
-            continue;
-        }
-        if (R & adapter_found_mask) {
-            size_t found_position = position - adapter->adapter_length + 1;
-            adapter_counter[adapter->adapter_index][found_position] += 1;
-            // Make sure we only find the adapter once at the earliest position;
-            already_found |= adapter_found_mask;
+    bitmask_t found_mask = found_masks[0];
+    bitmask_t init_mask = init_masks[0];
+    bitmask_t R = 0;
+    bitmask_t already_found = 0;
+    const bitmask_t *bitmask = bitmasks[0];
+    AdapterSequence *adapter_sequences = adapter_sequences_store[0];
+    for (size_t pos = 0; pos < sequence_length; pos++) {
+        R <<= 1;
+        R |= init_mask;
+        uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+        R &= bitmask[index];
+        if (R & found_mask) {
+            already_found = update_adapter_count_array(
+                pos, R, already_found, adapter_sequences, adapter_counter);
         }
     }
-    return already_found;
 }
 
 static int
@@ -2576,142 +2454,19 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
             return -1;
         }
     }
-    size_t scalar_matcher_index = 0;
-    size_t vector_matcher_index = 0;
-    size_t number_of_scalar_matchers = self->number_of_matchers;
-    size_t number_of_vector_matchers = self->number_of_sse2_matchers;
-    while (scalar_matcher_index < number_of_scalar_matchers ||
-           vector_matcher_index < number_of_vector_matchers) {
-        size_t remaining_scalar_matchers =
-            number_of_scalar_matchers - scalar_matcher_index;
-        size_t remaining_vector_matchers =
-            number_of_vector_matchers - vector_matcher_index;
-
-        if (remaining_vector_matchers == 0 && remaining_scalar_matchers > 0) {
-            MachineWordPatternMatcher *matcher =
-                self->matchers + scalar_matcher_index;
-            bitmask_t found_mask = matcher->found_mask;
-            bitmask_t init_mask = matcher->init_mask;
-            bitmask_t R = 0;
-            bitmask_t *bitmask = matcher->bitmasks;
-            bitmask_t already_found = 0;
-            scalar_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R <<= 1;
-                R |= init_mask;
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                R &= bitmask[index];
-                if (R & found_mask) {
-                    already_found = update_adapter_count_array(
-                        pos, R, already_found, matcher, self->adapter_counter);
-                }
-            }
-        }
-#ifdef __SSE2__
-        else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 0) {
-            MachineWordPatternMatcherSSE2 *matcher =
-                self->sse2_matchers + vector_matcher_index;
-            __m128i found_mask = matcher->found_mask;
-            __m128i init_mask = matcher->init_mask;
-            __m128i R = _mm_setzero_si128();
-            __m128i *bitmask = matcher->bitmasks;
-            __m128i already_found = _mm_setzero_si128();
-            vector_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R = _mm_slli_epi64(R, 1);
-                R = _mm_or_si128(R, init_mask);
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                __m128i mask = bitmask[index];
-                R = _mm_and_si128(R, mask);
-                if (bitwise_and_nonzero_si128(R, found_mask)) {
-                    already_found = update_adapter_count_array_sse2(
-                        pos, R, already_found, matcher, self->adapter_counter);
-                }
-            }
-            /* In the cases below we take advantage of out of order execution
-               on the CPU by checking two matchers at the same time. Either two
-               sse2 matchers, or a bitmask_t matcher and a vector matcher.
-               Shift-AND is a highly dependent chain of actions, meaning there
-               is no opportunity for the CPU to do two thing simultaneously. By
-               doing two shift-AND routines at the same time, there are two
-               independent paths that the CPU can evaluate using out of order
-               execution. This leads to significant speedups. */
-        }
-        else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 1) {
-            MachineWordPatternMatcherSSE2 *vector_matcher =
-                self->sse2_matchers + vector_matcher_index;
-            MachineWordPatternMatcher *scalar_matcher =
-                self->matchers + scalar_matcher_index;
-            __m128i vector_found_mask = vector_matcher->found_mask;
-            bitmask_t scalar_found_mask = scalar_matcher->found_mask;
-            __m128i vector_init_mask = vector_matcher->init_mask;
-            bitmask_t scalar_init_mask = scalar_matcher->init_mask;
-            __m128i vector_R = _mm_setzero_si128();
-            bitmask_t scalar_R = 0;
-            __m128i *vector_bitmasks = vector_matcher->bitmasks;
-            bitmask_t *scalar_bitmasks = scalar_matcher->bitmasks;
-            __m128i vector_already_found = _mm_setzero_si128();
-            bitmask_t scalar_already_found = 0;
-            vector_matcher_index += 1;
-            scalar_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                vector_R = _mm_slli_epi64(vector_R, 1);
-                scalar_R <<= 1;
-                vector_R = _mm_or_si128(vector_R, vector_init_mask);
-                scalar_R |= scalar_init_mask;
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                scalar_R &= scalar_bitmasks[index];
-                __m128i vector_mask = vector_bitmasks[index];
-                vector_R = _mm_and_si128(vector_R, vector_mask);
-                if (bitwise_and_nonzero_si128(vector_R, vector_found_mask)) {
-                    vector_already_found = update_adapter_count_array_sse2(
-                        pos, vector_R, vector_already_found, vector_matcher,
-                        self->adapter_counter);
-                }
-                if (scalar_R & scalar_found_mask) {
-                    scalar_already_found = update_adapter_count_array(
-                        pos, scalar_R, scalar_already_found, scalar_matcher,
-                        self->adapter_counter);
-                }
-            }
-        }
-        else if (remaining_vector_matchers > 1) {
-            MachineWordPatternMatcherSSE2 *matcher1 =
-                self->sse2_matchers + vector_matcher_index;
-            MachineWordPatternMatcherSSE2 *matcher2 =
-                self->sse2_matchers + vector_matcher_index + 1;
-            __m128i found_mask1 = matcher1->found_mask;
-            __m128i found_mask2 = matcher2->found_mask;
-            __m128i init_mask1 = matcher1->init_mask;
-            __m128i init_mask2 = matcher2->init_mask;
-            __m128i R1 = _mm_setzero_si128();
-            __m128i R2 = _mm_setzero_si128();
-            __m128i *bitmasks1 = matcher1->bitmasks;
-            __m128i *bitmasks2 = matcher2->bitmasks;
-            __m128i already_found1 = _mm_setzero_si128();
-            __m128i already_found2 = _mm_setzero_si128();
-            vector_matcher_index += 2;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R1 = _mm_slli_epi64(R1, 1);
-                R2 = _mm_slli_epi64(R2, 1);
-                R1 = _mm_or_si128(R1, init_mask1);
-                R2 = _mm_or_si128(R2, init_mask2);
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                __m128i mask1 = bitmasks1[index];
-                __m128i mask2 = bitmasks2[index];
-                R1 = _mm_and_si128(R1, mask1);
-                R2 = _mm_and_si128(R2, mask2);
-                if (bitwise_and_nonzero_si128(R1, found_mask1)) {
-                    already_found1 = update_adapter_count_array_sse2(
-                        pos, R1, already_found1, matcher1, self->adapter_counter);
-                }
-                if (bitwise_and_nonzero_si128(R2, found_mask2)) {
-                    already_found2 = update_adapter_count_array_sse2(
-                        pos, R2, already_found2, matcher2, self->adapter_counter);
-                }
-            }
-        }
-#endif
+    size_t number_of_matchers = self->number_of_matchers;
+    size_t matcher_index = 0;
+    bitmask_t *found_masks = self->found_masks;
+    bitmask_t *init_masks = self->init_masks;
+    bitmask_t(*bitmasks)[5] = self->bitmasks;
+    AdapterSequence **adapter_sequences = self->adapter_sequences;
+    uint64_t **adapter_count_array = self->adapter_counter;
+    while (matcher_index < number_of_matchers) {
+        find_single_matcher(
+            sequence, sequence_length, init_masks + matcher_index,
+            found_masks + matcher_index, bitmasks + matcher_index,
+            adapter_sequences + matcher_index, adapter_count_array);
+        matcher_index += 1;
     }
     return 0;
 }
