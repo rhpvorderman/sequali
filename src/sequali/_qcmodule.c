@@ -37,10 +37,6 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include <math.h>
 #include <stdbool.h>
 
-#ifdef __SSE2__
-#include "emmintrin.h"
-#endif
-
 /* Pointers to types that will be imported/initialized in the module
    initialization section */
 
@@ -2164,6 +2160,8 @@ typedef struct AdapterCounterStruct {
     bitmask_t *init_masks;
     bitmask_t *found_masks;
     bitmask_t (*bitmasks)[NUC_TABLE_SIZE];
+    /* Same as bitmasks, but better organization for vectorized approach. */
+    bitmask_t (*by_four_bitmasks)[NUC_TABLE_SIZE][4];
     AdapterSequence **adapter_sequences;
 } AdapterCounter;
 
@@ -2185,6 +2183,7 @@ AdapterCounter_dealloc(AdapterCounter *self)
     PyMem_Free(self->found_masks);
     PyMem_Free(self->init_masks);
     PyMem_Free(self->bitmasks);
+    PyMem_Free(self->by_four_bitmasks);
     PyMem_Free(self->adapter_sequences);
 
     PyTypeObject *tp = Py_TYPE((PyObject *)self);
@@ -2272,9 +2271,11 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         PyMem_Calloc(matcher_array_size, sizeof(AdapterSequence *));
     self->bitmasks =
         PyMem_Calloc(matcher_array_size, NUC_TABLE_SIZE * sizeof(bitmask_t));
+    self->by_four_bitmasks = PyMem_Calloc(
+        matcher_array_size / 4, NUC_TABLE_SIZE * 4 * sizeof(bitmask_t));
     if (self->adapter_counter == NULL || self->found_masks == NULL ||
         self->init_masks == NULL || self->adapter_sequences == NULL ||
-        self->bitmasks == NULL) {
+        self->bitmasks == NULL || self->by_four_bitmasks == NULL) {
         PyErr_NoMemory();
         goto error;
     }
@@ -2331,6 +2332,16 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         self->init_masks[matcher_index] = init_mask;
         matcher_index += 1;
     }
+    /* Initialize an array for better vectorized loading. Doing it here is
+       much more efficient than doing it for every string. */
+    for (size_t i = 0; i < self->number_of_matchers; i += 4) {
+        for (size_t j = 0; j < NUC_TABLE_SIZE; j++) {
+            self->by_four_bitmasks[i / 4][j][0] = self->bitmasks[i][j];
+            self->by_four_bitmasks[i / 4][j][1] = self->bitmasks[i + 1][j];
+            self->by_four_bitmasks[i / 4][j][2] = self->bitmasks[i + 2][j];
+            self->by_four_bitmasks[i / 4][j][3] = self->bitmasks[i + 3][j];
+        }
+    }
     self->adapters = adapters;
     return (PyObject *)self;
 
@@ -2361,31 +2372,6 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     self->max_length = new_size;
     return 0;
 }
-
-#ifdef __SSE2__
-static inline int
-bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2)
-{
-    /* There is no way to directly check if an entire vector is set to 0
-       so some trickery needs to be done to ascertain if one of the bits is
-       set.
-       _mm_movemask_epi8 only catches the most significant bit. So we need to
-       set that bit. Comparison for larger than 0 does not work since only
-       signed comparisons are available. So the most significant bit makes
-       integers smaller than 0. Instead we do a saturated add of 127.
-       _mm_adds_epu8 works on unsigned integers. So 0b10000000 (128) will
-       become 255. Also everything above 0 will trigger the last bit to be set.
-       0 itself results in 0b01111111 so the most significant bit will not be
-       set.
-       The sequence of instructions below is faster than
-       return (!_mm_test_all_zeros(vector1, vector2));
-       which is available in SSE4.1. So there is no value in moving up one
-       instruction set. */
-    __m128i and = _mm_and_si128(vector1, vector2);
-    __m128i res = _mm_adds_epu8(and, _mm_set1_epi8(127));
-    return _mm_movemask_epi8(res);
-}
-#endif
 
 static inline bitmask_t
 update_adapter_count_array(size_t position, bitmask_t match,
@@ -2441,6 +2427,90 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
     }
 }
 
+static void (*find_four_matchers)(const uint8_t *sequence, size_t sequence_length,
+                                  const bitmask_t *restrict init_masks,
+                                  const bitmask_t *restrict found_masks,
+                                  const bitmask_t (*by_four_bitmasks)[4],
+                                  AdapterSequence **adapter_sequences_store,
+                                  uint64_t **adapter_counter) = NULL;
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
+__attribute__((__target__("avx2"))) static void
+find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
+                        const bitmask_t *restrict init_masks,
+                        const bitmask_t *restrict found_masks,
+                        const bitmask_t (*by_four_bitmasks)[4],
+                        AdapterSequence **adapter_sequences_store,
+                        uint64_t **adapter_counter)
+{
+    bitmask_t fmask0 = found_masks[0];
+    bitmask_t fmask1 = found_masks[1];
+    bitmask_t fmask2 = found_masks[2];
+    bitmask_t fmask3 = found_masks[3];
+    bitmask_t already_found0 = 0;
+    bitmask_t already_found1 = 0;
+    bitmask_t already_found2 = 0;
+    bitmask_t already_found3 = 0;
+
+    __m256i found_mask = _mm256_loadu_si256((const __m256i *)(found_masks));
+    __m256i init_mask = _mm256_loadu_si256((const __m256i *)(init_masks));
+
+    __m256i R = _mm256_setzero_si256();
+    const bitmask_t(*bitmask)[4] = by_four_bitmasks;
+
+    for (size_t pos = 0; pos < sequence_length; pos++) {
+        R = _mm256_slli_epi64(R, 1);
+        R = _mm256_or_si256(R, init_mask);
+        uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+        R = _mm256_and_si256(R, _mm256_loadu_si256((__m256i *)bitmask[index]));
+
+        __m256i check = _mm256_and_si256(R, found_mask);
+        /* Adding 0b01111111 (127) to any number higher than 0 sets the bit for
+           128. Movemask collects these bits. This way we can test if there is
+           a 1 across the entire 256-bit vector. */
+        int check_int =
+            _mm256_movemask_epi8(_mm256_adds_epu8(check, _mm256_set1_epi8(127)));
+        if (check_int) {
+            bitmask_t Rray[4];
+            _mm256_storeu_si256(((__m256i *)Rray), R);
+
+            if (Rray[0] & fmask0) {
+                already_found0 = update_adapter_count_array(
+                    pos, Rray[0], already_found0, adapter_sequences_store[0],
+                    adapter_counter);
+            }
+            if (Rray[1] & fmask1) {
+                already_found1 = update_adapter_count_array(
+                    pos, Rray[1], already_found1, adapter_sequences_store[1],
+                    adapter_counter);
+            }
+            if (Rray[2] & fmask2) {
+                already_found2 = update_adapter_count_array(
+                    pos, Rray[2], already_found2, adapter_sequences_store[2],
+                    adapter_counter);
+            }
+            if (Rray[3] & fmask3) {
+                already_found3 = update_adapter_count_array(
+                    pos, Rray[3], already_found3, adapter_sequences_store[3],
+                    adapter_counter);
+            }
+        }
+    }
+}
+
+/* Constructor runs at dynamic load time */
+__attribute__((constructor)) static void
+find_four_matchers_init_func_ptr(void)
+{
+    if (__builtin_cpu_supports("avx2")) {
+        find_four_matchers = find_four_matchers_avx2;
+    }
+    else {
+        find_four_matchers = NULL;
+    }
+}
+#endif
+
 static int
 AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
 {
@@ -2462,6 +2532,16 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
     AdapterSequence **adapter_sequences = self->adapter_sequences;
     uint64_t **adapter_count_array = self->adapter_counter;
     while (matcher_index < number_of_matchers) {
+        /* Only run when a vectorized function pointer is initialized */
+        if (find_four_matchers && number_of_matchers - matcher_index > 1) {
+            find_four_matchers(
+                sequence, sequence_length, init_masks + matcher_index,
+                found_masks + matcher_index,
+                self->by_four_bitmasks[matcher_index / 4],
+                adapter_sequences + matcher_index, adapter_count_array);
+            matcher_index += 4;
+            continue;
+        }
         find_single_matcher(
             sequence, sequence_length, init_masks + matcher_index,
             found_masks + matcher_index, bitmasks + matcher_index,
