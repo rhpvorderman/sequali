@@ -24,6 +24,10 @@ version 0.13.0-dev
   false positives from common human genome repeats. The amount of base pairs
   that are sampled from the beginning and end is user settable with an option
   to sample everything.
++ The code for the adapter counting was refactored and the vectorized algorithm
+  was replaced by an AVX2 version that is used when the CPU supports that
+  instruction set. This is both faster and far less code than the original
+  implementation.
 + Extended the README with a few usage examples.
 
 version 0.12.0
