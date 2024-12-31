@@ -2246,12 +2246,17 @@ typedef struct AdapterSequenceStruct {
     bitmask_t found_mask;
 } AdapterSequence;
 
+struct AdapterCounts {
+    uint64_t *forward;
+    uint64_t *reverse;
+};
+
 typedef struct AdapterCounterStruct {
     PyObject_HEAD
     size_t number_of_adapters;
     size_t max_length;
     size_t number_of_sequences;
-    uint64_t **adapter_counter;
+    struct AdapterCounts *adapter_counter;
     PyObject *adapters;
     size_t number_of_matchers;
     bitmask_t *init_masks;
@@ -2268,7 +2273,9 @@ AdapterCounter_dealloc(AdapterCounter *self)
     Py_XDECREF(self->adapters);
     if (self->adapter_counter != NULL) {
         for (size_t i = 0; i < self->number_of_adapters; i++) {
-            PyMem_Free(self->adapter_counter[i]);
+            struct AdapterCounts counts = self->adapter_counter[i];
+            PyMem_Free(counts.forward);
+            PyMem_Free(counts.reverse);
         }
     }
     PyMem_Free(self->adapter_counter);
@@ -2359,7 +2366,8 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    self->adapter_counter = PyMem_Calloc(number_of_adapters, sizeof(uint64_t *));
+    self->adapter_counter =
+        PyMem_Calloc(number_of_adapters, sizeof(struct AdapterCounts));
     /* Ensure there is enough space to always do vector loads. */
     size_t matcher_array_size = number_of_matchers + 3;
     self->found_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
@@ -2456,25 +2464,35 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     }
     size_t old_size = self->max_length;
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        uint64_t *tmp =
-            PyMem_Realloc(self->adapter_counter[i], new_size * sizeof(uint64_t));
-        if (tmp == NULL) {
+        struct AdapterCounts counts = self->adapter_counter[i];
+        uint64_t *tmp_forward =
+            PyMem_Realloc(counts.forward, new_size * sizeof(uint64_t));
+        if (tmp_forward == NULL) {
             PyErr_NoMemory();
             return -1;
         }
-        self->adapter_counter[i] = tmp;
-        memset(self->adapter_counter[i] + old_size, 0,
+        memset(tmp_forward + old_size, 0,
                (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].forward = tmp_forward;
+        uint64_t *tmp_reverse =
+            PyMem_Realloc(counts.reverse, new_size * sizeof(uint64_t));
+        if (tmp_reverse == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp_reverse + old_size, 0,
+               (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].reverse = tmp_reverse;
     }
     self->max_length = new_size;
     return 0;
 }
 
 static inline bitmask_t
-update_adapter_count_array(size_t position, bitmask_t match,
+update_adapter_count_array(size_t position, size_t length, bitmask_t match,
                            bitmask_t already_found,
                            AdapterSequence *adapter_sequences,
-                           uint64_t **adapter_counter)
+                           struct AdapterCounts *adapter_counter)
 {
     size_t adapter_index = 0;
     while (true) {
@@ -2490,7 +2508,10 @@ update_adapter_count_array(size_t position, bitmask_t match,
         }
         if (match & adapter_found_mask) {
             size_t found_position = position - adapter_length + 1;
-            adapter_counter[adapter->adapter_index][found_position] += 1;
+            struct AdapterCounts *counts =
+                adapter_counter + adapter->adapter_index;
+            counts->forward[found_position] += 1;
+            counts->reverse[(length - 1) - found_position] += 1;
             already_found |= adapter_found_mask;
         }
         adapter_index += 1;
@@ -2504,7 +2525,7 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
                     const bitmask_t *restrict found_masks,
                     const bitmask_t (*bitmasks)[NUC_TABLE_SIZE],
                     AdapterSequence **adapter_sequences_store,
-                    uint64_t **adapter_counter)
+                    struct AdapterCounts *adapter_counter)
 {
     bitmask_t found_mask = found_masks[0];
     bitmask_t init_mask = init_masks[0];
@@ -2519,7 +2540,8 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
         R &= bitmask[index];
         if (R & found_mask) {
             already_found = update_adapter_count_array(
-                pos, R, already_found, adapter_sequences, adapter_counter);
+                pos, sequence_length, R, already_found, adapter_sequences,
+                adapter_counter);
         }
     }
 }
@@ -2529,7 +2551,7 @@ static void (*find_four_matchers)(const uint8_t *sequence, size_t sequence_lengt
                                   const bitmask_t *restrict found_masks,
                                   const bitmask_t (*by_four_bitmasks)[4],
                                   AdapterSequence **adapter_sequences_store,
-                                  uint64_t **adapter_counter) = NULL;
+                                  struct AdapterCounts *adapter_counter) = NULL;
 
 #if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 __attribute__((__target__("avx2"))) static void
@@ -2538,7 +2560,7 @@ find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
                         const bitmask_t *restrict found_masks,
                         const bitmask_t (*by_four_bitmasks)[4],
                         AdapterSequence **adapter_sequences_store,
-                        uint64_t **adapter_counter)
+                        struct AdapterCounts *adapter_counter)
 {
     bitmask_t fmask0 = found_masks[0];
     bitmask_t fmask1 = found_masks[1];
@@ -2573,23 +2595,23 @@ find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
 
             if (Rray[0] & fmask0) {
                 already_found0 = update_adapter_count_array(
-                    pos, Rray[0], already_found0, adapter_sequences_store[0],
-                    adapter_counter);
+                    pos, sequence_length, Rray[0], already_found0,
+                    adapter_sequences_store[0], adapter_counter);
             }
             if (Rray[1] & fmask1) {
                 already_found1 = update_adapter_count_array(
-                    pos, Rray[1], already_found1, adapter_sequences_store[1],
-                    adapter_counter);
+                    pos, sequence_length, Rray[1], already_found1,
+                    adapter_sequences_store[1], adapter_counter);
             }
             if (Rray[2] & fmask2) {
                 already_found2 = update_adapter_count_array(
-                    pos, Rray[2], already_found2, adapter_sequences_store[2],
-                    adapter_counter);
+                    pos, sequence_length, Rray[2], already_found2,
+                    adapter_sequences_store[2], adapter_counter);
             }
             if (Rray[3] & fmask3) {
                 already_found3 = update_adapter_count_array(
-                    pos, Rray[3], already_found3, adapter_sequences_store[3],
-                    adapter_counter);
+                    pos, sequence_length, Rray[3], already_found3,
+                    adapter_sequences_store[3], adapter_counter);
             }
         }
     }
@@ -2627,7 +2649,7 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
     bitmask_t *init_masks = self->init_masks;
     bitmask_t(*bitmasks)[5] = self->bitmasks;
     AdapterSequence **adapter_sequences = self->adapter_sequences;
-    uint64_t **adapter_count_array = self->adapter_counter;
+    struct AdapterCounts *adapter_count_array = self->adapter_counter;
     while (matcher_index < number_of_matchers) {
         /* Only run when a vectorized function pointer is initialized */
         if (find_four_matchers && number_of_matchers - matcher_index > 1) {
@@ -2735,17 +2757,24 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         return NULL;
     }
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        PyObject *tup = PyTuple_New(2);
-        PyObject *counts = PythonArray_FromBuffer(
-            'Q', self->adapter_counter[i], self->max_length * sizeof(uint64_t),
-            PythonArray_Type);
-        if (counts == NULL) {
+        PyObject *counts_forward = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].forward,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_forward == NULL) {
+            return NULL;
+        }
+        PyObject *counts_reverse = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].reverse,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_reverse == NULL) {
             return NULL;
         }
         PyObject *adapter = PyTuple_GetItem(self->adapters, i);
         Py_INCREF(adapter);
+        PyObject *tup = PyTuple_New(3);
         PyTuple_SetItem(tup, 0, adapter);
-        PyTuple_SetItem(tup, 1, counts);
+        PyTuple_SetItem(tup, 1, counts_forward);
+        PyTuple_SetItem(tup, 2, counts_reverse);
         PyList_SetItem(counts_list, i, tup);
     }
     return counts_list;

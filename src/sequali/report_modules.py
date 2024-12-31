@@ -1105,9 +1105,10 @@ class AdapterContent(ReportModule):
         sequence_to_adapter = {adapter.sequence: adapter for adapter in adapters}
         adapter_names = [adapter.name for adapter in adapters]
         total_sequences = adapter_counter.number_of_sequences
-        for adapter_sequence, countarray in adapter_counter.get_counts():
+        for adapter_sequence, forward_counts, reverse_counts \
+                in adapter_counter.get_counts():
             adapter = sequence_to_adapter[adapter_sequence]
-            adapter_counts = [sum(countarray[start:stop])
+            adapter_counts = [sum(forward_counts[start:stop])
                               for start, stop in data_ranges]
             if adapter.sequence_position == "end":
                 accumulated_counts = accumulate_counts(adapter_counts)
