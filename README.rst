@@ -196,6 +196,15 @@ Acknowledgements
 
 .. acknowledgements end
 
+Citation
+========
+.. citation start
+
+If you wish to credit Sequali please cite `the Sequali article
+<https://doi.org/10.1093/bioadv/vbaf010>`_.
+
+.. citation end
+
 License
 =======
 
