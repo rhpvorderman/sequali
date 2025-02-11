@@ -22,8 +22,8 @@
   :target: https://codecov.io/gh/rhpvorderman/sequali
   :alt:
 
-.. |zenodo-shield| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
-  :target: https://doi.org/10.5281/zenodo.10854010
+.. |zenodo-shield| image:: ./docs/_static/images/doi_image.svg
+  :target: https://doi.org/10.1093/bioadv/vbaf010
   :alt:
 
 |python-version-shield| |conda-version-shield| |python-install-version-shield|
