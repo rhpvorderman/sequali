@@ -28,7 +28,7 @@ G: int
 T: int 
 N: int 
 MAX_SEQUENCE_SIZE: int
-DEFAULT_END_ANCHOR_POINT: int
+DEFAULT_END_ANCHOR_LENGTH: int
 DEFAULT_MAX_UNIQUE_FRAGMENTS: int
 DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS: int
 DEFAULT_FRAGMENT_LENGTH: int
@@ -73,8 +73,8 @@ class BamParser:
 class QCMetrics:
     number_of_reads: int
     max_length: int
-    end_anchor_point: int
-    def __init__(self, end_anchor_point: int = DEFAULT_END_ANCHOR_POINT): ...
+    end_anchor_length: int
+    def __init__(self, end_anchor_length: int = DEFAULT_END_ANCHOR_LENGTH): ...
     def add_read(self, __read: FastqRecordView) -> None: ...
     def add_record_array(self, __record_array: FastqRecordArrayView) -> None: ...
     def base_count_table(self) -> array.ArrayType: ...

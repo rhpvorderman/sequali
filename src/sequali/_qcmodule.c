@@ -1768,6 +1768,8 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
+#define DEFAULT_END_ANCHOR_LENGTH 100
+
 typedef uint16_t staging_base_table[NUC_TABLE_SIZE];
 typedef uint16_t staging_phred_table[PHRED_TABLE_SIZE];
 typedef uint64_t base_table[NUC_TABLE_SIZE];
@@ -1786,11 +1788,16 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     uint16_t staging_count;
+    size_t end_anchor_length;
     size_t max_length;
     staging_base_table *staging_base_counts;
     staging_phred_table *staging_phred_counts;
+    staging_base_table *staging_end_anchored_base_counts;
+    staging_phred_table *staging_end_anchored_phred_counts;
     base_table *base_counts;
     phred_table *phred_counts;
+    base_table *end_anchored_base_counts;
+    phred_table *end_anchored_phred_counts;
     size_t number_of_reads;
     uint64_t gc_content[101];
     uint64_t phred_scores[PHRED_MAX + 1];
@@ -1801,8 +1808,12 @@ QCMetrics_dealloc(QCMetrics *self)
 {
     PyMem_Free(self->staging_base_counts);
     PyMem_Free(self->staging_phred_counts);
+    PyMem_Free(self->staging_end_anchored_base_counts);
+    PyMem_Free(self->staging_end_anchored_phred_counts);
     PyMem_Free(self->base_counts);
     PyMem_Free(self->phred_counts);
+    PyMem_Free(self->end_anchored_base_counts);
+    PyMem_Free(self->end_anchored_phred_counts);
     PyTypeObject *tp = Py_TYPE((PyObject *)self);
     PyObject_Free(self);
     Py_DECREF(tp);
@@ -1811,19 +1822,46 @@ QCMetrics_dealloc(QCMetrics *self)
 static PyObject *
 QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    static char *kwargnames[] = {NULL};
-    static char *format = ":QCMetrics";
+    Py_ssize_t end_anchor_length = DEFAULT_END_ANCHOR_LENGTH;
+    static char *kwargnames[] = {"end_anchor_length", NULL};
+    static char *format = "|n:QCMetrics";
     uint8_t phred_offset = 33;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+                                     &end_anchor_length)) {
         return NULL;
     }
+    if (end_anchor_length < 0 || end_anchor_length > UINT32_MAX) {
+        PyErr_Format(PyExc_ValueError,
+                     "end_anchor_length must be between 0 and %zd, got %zd",
+                     (Py_ssize_t)UINT32_MAX, end_anchor_length);
+        return NULL;
+    }
+    staging_base_table *staging_end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_base_table));
+    staging_phred_table *staging_end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_phred_table));
+    base_table *end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(base_table));
+    phred_table *end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(phred_table));
     QCMetrics *self = PyObject_New(QCMetrics, type);
-    self->max_length = 0;
+    if (self == NULL || staging_end_anchored_base_counts == NULL ||
+        staging_end_anchored_phred_counts == NULL ||
+        end_anchored_base_counts == NULL || end_anchored_phred_counts == NULL) {
+        return PyErr_NoMemory();
+    }
     self->phred_offset = phred_offset;
+    self->staging_count = 0;
+    self->end_anchor_length = end_anchor_length;
+    self->max_length = 0;
     self->staging_base_counts = NULL;
     self->staging_phred_counts = NULL;
+    self->staging_end_anchored_base_counts = staging_end_anchored_base_counts;
+    self->staging_end_anchored_phred_counts = staging_end_anchored_phred_counts;
     self->base_counts = NULL;
     self->phred_counts = NULL;
+    self->end_anchored_base_counts = end_anchored_base_counts;
+    self->end_anchored_phred_counts = end_anchored_phred_counts;
     self->number_of_reads = 0;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
@@ -1899,6 +1937,29 @@ QCMetrics_flush_staging(QCMetrics *self)
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
+    size_t end_anchor_length = self->end_anchor_length;
+
+    size_t end_anchor_base_slots = end_anchor_length * NUC_TABLE_SIZE;
+    uint64_t *end_anchored_base_counts =
+        (uint64_t *)self->end_anchored_base_counts;
+    uint16_t *staging_end_anchored_base_counts =
+        (uint16_t *)self->staging_end_anchored_base_counts;
+    for (size_t i = 0; i < end_anchor_base_slots; i++) {
+        end_anchored_base_counts[i] += staging_end_anchored_base_counts[i];
+    }
+    memset(staging_end_anchored_base_counts, 0,
+           end_anchor_base_slots * sizeof(uint16_t));
+
+    size_t end_anchor_phred_slots = end_anchor_length * PHRED_TABLE_SIZE;
+    uint64_t *end_anchored_phred_counts =
+        (uint64_t *)self->end_anchored_phred_counts;
+    uint16_t *staging_end_anchored_phred_counts =
+        (uint16_t *)self->staging_end_anchored_phred_counts;
+    for (size_t i = 0; i < end_anchor_phred_slots; i++) {
+        end_anchored_phred_counts[i] += staging_end_anchored_phred_counts[i];
+    }
+    memset(staging_end_anchored_phred_counts, 0,
+           end_anchor_phred_slots * sizeof(uint16_t));
     self->staging_count = 0;
 }
 
@@ -1907,6 +1968,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
     const uint8_t *record_start = meta->record_start;
     size_t sequence_length = meta->sequence_length;
+    size_t full_end_anchor_length = self->end_anchor_length;
+    size_t end_anchor_length = Py_MIN(full_end_anchor_length, sequence_length);
+    size_t end_anchor_store_offset = full_end_anchor_length - end_anchor_length;
+
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
 
@@ -1965,6 +2030,19 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         sequence_ptr += 1;
         staging_base_counts_ptr += 1;
     }
+
+    // End-anchored run while sequence still hot in cache
+    staging_base_table *staging_end_anchored_bases =
+        self->staging_end_anchored_base_counts + end_anchor_store_offset;
+    sequence_ptr -= end_anchor_length;
+    while (sequence_ptr < end_ptr) {
+        size_t c = *sequence_ptr;
+        size_t c_index = NUCLEOTIDE_TO_INDEX[c];
+        staging_end_anchored_bases[0][c_index] += 1;
+        staging_end_anchored_bases += 1;
+        sequence_ptr += 1;
+    }
+
     uint64_t base_counts =
         base_counts0 + base_counts1 + base_counts2 + base_counts3;
     uint64_t at_counts = base_counts & 0xFFFFFFFF;
@@ -2028,6 +2106,18 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         staging_phred_counts_ptr[0][q_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         staging_phred_counts_ptr += 1;
+        qualities_ptr += 1;
+    }
+
+    // End-anchored run while qualities still hot in cache
+    staging_phred_table *staging_end_anchored_phreds =
+        self->staging_end_anchored_phred_counts + end_anchor_store_offset;
+    qualities_ptr -= end_anchor_length;
+    while (qualities_ptr < qualities_end_ptr) {
+        size_t q = *qualities_ptr - phred_offset;
+        size_t q_index = phred_to_index(q);
+        staging_end_anchored_phreds[0][q_index] += 1;
+        staging_end_anchored_phreds += 1;
         qualities_ptr += 1;
     }
 
@@ -2150,6 +2240,52 @@ QCMetrics_phred_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
                                   state->PythonArray_Type);
 }
 
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_base_count_table__doc__,
+    "end_anchored_base_count_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored base count table. \n");
+
+#define QCMetrics_end_anchored_base_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_base_count_table(QCMetrics *self,
+                                        PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_base_counts,
+                                  self->end_anchor_length * sizeof(base_table),
+                                  state->PythonArray_Type);
+}
+
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_phred_count_table__doc__,
+    "end_anchored_phred_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored phred count table. \n");
+
+#define QCMetrics_end_anchored_phred_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_phred_count_table(QCMetrics *self,
+                                         PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_phred_counts,
+                                  self->end_anchor_length * sizeof(phred_table),
+                                  state->PythonArray_Type);
+}
+
 PyDoc_STRVAR(QCMetrics_gc_content__doc__,
              "gc_content($self, /)\n"
              "--\n"
@@ -2201,6 +2337,15 @@ static PyMethodDef QCMetrics_methods[] = {
      QCMetrics_base_count_table_method, QCMetrics_base_count_table__doc__},
     {"phred_count_table", (PyCFunction)QCMetrics_phred_count_table,
      QCMetrics_phred_count_table_method, QCMetrics_phred_count_table__doc__},
+    {"end_anchored_base_count_table",
+     (PyCFunction)QCMetrics_end_anchored_base_count_table,
+     QCMetrics_end_anchored_base_count_table_method,
+     QCMetrics_end_anchored_base_count_table__doc__},
+    {"end_anchored_phred_count_table",
+     (PyCFunction)QCMetrics_end_anchored_phred_count_table,
+     QCMetrics_end_anchored_phred_count_table_method,
+     QCMetrics_end_anchored_phred_count_table__doc__},
+
     {"gc_content", (PyCFunction)QCMetrics_gc_content,
      QCMetrics_gc_content_method, QCMetrics_gc_content__doc__},
     {"phred_scores", (PyCFunction)QCMetrics_phred_scores,
@@ -2213,6 +2358,8 @@ static PyMemberDef QCMetrics_members[] = {
      "The length of the longest read"},
     {"number_of_reads", T_ULONGLONG, offsetof(QCMetrics, number_of_reads),
      READONLY, "The total amount of reads counted"},
+    {"end_anchor_length", T_ULONGLONG, offsetof(QCMetrics, end_anchor_length),
+     READONLY, "The length of the end of the read that is sampled."},
     {NULL},
 };
 
@@ -6016,6 +6163,11 @@ _qc_exec(PyObject *module)
         return -1;
     }
     ret = PyModule_AddIntMacro(module, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+
+    ret = PyModule_AddIntMacro(module, DEFAULT_END_ANCHOR_LENGTH);
     if (ret < 0) {
         return -1;
     }
