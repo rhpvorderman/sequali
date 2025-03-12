@@ -56,11 +56,11 @@ def test_qc_metrics():
         assert phred_array[(30 // 4) + NUMBER_OF_PHREDS * i] == 1
     base_array = metrics.base_count_table()
     assert len(base_array) == len(sequence) * NUMBER_OF_NUCS
-    assert sum(phred_array[A: len(phred_array): NUMBER_OF_NUCS]) == 10
-    assert sum(phred_array[C: len(phred_array): NUMBER_OF_NUCS]) == 10
-    assert sum(phred_array[G: len(phred_array): NUMBER_OF_NUCS]) == 10
-    assert sum(phred_array[T: len(phred_array): NUMBER_OF_NUCS]) == 10
-    assert sum(phred_array[N: len(phred_array): NUMBER_OF_NUCS]) == 10
+    assert sum(base_array[A: len(base_array): NUMBER_OF_NUCS]) == 10
+    assert sum(base_array[C: len(base_array): NUMBER_OF_NUCS]) == 10
+    assert sum(base_array[G: len(base_array): NUMBER_OF_NUCS]) == 10
+    assert sum(base_array[T: len(base_array): NUMBER_OF_NUCS]) == 10
+    assert sum(base_array[N: len(base_array): NUMBER_OF_NUCS]) == 10
     assert sum(phred_array) == len(sequence)
     for i in range(10):
         assert base_array[A + NUMBER_OF_NUCS * i] == 1
