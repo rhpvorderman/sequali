@@ -29,6 +29,16 @@ def view_from_sequence(sequence: str) -> FastqRecordView:
     )
 
 
+def base_to_index(base: str) -> int:
+    assert len(base) == 1
+    return {
+        "A": A,
+        "C": C,
+        "G": G,
+        "T": T,
+    }.get(base.upper(), N)
+
+
 def test_qc_metrics():
     sequence = "A" * 10 + "C" * 10 + "G" * 10 + "T" * 10 + "N" * 10
     qualities = chr(10 + 33) * 25 + chr(30 + 33) * 25
@@ -36,7 +46,7 @@ def test_qc_metrics():
     metrics.add_read(FastqRecordView("name", sequence, qualities))
     assert metrics.max_length == len(sequence)
     assert metrics.number_of_reads == 1
-    gc_content = metrics.gc_content()
+    gc_content = metrics.gc_content(end_anchor_point=15)
     assert sum(gc_content) == 1
     assert gc_content[50] == 1
     phred_content = metrics.phred_scores()
@@ -72,6 +82,20 @@ def test_qc_metrics():
         assert base_array[T + NUMBER_OF_NUCS * i] == 1
     for i in range(40, 50):
         assert base_array[N + NUMBER_OF_NUCS * i] == 1
+    end_anchored_bases = metrics.end_anchored_base_count_table()
+    end_anchored_phreds = metrics.end_anchored_phred_count_table()
+    end_anchor_point = metrics.end_anchor_point
+    assert len(end_anchored_bases) == end_anchor_point
+    end_sequence = sequence[len(sequence)-end_anchor_point:]
+    end_phreds = qualities[len(sequence)-end_anchor_point:]
+    for i, base in enumerate(end_sequence):
+        base_index = base_to_index(base)
+        count_index = i * NUMBER_OF_NUCS + base_index
+        assert end_anchored_bases[count_index] == 1
+    for i, phred in enumerate(end_phreds):
+        phred_value = ord(phred) - 33
+        phred_index = phred_value // 4
+        assert end_anchored_phreds[i * NUMBER_OF_PHREDS + phred_index] == 1
 
 
 def test_long_sequence():
