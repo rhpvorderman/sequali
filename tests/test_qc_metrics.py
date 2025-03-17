@@ -22,6 +22,8 @@ from sequali import A, C, G, N, T
 from sequali import FastqRecordView, QCMetrics
 from sequali import NUMBER_OF_NUCS, NUMBER_OF_PHREDS
 
+from .test_fastq_parser import DATA, simple_fastq_parser
+
 
 def view_from_sequence(sequence: str) -> FastqRecordView:
     return FastqRecordView(
@@ -73,6 +75,16 @@ def base_to_index(base: str) -> int:
                 chr(1 + 33) * 25 + chr(5 + 33) * 25,
                 100
         ),
+        *[
+            (x.sequence, x.qualities, 100)
+            for x in simple_fastq_parser(str(DATA / "simple.fastq"))
+        ],
+        *[
+            pytest.param(x.sequence, x.qualities, 100, id=f"nanopore_{i}")
+            for i, x in enumerate(
+                simple_fastq_parser(str(DATA / "100_nanopore_reads.fastq.gz"))
+            )
+        ]
     ],
 )
 def test_qc_metrics(sequence, qualities, end_anchor_length):
@@ -97,7 +109,9 @@ def test_qc_metrics(sequence, qualities, end_anchor_length):
     assert len(phred_array) == len(sequence) * NUMBER_OF_PHREDS
     assert sum(phred_array) == len(sequence)
     for i, char in enumerate(qualities):
-        assert phred_array[((ord(char) - 33) // 4) + NUMBER_OF_PHREDS * i] == 1
+        phred = ord(char) - 33
+        phred_index = min(phred // 4, 11)
+        assert phred_array[phred_index + NUMBER_OF_PHREDS * i] == 1
     base_array = metrics.base_count_table()
     assert len(base_array) == len(sequence) * NUMBER_OF_NUCS
     assert sum(base_array[A: len(base_array): NUMBER_OF_NUCS]) == sequence.count('A')
@@ -112,8 +126,8 @@ def test_qc_metrics(sequence, qualities, end_anchor_length):
     end_anchored_phreds = metrics.end_anchored_phred_count_table()
     end_anchor_length = metrics.end_anchor_length
     assert len(end_anchored_bases) == end_anchor_length * NUMBER_OF_NUCS
-    end_sequence = sequence[len(sequence)-end_anchor_length:]
-    end_phreds = qualities[len(sequence)-end_anchor_length:]
+    end_sequence = sequence[max(len(sequence)-end_anchor_length, 0):]
+    end_phreds = qualities[max(len(sequence)-end_anchor_length, 0):]
     end_offset = max(end_anchor_length - len(sequence), 0)
     for i, base in enumerate(end_sequence):
         assert end_anchored_bases[
@@ -121,7 +135,7 @@ def test_qc_metrics(sequence, qualities, end_anchor_length):
                ] == 1
     for i, phred in enumerate(end_phreds):
         phred_value = ord(phred) - 33
-        phred_index = phred_value // 4
+        phred_index = min(phred_value // 4, 11)
         assert end_anchored_phreds[
                    (end_offset + i) * NUMBER_OF_PHREDS + phred_index] == 1
 
