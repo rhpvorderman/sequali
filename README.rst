@@ -193,6 +193,7 @@ Acknowledgements
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
 + Marcel Martin for providing very extensive feedback.
++ Agnès Barnabé for creating a Galaxy wrapper.
 
 .. acknowledgements end
 
