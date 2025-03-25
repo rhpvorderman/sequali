@@ -737,8 +737,8 @@ class PerBaseQualityScoreDistribution(ReportModule):
 
     @staticmethod
     def quality_distribution_table(
-            phred_tables: array.ArrayType,
-            total_tables: int) -> List[List[float]]:
+            phred_tables: array.ArrayType) -> List[List[float]]:
+        total_tables = len(phred_tables) // NUMBER_OF_PHREDS
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_PHREDS)
@@ -764,13 +764,10 @@ class PerBaseQualityScoreDistribution(ReportModule):
             end_anchored_phreds: array.ArrayType,
             read_pair_info: Optional[str] = None,
     ):
-        quality_distribution = cls.quality_distribution_table(phred_tables,
-                                                              len(x_labels))
+        quality_distribution = cls.quality_distribution_table(phred_tables)
         front_quality_distribution = cls.quality_distribution_table(
-            front_anchored_phreds, len(front_anchored_phreds) // NUMBER_OF_PHREDS)
-        end_quality_distribution = cls.quality_distribution_table(
-            end_anchored_phreds, len(end_anchored_phreds) // NUMBER_OF_PHREDS
-        )
+            front_anchored_phreds)
+        end_quality_distribution = cls.quality_distribution_table(end_anchored_phreds)
         return cls(
             x_labels=x_labels,
             series=quality_distribution,
@@ -916,6 +913,19 @@ class PerSequenceAverageQualityScores(ReportModule):
         return cls(list(metrics.phred_scores()), read_pair_info=read_pair_info)
 
 
+BASE_COLORS = (
+    COLOR_GREEN,
+    "#228B22",  # ForestGreen
+    "#00BFFF",  # DeepSkyBlue
+    "#1E90FF",  # DodgerBlue
+)
+
+BASE_COLOR_STYLE = pygal.style.Style(
+    colors=BASE_COLORS,
+    **COMMON_GRAPH_STYLE_OPTIONS
+)
+
+
 @dataclasses.dataclass
 class PerPositionBaseContent(ReportModule):
     x_labels: Sequence[str]
@@ -923,22 +933,14 @@ class PerPositionBaseContent(ReportModule):
     C: Sequence[float]
     G: Sequence[float]
     T: Sequence[float]
+    front_anchored: Dict[str, List[float]]
+    end_anchored: Dict[str, List[float]]
     read_pair_info: Optional[str] = None
 
-    def plot(self) -> pygal.Graph:
-        style_class = pygal.style.Style
-        green = COLOR_GREEN
-        dark_green = "#228B22"  # ForestGreen
-        blue = "#00BFFF"  # DeepSkyBlue
-        dark_blue = "#1E90FF"  # DodgerBlue
-        black = "#000000"
-        style = style_class(
-            colors=(green, dark_green, blue, dark_blue, black),
-            **COMMON_GRAPH_STYLE_OPTIONS
-        )
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.StackedLine(
             title=self.prepend_read_info("Base content"),
-            style=style,
+            style=BASE_COLOR_STYLE,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
             x_title="position",
@@ -953,19 +955,62 @@ class PerPositionBaseContent(ReportModule):
         plot.add("T", label_values(self.T, self.x_labels))
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(1, len(self.front_anchored["A"]) + 1)]
+        plot = pygal.StackedLine(
+            title=self.prepend_read_info("Base content on read start"),
+            style=BASE_COLOR_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("G", label_values(self.front_anchored["G"], x_labels))
+        plot.add("C", label_values(self.front_anchored["C"], x_labels))
+        plot.add("A", label_values(self.front_anchored["A"], x_labels))
+        plot.add("T", label_values(self.front_anchored["T"], x_labels))
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(-len(self.end_anchored["A"]), 0)]
+        plot = pygal.StackedLine(
+            title=self.prepend_read_info("Base content on read end"),
+            style=BASE_COLOR_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        plot.add("G", label_values(self.end_anchored["G"], x_labels))
+        plot.add("C", label_values(self.end_anchored["C"], x_labels))
+        plot.add("A", label_values(self.end_anchored["A"], x_labels))
+        plot.add("T", label_values(self.end_anchored["T"], x_labels))
+        return plot
+
     def to_html(self) -> str:
         return f"""
              {html_header("Per position base content", 1,
                           self.read_pair_info)}
-             {figurize_plot(self.plot())}
+             {figurize_plot(self.main_plot())}
+             {figurize_plot(self.front_plot())}
+             {figurize_plot(self.end_plot())}
         """
 
-    @classmethod
-    def from_base_count_tables_and_labels(cls,
-                                          base_count_tables: array.ArrayType,
-                                          labels: Sequence[str],
-                                          read_pair_info: Optional[str] = None,
-                                          ):
+    @staticmethod
+    def base_content_distribution_table(
+            base_count_tables: array.ArrayType,) -> Dict[str, List[float]]:
         total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         base_fractions = [
             [0.0 for _ in range(total_tables)]
@@ -982,12 +1027,35 @@ class PerPositionBaseContent(ReportModule):
             base_fractions[C][index] = table[C] / named_total
             base_fractions[G][index] = table[G] / named_total
             base_fractions[T][index] = table[T] / named_total
+        return {
+            "A": base_fractions[A],
+            "C": base_fractions[C],
+            "G": base_fractions[G],
+            "T": base_fractions[T],
+        }
+
+    @classmethod
+    def from_base_count_tables_and_labels(
+            cls,
+            base_count_tables: array.ArrayType,
+            labels: Sequence[str],
+            front_anchored_base_count_tables: array.ArrayType,
+            end_anchored_base_count_tables: array.ArrayType,
+            read_pair_info: Optional[str] = None,
+    ):
+        base_fractions = cls.base_content_distribution_table(base_count_tables)
+        front_base_fractions = cls.base_content_distribution_table(
+            front_anchored_base_count_tables)
+        end_base_fractions = cls.base_content_distribution_table(
+            end_anchored_base_count_tables)
         return cls(
             labels,
-            A=base_fractions[A],
-            C=base_fractions[C],
-            G=base_fractions[G],
-            T=base_fractions[T],
+            A=base_fractions["A"],
+            C=base_fractions["C"],
+            G=base_fractions["G"],
+            T=base_fractions["T"],
+            front_anchored=front_base_fractions,
+            end_anchored=end_base_fractions,
             read_pair_info=read_pair_info,
         )
 
@@ -2224,6 +2292,8 @@ def qc_metrics_modules(metrics: QCMetrics,
                        ) -> List[ReportModule]:
     base_count_tables = metrics.base_count_table()
     phred_count_table = metrics.phred_count_table()
+    front_base_counts = base_count_tables[:metrics.end_anchor_length * NUMBER_OF_NUCS]
+    end_base_counts = metrics.end_anchored_base_count_table()
     front_phred_counts = phred_count_table[:metrics.end_anchor_length *
                                            NUMBER_OF_PHREDS]
     end_phred_counts = metrics.end_anchored_phred_count_table()
@@ -2274,7 +2344,10 @@ def qc_metrics_modules(metrics: QCMetrics,
         PerSequenceAverageQualityScores.from_qc_metrics(
             metrics, read_pair_info=read_pair_info),
         PerPositionBaseContent.from_base_count_tables_and_labels(
-            aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
+            base_count_tables=aggregrated_base_matrix, labels=x_labels,
+            front_anchored_base_count_tables=front_base_counts,
+            end_anchored_base_count_tables=end_base_counts,
+            read_pair_info=read_pair_info),
         PerPositionNContent.from_base_count_tables_and_labels(
             aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
         PerSequenceGCContent.from_qc_metrics(
