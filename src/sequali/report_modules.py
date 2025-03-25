@@ -731,14 +731,14 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 class PerBaseQualityScoreDistribution(ReportModule):
     x_labels: Sequence[str]
     series: Sequence[Sequence[float]]
+    front_anchored_series: Sequence[Sequence[float]]
+    end_anchored_series: Sequence[Sequence[float]]
     read_pair_info: Optional[str] = None
 
-    @classmethod
-    def from_phred_count_table_and_labels(
-            cls, phred_tables: array.ArrayType, x_labels: Sequence[str],
-            read_pair_info: Optional[str] = None
-    ):
-        total_tables = len(x_labels)
+    @staticmethod
+    def quality_distribution_table(
+            phred_tables: array.ArrayType,
+            total_tables: int) -> List[List[float]]:
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_PHREDS)
@@ -753,9 +753,32 @@ class PerBaseQualityScoreDistribution(ReportModule):
                     continue
                 nuc_fraction = phred_count / total_nucs
                 quality_distribution[offset][cat_index] = nuc_fraction
-        return cls(x_labels, quality_distribution, read_pair_info=read_pair_info)
+        return quality_distribution
 
-    def plot(self) -> pygal.Graph:
+    @classmethod
+    def from_phred_count_table_and_labels(
+            cls,
+            phred_tables: array.ArrayType,
+            x_labels: Sequence[str],
+            front_anchored_phreds: array.ArrayType,
+            end_anchored_phreds: array.ArrayType,
+            read_pair_info: Optional[str] = None,
+    ):
+        quality_distribution = cls.quality_distribution_table(phred_tables,
+                                                              len(x_labels))
+        front_quality_distribution = cls.quality_distribution_table(
+            front_anchored_phreds, len(front_anchored_phreds) // NUMBER_OF_PHREDS)
+        end_quality_distribution = cls.quality_distribution_table(
+            end_anchored_phreds, len(end_anchored_phreds) // NUMBER_OF_PHREDS
+        )
+        return cls(
+            x_labels=x_labels,
+            series=quality_distribution,
+            front_anchored_series=front_quality_distribution,
+            end_anchored_series=end_quality_distribution,
+            read_pair_info=read_pair_info)
+
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.StackedBar(
             title=self.prepend_read_info("Per base quality distribution"),
             style=QUALITY_DISTRIBUTION_STYLE,
@@ -773,11 +796,55 @@ class PerBaseQualityScoreDistribution(ReportModule):
                      show_dots=serie_filled)
         return plot
 
+    def front_anchored_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in range(1, len(self.front_anchored_series[0]) + 1)]
+        plot = pygal.StackedBar(
+            title=self.prepend_read_info("Per base quality distribution on read start"),
+            style=QUALITY_DISTRIBUTION_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.front_anchored_series):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, x_labels),
+                     show_dots=serie_filled)
+        return plot
+
+    def end_anchored_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in range(-len(self.end_anchored_series[0]), 0)]
+        plot = pygal.StackedBar(
+            title=self.prepend_read_info("Per base quality distribution on read end"),
+            style=QUALITY_DISTRIBUTION_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.end_anchored_series):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, x_labels),
+                     show_dots=serie_filled)
+        return plot
+
     def to_html(self):
         return f"""
             {html_header("Per position quality score distribution",
                          1, self.read_pair_info)}
-            {figurize_plot(self.plot())}
+            {figurize_plot(self.main_plot())}
+            {figurize_plot(self.front_anchored_plot())}
+            {figurize_plot(self.end_anchored_plot())}
         """
 
 
@@ -2157,6 +2224,9 @@ def qc_metrics_modules(metrics: QCMetrics,
                        ) -> List[ReportModule]:
     base_count_tables = metrics.base_count_table()
     phred_count_table = metrics.phred_count_table()
+    front_phred_counts = phred_count_table[:metrics.end_anchor_length *
+                                           NUMBER_OF_PHREDS]
+    end_phred_counts = metrics.end_anchored_phred_count_table()
     x_labels = stringify_ranges(data_ranges)
     aggregrated_base_matrix = aggregate_count_matrix(
         base_count_tables, data_ranges, NUMBER_OF_NUCS)
@@ -2194,7 +2264,11 @@ def qc_metrics_modules(metrics: QCMetrics,
             base_count_tables, total_reads, data_ranges,
             read_pair_info=read_pair_info),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
-            aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
+            phred_tables=aggregated_phred_matrix,
+            x_labels=x_labels,
+            front_anchored_phreds=front_phred_counts,
+            end_anchored_phreds=end_phred_counts,
+            read_pair_info=read_pair_info),
         PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
            aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
         PerSequenceAverageQualityScores.from_qc_metrics(
