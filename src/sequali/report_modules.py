@@ -1178,9 +1178,11 @@ class PerSequenceGCContent(ReportModule):
 class AdapterContent(ReportModule):
     x_labels: Sequence[str]
     adapter_content: Sequence[Tuple[str, Sequence[float]]]
+    front_adapter_content: Sequence[Tuple[str, Sequence[float]]]
+    end_adapter_content: Sequence[Tuple[str, Sequence[float]]]
     read_pair_info: Optional[str] = None
 
-    def plot(self) -> pygal.Graph:
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.Line(
             title=self.prepend_read_info("Adapter content (%)"),
             range=(0.0, 100.0),
@@ -1201,6 +1203,57 @@ class AdapterContent(ReportModule):
             plot.add(label, label_values(content, self.x_labels))
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(1, len(self.front_adapter_content[0][1]) + 1)]
+        plot = pygal.Line(
+            title=self.prepend_read_info("Adapter content (%) on read start"),
+            range=(0.0, 100.0),
+            x_title="position",
+            y_title="%",
+            legend_at_bottom=True,
+            legend_at_bottom_columns=1,
+            truncate_legend=-1,
+            style=MULTIPLE_SERIES_STYLE,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        adapter_content = [(label, content) for label, content in
+                           self.front_adapter_content
+                           if content and max(content) >= 0.1]
+        adapter_content.sort(key=lambda x: max(x[1]),
+                             reverse=True)
+        for label, content in adapter_content:
+            plot.add(label, label_values(content, x_labels))
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(-len(self.end_adapter_content[0][1]), 0)]
+        plot = pygal.Line(
+            title=self.prepend_read_info("Adapter content (%) on read end"),
+            range=(0.0, 100.0),
+            x_title="position",
+            y_title="%",
+            legend_at_bottom=True,
+            legend_at_bottom_columns=1,
+            truncate_legend=-1,
+            style=MULTIPLE_SERIES_STYLE,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **COMMON_GRAPH_OPTIONS,
+        )
+        adapter_content = [(label, content) for label, content in
+                           self.end_adapter_content if content and max(content) >= 0.1]
+        adapter_content.sort(key=lambda x: max(x[1]),
+                             reverse=True)
+        for label, content in adapter_content:
+            plot.add(label, label_values(content, x_labels))
+        return plot
+
     def to_html(self):
         return f"""
             {html_header("Adapter content", 1, self.read_pair_info)}
@@ -1218,13 +1271,16 @@ class AdapterContent(ReportModule):
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.</p>
-            {figurize_plot(self.plot())}
+            {figurize_plot(self.main_plot())}
+            {figurize_plot(self.front_plot())}
+            {figurize_plot(self.end_plot())}
         """  # noqa: E501
 
     @classmethod
     def from_adapter_counter_adapters_and_ranges(
             cls, adapter_counter: AdapterCounter, adapters: Sequence[Adapter],
             data_ranges: Sequence[Tuple[int, int]],
+            front_and_back_sample_length: int = 100,
             read_pair_info: Optional[str] = None,
     ):
 
@@ -1237,26 +1293,43 @@ class AdapterContent(ReportModule):
             return accumulated_counts
 
         all_adapters = []
+        front_adapters = []
+        end_adapters = []
         sequence_to_adapter = {adapter.sequence: adapter for adapter in adapters}
         adapter_names = [adapter.name for adapter in adapters]
         total_sequences = adapter_counter.number_of_sequences
+
         for adapter_sequence, forward_counts, reverse_counts \
                 in adapter_counter.get_counts():
+            end_counts = array.array("Q", reversed(reverse_counts))
             adapter = sequence_to_adapter[adapter_sequence]
             adapter_counts = [sum(forward_counts[start:stop])
                               for start, stop in data_ranges]
             if adapter.sequence_position == "end":
                 accumulated_counts = accumulate_counts(adapter_counts)
+                end_adapter_counts = accumulate_counts(end_counts)
+                end_adapters.append([count * 100 / total_sequences
+                                     for count in end_adapter_counts[
+                                                  -front_and_back_sample_length:]])
             else:
                 # Reverse the counts, accumulate them and reverse again for
                 # adapters at the front.
                 accumulated_counts = list(reversed(
                     accumulate_counts(reversed(adapter_counts))))
+                front_adapter_counts = list(reversed(
+                    accumulate_counts(reversed(forward_counts))))
+                front_adapters.append([count * 100 / total_sequences
+                                       for count in front_adapter_counts[
+                                                    :front_and_back_sample_length]])
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
-        return cls(stringify_ranges(data_ranges),
-                   list(zip(adapter_names, all_adapters)),
-                   read_pair_info=read_pair_info)
+
+        return cls(
+           stringify_ranges(data_ranges),
+           list(zip(adapter_names, all_adapters)),
+           front_adapter_content=list(zip(adapter_names, front_adapters)),
+           end_adapter_content=list(zip(adapter_names, end_adapters)),
+           read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
