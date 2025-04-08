@@ -24,7 +24,6 @@ IncludeCategories:
     Priority:        1
   - Regex:           '^<[[:alnum:]_.]+"'
     Priority:        2
-Language: Cpp
 PointerAlignment: Right
 ReflowComments: true
 SpaceBeforeParens: ControlStatements
@@ -32,4 +31,3 @@ SpacesInParentheses: false
 StatementMacros: [PyObject_HEAD, PyObject_VAR_HEAD, PyObject_HEAD_EXTRA]
 TabWidth: 4
 UseTab: Never
-
