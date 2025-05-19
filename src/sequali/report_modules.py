@@ -1307,22 +1307,21 @@ class AdapterContent(ReportModule):
                               for start, stop in data_ranges]
             if adapter.sequence_position == "end":
                 accumulated_counts = accumulate_counts(adapter_counts)
-                end_adapter_counts = accumulate_counts(end_counts)
-                end_adapters.append([count * 100 / total_sequences
-                                     for count in end_adapter_counts[
-                                                  -front_and_back_sample_length:]])
             else:
                 # Reverse the counts, accumulate them and reverse again for
                 # adapters at the front.
                 accumulated_counts = list(reversed(
                     accumulate_counts(reversed(adapter_counts))))
-                front_adapter_counts = list(reversed(
-                    accumulate_counts(reversed(forward_counts))))
-                front_adapters.append([count * 100 / total_sequences
-                                       for count in front_adapter_counts[
-                                                    :front_and_back_sample_length]])
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
+            end_adapters.append([count * 100 / total_sequences
+                                 for count in accumulate_counts(end_counts[
+                                              -front_and_back_sample_length:])])
+            front_adapter_counts = list(reversed(
+                accumulate_counts(reversed(
+                    forward_counts[:front_and_back_sample_length]))))
+            front_adapters.append([count * 100 / total_sequences
+                                   for count in front_adapter_counts])
 
         return cls(
            stringify_ranges(data_ranges),
