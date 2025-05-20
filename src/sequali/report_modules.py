@@ -120,6 +120,14 @@ COMMON_GRAPH_OPTIONS = dict(
     js=[],  # Script is globally downloaded once
 )
 
+SIDE_BY_SIDE_GRAPH_OPTIONS = dict(
+    truncate_label=-1,
+    width=550,
+    height=700,
+    disable_xml_declaration=True,
+    js=[],  # Script is globally downloaded once
+)
+
 READ1 = "Read 1"
 READ2 = "Read 2"
 NOT_OF_PAIR = None
@@ -230,6 +238,19 @@ def figurize_plot(plot: pygal.Graph):
                 </script>
             </figcaption>
         </figure>
+    """
+
+
+def plots_side_by_side(plot1: str, plot2: str) -> str:
+    return f"""
+        <div class="image_row">
+            <div class="image_column">
+                {plot1}
+            </div>
+            <div class="image_column">
+                {plot2}
+            </div>
+        </div>
     """
 
 
@@ -806,7 +827,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         for name, serie in zip(QUALITY_SERIES_NAMES, self.front_anchored_series):
             serie_filled = sum(serie) > 0.0
@@ -827,7 +848,7 @@ class PerBaseQualityScoreDistribution(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         for name, serie in zip(QUALITY_SERIES_NAMES, self.end_anchored_series):
             serie_filled = sum(serie) > 0.0
@@ -840,8 +861,10 @@ class PerBaseQualityScoreDistribution(ReportModule):
             {html_header("Per position quality score distribution",
                          1, self.read_pair_info)}
             {figurize_plot(self.main_plot())}
-            {figurize_plot(self.front_anchored_plot())}
-            {figurize_plot(self.end_anchored_plot())}
+            {plots_side_by_side(
+                figurize_plot(self.front_anchored_plot()),
+                figurize_plot(self.end_anchored_plot()),
+            )}
         """
 
 
