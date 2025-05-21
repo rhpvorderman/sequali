@@ -992,7 +992,7 @@ class PerPositionBaseContent(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         plot.add("G", label_values(self.front_anchored["G"], x_labels))
         plot.add("C", label_values(self.front_anchored["C"], x_labels))
@@ -1014,7 +1014,7 @@ class PerPositionBaseContent(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         plot.add("G", label_values(self.end_anchored["G"], x_labels))
         plot.add("C", label_values(self.end_anchored["C"], x_labels))
@@ -1027,8 +1027,10 @@ class PerPositionBaseContent(ReportModule):
              {html_header("Per position base content", 1,
                           self.read_pair_info)}
              {figurize_plot(self.main_plot())}
-             {figurize_plot(self.front_plot())}
-             {figurize_plot(self.end_plot())}
+             {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+             )}
         """
 
     @staticmethod
@@ -1241,7 +1243,7 @@ class AdapterContent(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         adapter_content = [(label, content) for label, content in
                            self.front_adapter_content
@@ -1267,7 +1269,7 @@ class AdapterContent(ReportModule):
             x_labels=x_labels,
             show_minor_x_labels=False,
             x_labels_major_every=10,
-            **COMMON_GRAPH_OPTIONS,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
         )
         adapter_content = [(label, content) for label, content in
                            self.end_adapter_content if content and max(content) >= 0.1]
@@ -1295,8 +1297,10 @@ class AdapterContent(ReportModule):
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.</p>
             {figurize_plot(self.main_plot())}
-            {figurize_plot(self.front_plot())}
-            {figurize_plot(self.end_plot())}
+            {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+            )}
         """  # noqa: E501
 
     @classmethod
