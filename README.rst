@@ -22,8 +22,8 @@
   :target: https://codecov.io/gh/rhpvorderman/sequali
   :alt:
 
-.. |zenodo-shield| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
-  :target: https://doi.org/10.5281/zenodo.10854010
+.. |zenodo-shield| image:: ./docs/_static/images/doi_image.svg
+  :target: https://doi.org/10.1093/bioadv/vbaf010
   :alt:
 
 |python-version-shield| |conda-version-shield| |python-install-version-shield|
@@ -193,8 +193,18 @@ Acknowledgements
 + Wouter de Coster for his `excellent post on how to correctly average phred
   scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
 + Marcel Martin for providing very extensive feedback.
++ Agnès Barnabé for creating a Galaxy wrapper.
 
 .. acknowledgements end
+
+Citation
+========
+.. citation start
+
+If you wish to credit Sequali please cite `the Sequali article
+<https://doi.org/10.1093/bioadv/vbaf010>`_.
+
+.. citation end
 
 License
 =======

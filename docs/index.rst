@@ -59,6 +59,14 @@ Usage
 
 .. include:: module_options.rst
 
+===================
+Citation
+===================
+
+.. include:: includes/README.rst
+   :start-after: .. citation start
+   :end-before: .. citation end
+
 ==================
 Acknowledgements
 ==================
