@@ -631,6 +631,8 @@ class SequenceLengthDistribution(ReportModule):
 class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
     percentiles: List[Tuple[str, List[float]]]
+    front_percentiles: List[Tuple[str, List[float]]]
+    end_percentiles: List[Tuple[str, List[float]]]
     read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
@@ -673,11 +675,8 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             {figurize_plot(self.plot())}
         """
 
-    @classmethod
-    def from_phred_table_and_labels(cls,
-                                    phred_tables: array.ArrayType,
-                                    x_labels,
-                                    read_pair_info: Optional[str] = None):
+    @staticmethod
+    def phred_tables_to_percentiles(phred_tables: array.ArrayType):
         percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
         percentile_fractions = [i / 100 for i in percentiles]
         total_tables = len(phred_tables) // NUMBER_OF_PHREDS
@@ -741,11 +740,22 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             ("top 5%", reversed_percentile_tables[-2]),
             ("top 1%", reversed_percentile_tables[-1]),
         ]
+        return graph_series
+
+    @classmethod
+    def from_phred_table_and_labels(cls,
+                                    phred_tables: array.ArrayType,
+                                    x_labels,
+                                    front_phred_tables: array.ArrayType,
+                                    end_phred_tables: array.ArrayType,
+                                    read_pair_info: Optional[str] = None):
         return cls(
             x_labels=x_labels,
-            percentiles=graph_series,
+            percentiles=cls.phred_tables_to_percentiles(phred_tables),
+            front_percentiles=cls.phred_tables_to_percentiles(front_phred_tables),
+            end_percentiles=cls.phred_tables_to_percentiles(end_phred_tables),
             read_pair_info=read_pair_info,
-            )
+        )
 
 
 @dataclasses.dataclass
@@ -2439,7 +2449,8 @@ def qc_metrics_modules(metrics: QCMetrics,
             end_anchored_phreds=end_phred_counts,
             read_pair_info=read_pair_info),
         PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
-           aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
+           aggregated_phred_matrix, x_labels, front_phred_counts,
+           end_phred_counts, read_pair_info=read_pair_info),
         PerSequenceAverageQualityScores.from_qc_metrics(
             metrics, read_pair_info=read_pair_info),
         PerPositionBaseContent.from_base_count_tables_and_labels(
