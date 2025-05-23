@@ -663,6 +663,70 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                  stroke_style={"dasharray": '1,2'})
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        plot = pygal.Line(
+            title=self.prepend_read_info(
+                "Per position quality percentiles on read start"),
+            show_dots=False,
+            x_title="position",
+            y_title="phred score",
+            y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
+            style=pygal.style.DefaultStyle(
+                colors=["#000000"] * 12,
+                **COMMON_GRAPH_STYLE_OPTIONS,
+                ),
+            x_labels=[str(x) for x in
+                      range(1, len(self.front_percentiles[0][1]) + 1)],
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        percentiles = dict(self.front_percentiles)
+        plot.add("top 1%", percentiles["top 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", percentiles["top 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", percentiles["mean"],
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", percentiles["bottom 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", percentiles["bottom 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        plot = pygal.Line(
+            title=self.prepend_read_info(
+                "Per position quality percentiles on read end"),
+            show_dots=False,
+            x_title="position",
+            y_title="phred score",
+            y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
+            style=pygal.style.DefaultStyle(
+                colors=["#000000"] * 12,
+                **COMMON_GRAPH_STYLE_OPTIONS,
+                ),
+            x_labels=[str(x) for x in
+                      range(-len(self.end_percentiles[0][1]), 0)],
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        percentiles = dict(self.end_percentiles)
+        plot.add("top 1%", percentiles["top 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", percentiles["top 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", percentiles["mean"],
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", percentiles["bottom 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", percentiles["bottom 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        return plot
+
     def to_html(self):
         return f"""
             {html_header("Per position quality percentiles", 1,
@@ -673,6 +737,10 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             based on the sampled categories, rather than exact phreds, it is
             an approximation.</p>
             {figurize_plot(self.plot())}
+            {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+            )}
         """
 
     @staticmethod
