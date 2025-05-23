@@ -58,6 +58,7 @@ Features:
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
++ Reproducible reports without timestamps.
 
 Example reports:
 

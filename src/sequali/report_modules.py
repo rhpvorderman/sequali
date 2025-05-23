@@ -22,7 +22,6 @@ import io
 import math
 import os
 import sys
-import time
 import typing
 import xml.etree.ElementTree
 from abc import ABC, abstractmethod
@@ -381,7 +380,6 @@ class ReportModule(ABC):
 @dataclasses.dataclass
 class Meta(ReportModule):
     sequali_version: str
-    report_generated: str
     filename: str
     filesize: int
     filename_read2: Optional[str]
@@ -403,10 +401,7 @@ class Meta(ReportModule):
         else:
             filename_read2 = None
             filesize_read2 = None
-        timestamp = time.time()
-        time_struct = time.localtime(timestamp)
-        report_generated = time.strftime("%Y-%m-%d %H:%M:%S%z", time_struct)
-        return cls(__version__, report_generated, filename, filesize,
+        return cls(__version__, filename, filesize,
                    filename_read2, filesize_read2)
 
     def to_html(self) -> str:
@@ -430,7 +425,6 @@ class Meta(ReportModule):
             """)
         content.write(f"""
             <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
-            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
             </table>
         """)
         return content.getvalue()
