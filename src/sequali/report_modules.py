@@ -21,9 +21,11 @@ import html
 import io
 import math
 import os
+import string
 import sys
 import typing
 import xml.etree.ElementTree
+import zipfile
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
@@ -368,6 +370,10 @@ class ReportModule(ABC):
         return dataclasses.asdict(self)
 
     @abstractmethod
+    def plots(self) -> List[pygal.Graph]:
+        pass
+
+    @abstractmethod
     def to_html(self) -> str:
         pass
 
@@ -429,6 +435,9 @@ class Meta(ReportModule):
         """)
         return content.getvalue()
 
+    def plots(self) -> List[pygal.Graph]:
+        return []
+
 
 @dataclasses.dataclass
 class Summary(ReportModule):
@@ -486,6 +495,9 @@ class Summary(ReportModule):
             </tr>
             </table>
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return []
 
 
 @dataclasses.dataclass
@@ -555,6 +567,9 @@ class SequenceLengthDistribution(ReportModule):
             {self.distribution_table()}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
     @classmethod
     def from_base_count_tables(cls,
@@ -737,6 +752,9 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                 figurize_plot(self.end_plot()),
             )}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot(), self.front_plot(), self.end_plot()]
 
     @staticmethod
     def phred_tables_to_percentiles(phred_tables: array.ArrayType):
@@ -940,6 +958,10 @@ class PerBaseQualityScoreDistribution(ReportModule):
             )}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_anchored_plot(),
+                self.end_anchored_plot()]
+
 
 @dataclasses.dataclass
 class PerSequenceAverageQualityScores(ReportModule):
@@ -980,6 +1002,9 @@ class PerSequenceAverageQualityScores(ReportModule):
             {self.quality_scores_table()}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
     def quality_scores_table(self) -> str:
         table = io.StringIO()
@@ -1106,6 +1131,9 @@ class PerPositionBaseContent(ReportModule):
              )}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_plot(), self.end_plot()]
+
     @staticmethod
     def base_content_distribution_table(
             base_count_tables: array.ArrayType,) -> Dict[str, List[float]]:
@@ -1205,6 +1233,9 @@ class PerPositionNContent(ReportModule):
             {figurize_plot(self.plot())}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
+
 
 @dataclasses.dataclass
 class PerSequenceGCContent(ReportModule):
@@ -1259,6 +1290,9 @@ class PerSequenceGCContent(ReportModule):
             {figurize_plot(self.plot())}
             {figurize_plot(self.smoothened_plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot(), self.smoothened_plot()]
 
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics, read_pair_info: Optional[str] = None):
@@ -1375,6 +1409,9 @@ class AdapterContent(ReportModule):
                 figurize_plot(self.end_plot()),
             )}
         """  # noqa: E501
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_plot(), self.end_plot()]
 
     @classmethod
     def from_adapter_counter_adapters_and_ranges(
@@ -1557,6 +1594,9 @@ class PerTileQualityReport(ReportModule):
             {figurize_plot(self.plot())}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
+
 
 @dataclasses.dataclass
 class DuplicationCounts(ReportModule):
@@ -1635,6 +1675,9 @@ class DuplicationCounts(ReportModule):
             {first_part}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
     @staticmethod
     def estimated_counts_to_fractions(
@@ -1834,6 +1877,9 @@ class OverRepresentedSequences(ReportModule):
                     <td>{html.escape(item.best_match)}</td></tr>""")
         content.write("</table></div>")
         return content.getvalue()
+
+    def plots(self) -> List[pygal.Graph]:
+        return []
 
     @classmethod
     def from_sequence_duplication(
@@ -2151,6 +2197,15 @@ class NanoStatsReport(ReportModule):
         {self.read_split_section()}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [
+            self.time_bases_plot(),
+            self.time_reads_plot(),
+            self.time_active_channels_plot(),
+            self.time_quality_distribution_plot(),
+            self.channel_plot()
+        ]
+
 
 @dataclasses.dataclass
 class InsertSizeMetricsReport(ReportModule):
@@ -2205,6 +2260,9 @@ class InsertSizeMetricsReport(ReportModule):
             </table>
             {figurize_plot(self.insert_sizes_plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.insert_sizes_plot()]
 
 
 @dataclasses.dataclass
@@ -2330,6 +2388,9 @@ class AdapterFromOverlapReport(ReportModule):
                 """)
         report.write("</table>")
         return report.getvalue()
+
+    def plots(self) -> List[pygal.Graph]:
+        return []
 
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
@@ -2604,3 +2665,39 @@ def calculate_stats(
         ))
     modules.sort(key=module_sort_key)
     return modules
+
+
+def _file_namify(
+        name: str,
+        replacement_char: str = "",
+        acceptable_chars=string.ascii_letters + string.digits + "_") -> str:
+    """Convert a name to a valid filename"""
+    # Horribly inefficient, but given the tiny amount of data, not
+    # important.
+    name = name.replace(" ", "_")
+    name = name.replace("%", "percent")
+    return "".join(
+        char if char in acceptable_chars else replacement_char
+        for char in name
+    )
+
+
+def pack_module_svgs(modules: List[ReportModule], output_zip: str):
+    all_plots: List[pygal.Graph] = []
+    for module in modules:
+        all_plots.extend(module.plots())
+    os.makedirs(os.path.dirname(output_zip), exist_ok=True)
+    with zipfile.ZipFile(output_zip, mode="w") as z:
+        for plot in all_plots:
+            plot.config.disable_xml_declaration = False
+            try:
+                plot_data = plot.render(is_unicode=False)
+            except Exception:  # Not sure which errors pygal will throw.
+                continue
+            zip_info = zipfile.ZipInfo(
+                filename=_file_namify(plot.config.title) + ".svg",
+                date_time=(1980, 1, 1, 0, 0, 0)  # Timestamp 0
+            )
+            z.writestr(zip_info, plot_data,
+                       compress_type=zipfile.ZIP_DEFLATED,
+                       compresslevel=6)

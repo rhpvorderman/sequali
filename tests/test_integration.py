@@ -16,6 +16,7 @@
 
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -281,3 +282,22 @@ def test_version_command(capsys):
     result = capsys.readouterr()
     import sequali
     assert result.out.replace("\n", "") == sequali.__version__
+
+
+@pytest.mark.parametrize("testfiles", [
+    [str(TEST_DATA / "simple.fastq")],
+    [str(TEST_DATA / "LTB-A-BC001_S1_L003_R1_001_shortened.fastq.gz"),
+     str(TEST_DATA / "LTB-A-BC001_S1_L003_R2_001_shortened.fastq.gz")],
+    [str(TEST_DATA / "100_nanopore_reads.fastq.gz")]
+])
+def test_images_zip(tmp_path, testfiles):
+    images_zip = tmp_path / "images.zip"
+    sys.argv = ["", "--dir", str(tmp_path), *testfiles,
+                "--images-zip", str(images_zip)]
+    main()
+
+    assert images_zip.exists()
+    with zipfile.ZipFile(images_zip) as z:
+        for info in z.infolist():
+            assert info.filename.endswith(".svg")
+            assert info.date_time == (1980, 1, 1, 0, 0, 0)
