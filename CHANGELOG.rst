@@ -11,6 +11,7 @@ version 0.13.0-dev
 ------------------
 + Python 3.13 support was added.
 + Python 3.8 and 3.9 are no longer supported.
++ Make reports reproducible by eliminating timestamps.
 + Add end-anchored plots, similar to how it is done in
   `NanoQC <https://github.com/wdecoster/nanoQC>`_.
 + Add a plot show how many reads originate from read splitting. This primarily
