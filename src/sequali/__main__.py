@@ -42,8 +42,13 @@ from ._qc import (
 )
 from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
-from .report_modules import (calculate_stats, dict_to_report_modules,
-                             report_modules_to_dict, write_html_report)
+from .report_modules import (
+    calculate_stats,
+    dict_to_report_modules,
+    pack_module_svgs,
+    report_modules_to_dict,
+    write_html_report
+)
 from .util import NGSFile, sequence_names_match
 
 DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET = 0
@@ -69,6 +74,9 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Output directory for the report files. default: "
                              "current working directory.",
                         default=os.getcwd())
+    parser.add_argument("--images-zip", type=str, metavar="ZIP",
+                        help="If supplied, will create a zip file with the "
+                             "images at the supplied location.")
     parser.add_argument("--adapter-file",
                         default=DEFAULT_ADAPTER_FILE,
                         help=f"File with adapters to search for. See default "
@@ -333,6 +341,8 @@ def main() -> None:
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
         json.dump(json_dict, json_file, indent=0)
     write_html_report(report_modules, args.html)
+    if args.images_zip is not None:
+        pack_module_svgs(report_modules, args.images_zip)
 
 
 if __name__ == "__main__":  # pragma: no cover

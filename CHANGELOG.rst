@@ -11,6 +11,8 @@ version 0.13.0-dev
 ------------------
 + Python 3.13 support was added.
 + Python 3.8 and 3.9 are no longer supported.
++ Add an ``--images-zip`` flag to set a path where a zip with all the images
+  will be created.
 + Make reports reproducible by eliminating timestamps.
 + Add end-anchored plots, similar to how it is done in
   `NanoQC <https://github.com/wdecoster/nanoQC>`_.
