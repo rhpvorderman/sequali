@@ -729,12 +729,13 @@ class PerPositionMeanQualityAndSpread(ReportModule):
 
     def to_html(self):
         return f"""
-            {html_header("Per position quality percentiles", 1,
+            {html_header(
+            "Per position quality percentiles (approximation)", 1,
                          self.read_pair_info)}
             <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
-            based on the sampled categories, rather than exact phreds, it is
+            based on the binned phreds, rather than exact phreds, it is
             an approximation.</p>
             {figurize_plot(self.plot())}
             {plots_side_by_side(
