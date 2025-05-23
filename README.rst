@@ -191,7 +191,9 @@ Acknowledgements
   <https://matplotlib.org/stable/users/explain/colors/colormaps.html>`_ for
   a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
-  scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
+  scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_
+  as well as the idea for using end-anchored plots from `NanoQC
+  <https://github.com/wdecoster/nanoQC>`_.
 + Marcel Martin for providing very extensive feedback.
 + Agnès Barnabé for creating a Galaxy wrapper.
 
