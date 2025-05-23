@@ -24,6 +24,8 @@ def test_per_position_mean_quality_one_nuc():
     # Would cause a divide by zero error
     module = report_modules.PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
         array.array('Q', [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-        ['1']
+        ['1'],
+        array.array('Q', [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        array.array('Q', [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
     )
     assert module
