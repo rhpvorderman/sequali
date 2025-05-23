@@ -125,9 +125,13 @@ def test_adapter_counter_matcher_multiple_machine_words(adapters):
     read = FastqRecordView("name", sequence, "H" * len(sequence))
     counter = AdapterCounter(adapters)
     counter.add_read(read)
-    for adapter, countview in counter.get_counts():
-        assert countview[sequence.find(adapter)] == 1
-        assert sum(countview) == 1
+    for adapter, forward_counts, reverse_counts in counter.get_counts():
+        index = sequence.find(adapter)
+        reverse_index = len(sequence) - 1 - index
+        assert forward_counts[index] == 1
+        assert reverse_counts[reverse_index] == 1
+        assert sum(forward_counts) == 1
+        assert sum(reverse_counts) == 1
 
 
 def test_adapter_counter_mixed_lengths():
@@ -151,8 +155,12 @@ def test_adapter_counter_mixed_lengths():
         read = FastqRecordView("name", sequence, "H" * len(sequence))
         counter.add_read(read)
     for sequence in sequences:
-        for adapter, counts in counter.get_counts():
-            counts = counts.tolist()
+        for adapter, forward_counts, reverse_counts in counter.get_counts():
+            forward_counts = forward_counts.tolist()
             index = sequence.find(adapter)
+
             if index != -1:
-                assert counts[index] > 0
+                reverse_index = len(sequence) - 1 - index
+                assert sequence[index] == sequence[::-1][reverse_index]
+                assert forward_counts[index] > 0
+                assert reverse_counts[reverse_index] > 0

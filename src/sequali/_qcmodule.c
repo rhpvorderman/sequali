@@ -1768,6 +1768,8 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
+#define DEFAULT_END_ANCHOR_LENGTH 100
+
 typedef uint16_t staging_base_table[NUC_TABLE_SIZE];
 typedef uint16_t staging_phred_table[PHRED_TABLE_SIZE];
 typedef uint64_t base_table[NUC_TABLE_SIZE];
@@ -1786,11 +1788,16 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     uint16_t staging_count;
+    size_t end_anchor_length;
     size_t max_length;
     staging_base_table *staging_base_counts;
     staging_phred_table *staging_phred_counts;
+    staging_base_table *staging_end_anchored_base_counts;
+    staging_phred_table *staging_end_anchored_phred_counts;
     base_table *base_counts;
     phred_table *phred_counts;
+    base_table *end_anchored_base_counts;
+    phred_table *end_anchored_phred_counts;
     size_t number_of_reads;
     uint64_t gc_content[101];
     uint64_t phred_scores[PHRED_MAX + 1];
@@ -1801,8 +1808,12 @@ QCMetrics_dealloc(QCMetrics *self)
 {
     PyMem_Free(self->staging_base_counts);
     PyMem_Free(self->staging_phred_counts);
+    PyMem_Free(self->staging_end_anchored_base_counts);
+    PyMem_Free(self->staging_end_anchored_phred_counts);
     PyMem_Free(self->base_counts);
     PyMem_Free(self->phred_counts);
+    PyMem_Free(self->end_anchored_base_counts);
+    PyMem_Free(self->end_anchored_phred_counts);
     PyTypeObject *tp = Py_TYPE((PyObject *)self);
     PyObject_Free(self);
     Py_DECREF(tp);
@@ -1811,19 +1822,46 @@ QCMetrics_dealloc(QCMetrics *self)
 static PyObject *
 QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    static char *kwargnames[] = {NULL};
-    static char *format = ":QCMetrics";
+    Py_ssize_t end_anchor_length = DEFAULT_END_ANCHOR_LENGTH;
+    static char *kwargnames[] = {"end_anchor_length", NULL};
+    static char *format = "|n:QCMetrics";
     uint8_t phred_offset = 33;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+                                     &end_anchor_length)) {
         return NULL;
     }
+    if (end_anchor_length < 0 || end_anchor_length > UINT32_MAX) {
+        PyErr_Format(PyExc_ValueError,
+                     "end_anchor_length must be between 0 and %zd, got %zd",
+                     (Py_ssize_t)UINT32_MAX, end_anchor_length);
+        return NULL;
+    }
+    staging_base_table *staging_end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_base_table));
+    staging_phred_table *staging_end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_phred_table));
+    base_table *end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(base_table));
+    phred_table *end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(phred_table));
     QCMetrics *self = PyObject_New(QCMetrics, type);
-    self->max_length = 0;
+    if (self == NULL || staging_end_anchored_base_counts == NULL ||
+        staging_end_anchored_phred_counts == NULL ||
+        end_anchored_base_counts == NULL || end_anchored_phred_counts == NULL) {
+        return PyErr_NoMemory();
+    }
     self->phred_offset = phred_offset;
+    self->staging_count = 0;
+    self->end_anchor_length = end_anchor_length;
+    self->max_length = 0;
     self->staging_base_counts = NULL;
     self->staging_phred_counts = NULL;
+    self->staging_end_anchored_base_counts = staging_end_anchored_base_counts;
+    self->staging_end_anchored_phred_counts = staging_end_anchored_phred_counts;
     self->base_counts = NULL;
     self->phred_counts = NULL;
+    self->end_anchored_base_counts = end_anchored_base_counts;
+    self->end_anchored_phred_counts = end_anchored_phred_counts;
     self->number_of_reads = 0;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
@@ -1899,6 +1937,29 @@ QCMetrics_flush_staging(QCMetrics *self)
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
+    size_t end_anchor_length = self->end_anchor_length;
+
+    size_t end_anchor_base_slots = end_anchor_length * NUC_TABLE_SIZE;
+    uint64_t *end_anchored_base_counts =
+        (uint64_t *)self->end_anchored_base_counts;
+    uint16_t *staging_end_anchored_base_counts =
+        (uint16_t *)self->staging_end_anchored_base_counts;
+    for (size_t i = 0; i < end_anchor_base_slots; i++) {
+        end_anchored_base_counts[i] += staging_end_anchored_base_counts[i];
+    }
+    memset(staging_end_anchored_base_counts, 0,
+           end_anchor_base_slots * sizeof(uint16_t));
+
+    size_t end_anchor_phred_slots = end_anchor_length * PHRED_TABLE_SIZE;
+    uint64_t *end_anchored_phred_counts =
+        (uint64_t *)self->end_anchored_phred_counts;
+    uint16_t *staging_end_anchored_phred_counts =
+        (uint16_t *)self->staging_end_anchored_phred_counts;
+    for (size_t i = 0; i < end_anchor_phred_slots; i++) {
+        end_anchored_phred_counts[i] += staging_end_anchored_phred_counts[i];
+    }
+    memset(staging_end_anchored_phred_counts, 0,
+           end_anchor_phred_slots * sizeof(uint16_t));
     self->staging_count = 0;
 }
 
@@ -1907,6 +1968,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
     const uint8_t *record_start = meta->record_start;
     size_t sequence_length = meta->sequence_length;
+    size_t full_end_anchor_length = self->end_anchor_length;
+    size_t end_anchor_length = Py_MIN(full_end_anchor_length, sequence_length);
+    size_t end_anchor_store_offset = full_end_anchor_length - end_anchor_length;
+
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
 
@@ -1965,6 +2030,19 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         sequence_ptr += 1;
         staging_base_counts_ptr += 1;
     }
+
+    // End-anchored run while sequence still hot in cache
+    staging_base_table *staging_end_anchored_bases =
+        self->staging_end_anchored_base_counts + end_anchor_store_offset;
+    sequence_ptr -= end_anchor_length;
+    while (sequence_ptr < end_ptr) {
+        size_t c = *sequence_ptr;
+        size_t c_index = NUCLEOTIDE_TO_INDEX[c];
+        staging_end_anchored_bases[0][c_index] += 1;
+        staging_end_anchored_bases += 1;
+        sequence_ptr += 1;
+    }
+
     uint64_t base_counts =
         base_counts0 + base_counts1 + base_counts2 + base_counts3;
     uint64_t at_counts = base_counts & 0xFFFFFFFF;
@@ -2028,6 +2106,18 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         staging_phred_counts_ptr[0][q_index] += 1;
         accumulated_error_rate += SCORE_TO_ERROR_RATE[q];
         staging_phred_counts_ptr += 1;
+        qualities_ptr += 1;
+    }
+
+    // End-anchored run while qualities still hot in cache
+    staging_phred_table *staging_end_anchored_phreds =
+        self->staging_end_anchored_phred_counts + end_anchor_store_offset;
+    qualities_ptr -= end_anchor_length;
+    while (qualities_ptr < qualities_end_ptr) {
+        size_t q = *qualities_ptr - phred_offset;
+        size_t q_index = phred_to_index(q);
+        staging_end_anchored_phreds[0][q_index] += 1;
+        staging_end_anchored_phreds += 1;
         qualities_ptr += 1;
     }
 
@@ -2150,6 +2240,52 @@ QCMetrics_phred_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
                                   state->PythonArray_Type);
 }
 
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_base_count_table__doc__,
+    "end_anchored_base_count_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored base count table. \n");
+
+#define QCMetrics_end_anchored_base_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_base_count_table(QCMetrics *self,
+                                        PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_base_counts,
+                                  self->end_anchor_length * sizeof(base_table),
+                                  state->PythonArray_Type);
+}
+
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_phred_count_table__doc__,
+    "end_anchored_phred_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored phred count table. \n");
+
+#define QCMetrics_end_anchored_phred_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_phred_count_table(QCMetrics *self,
+                                         PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_phred_counts,
+                                  self->end_anchor_length * sizeof(phred_table),
+                                  state->PythonArray_Type);
+}
+
 PyDoc_STRVAR(QCMetrics_gc_content__doc__,
              "gc_content($self, /)\n"
              "--\n"
@@ -2201,6 +2337,15 @@ static PyMethodDef QCMetrics_methods[] = {
      QCMetrics_base_count_table_method, QCMetrics_base_count_table__doc__},
     {"phred_count_table", (PyCFunction)QCMetrics_phred_count_table,
      QCMetrics_phred_count_table_method, QCMetrics_phred_count_table__doc__},
+    {"end_anchored_base_count_table",
+     (PyCFunction)QCMetrics_end_anchored_base_count_table,
+     QCMetrics_end_anchored_base_count_table_method,
+     QCMetrics_end_anchored_base_count_table__doc__},
+    {"end_anchored_phred_count_table",
+     (PyCFunction)QCMetrics_end_anchored_phred_count_table,
+     QCMetrics_end_anchored_phred_count_table_method,
+     QCMetrics_end_anchored_phred_count_table__doc__},
+
     {"gc_content", (PyCFunction)QCMetrics_gc_content,
      QCMetrics_gc_content_method, QCMetrics_gc_content__doc__},
     {"phred_scores", (PyCFunction)QCMetrics_phred_scores,
@@ -2213,6 +2358,8 @@ static PyMemberDef QCMetrics_members[] = {
      "The length of the longest read"},
     {"number_of_reads", T_ULONGLONG, offsetof(QCMetrics, number_of_reads),
      READONLY, "The total amount of reads counted"},
+    {"end_anchor_length", T_ULONGLONG, offsetof(QCMetrics, end_anchor_length),
+     READONLY, "The length of the end of the read that is sampled."},
     {NULL},
 };
 
@@ -2246,12 +2393,17 @@ typedef struct AdapterSequenceStruct {
     bitmask_t found_mask;
 } AdapterSequence;
 
+struct AdapterCounts {
+    uint64_t *forward;
+    uint64_t *reverse;
+};
+
 typedef struct AdapterCounterStruct {
     PyObject_HEAD
     size_t number_of_adapters;
     size_t max_length;
     size_t number_of_sequences;
-    uint64_t **adapter_counter;
+    struct AdapterCounts *adapter_counter;
     PyObject *adapters;
     size_t number_of_matchers;
     bitmask_t *init_masks;
@@ -2268,7 +2420,9 @@ AdapterCounter_dealloc(AdapterCounter *self)
     Py_XDECREF(self->adapters);
     if (self->adapter_counter != NULL) {
         for (size_t i = 0; i < self->number_of_adapters; i++) {
-            PyMem_Free(self->adapter_counter[i]);
+            struct AdapterCounts counts = self->adapter_counter[i];
+            PyMem_Free(counts.forward);
+            PyMem_Free(counts.reverse);
         }
     }
     PyMem_Free(self->adapter_counter);
@@ -2359,7 +2513,8 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    self->adapter_counter = PyMem_Calloc(number_of_adapters, sizeof(uint64_t *));
+    self->adapter_counter =
+        PyMem_Calloc(number_of_adapters, sizeof(struct AdapterCounts));
     /* Ensure there is enough space to always do vector loads. */
     size_t matcher_array_size = number_of_matchers + 3;
     self->found_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
@@ -2456,25 +2611,35 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     }
     size_t old_size = self->max_length;
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        uint64_t *tmp =
-            PyMem_Realloc(self->adapter_counter[i], new_size * sizeof(uint64_t));
-        if (tmp == NULL) {
+        struct AdapterCounts counts = self->adapter_counter[i];
+        uint64_t *tmp_forward =
+            PyMem_Realloc(counts.forward, new_size * sizeof(uint64_t));
+        if (tmp_forward == NULL) {
             PyErr_NoMemory();
             return -1;
         }
-        self->adapter_counter[i] = tmp;
-        memset(self->adapter_counter[i] + old_size, 0,
+        memset(tmp_forward + old_size, 0,
                (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].forward = tmp_forward;
+        uint64_t *tmp_reverse =
+            PyMem_Realloc(counts.reverse, new_size * sizeof(uint64_t));
+        if (tmp_reverse == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp_reverse + old_size, 0,
+               (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].reverse = tmp_reverse;
     }
     self->max_length = new_size;
     return 0;
 }
 
 static inline bitmask_t
-update_adapter_count_array(size_t position, bitmask_t match,
+update_adapter_count_array(size_t position, size_t length, bitmask_t match,
                            bitmask_t already_found,
                            AdapterSequence *adapter_sequences,
-                           uint64_t **adapter_counter)
+                           struct AdapterCounts *adapter_counter)
 {
     size_t adapter_index = 0;
     while (true) {
@@ -2490,7 +2655,10 @@ update_adapter_count_array(size_t position, bitmask_t match,
         }
         if (match & adapter_found_mask) {
             size_t found_position = position - adapter_length + 1;
-            adapter_counter[adapter->adapter_index][found_position] += 1;
+            struct AdapterCounts *counts =
+                adapter_counter + adapter->adapter_index;
+            counts->forward[found_position] += 1;
+            counts->reverse[(length - 1) - found_position] += 1;
             already_found |= adapter_found_mask;
         }
         adapter_index += 1;
@@ -2504,7 +2672,7 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
                     const bitmask_t *restrict found_masks,
                     const bitmask_t (*bitmasks)[NUC_TABLE_SIZE],
                     AdapterSequence **adapter_sequences_store,
-                    uint64_t **adapter_counter)
+                    struct AdapterCounts *adapter_counter)
 {
     bitmask_t found_mask = found_masks[0];
     bitmask_t init_mask = init_masks[0];
@@ -2519,7 +2687,8 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
         R &= bitmask[index];
         if (R & found_mask) {
             already_found = update_adapter_count_array(
-                pos, R, already_found, adapter_sequences, adapter_counter);
+                pos, sequence_length, R, already_found, adapter_sequences,
+                adapter_counter);
         }
     }
 }
@@ -2529,7 +2698,7 @@ static void (*find_four_matchers)(const uint8_t *sequence, size_t sequence_lengt
                                   const bitmask_t *restrict found_masks,
                                   const bitmask_t (*by_four_bitmasks)[4],
                                   AdapterSequence **adapter_sequences_store,
-                                  uint64_t **adapter_counter) = NULL;
+                                  struct AdapterCounts *adapter_counter) = NULL;
 
 #if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 __attribute__((__target__("avx2"))) static void
@@ -2538,7 +2707,7 @@ find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
                         const bitmask_t *restrict found_masks,
                         const bitmask_t (*by_four_bitmasks)[4],
                         AdapterSequence **adapter_sequences_store,
-                        uint64_t **adapter_counter)
+                        struct AdapterCounts *adapter_counter)
 {
     bitmask_t fmask0 = found_masks[0];
     bitmask_t fmask1 = found_masks[1];
@@ -2573,23 +2742,23 @@ find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
 
             if (Rray[0] & fmask0) {
                 already_found0 = update_adapter_count_array(
-                    pos, Rray[0], already_found0, adapter_sequences_store[0],
-                    adapter_counter);
+                    pos, sequence_length, Rray[0], already_found0,
+                    adapter_sequences_store[0], adapter_counter);
             }
             if (Rray[1] & fmask1) {
                 already_found1 = update_adapter_count_array(
-                    pos, Rray[1], already_found1, adapter_sequences_store[1],
-                    adapter_counter);
+                    pos, sequence_length, Rray[1], already_found1,
+                    adapter_sequences_store[1], adapter_counter);
             }
             if (Rray[2] & fmask2) {
                 already_found2 = update_adapter_count_array(
-                    pos, Rray[2], already_found2, adapter_sequences_store[2],
-                    adapter_counter);
+                    pos, sequence_length, Rray[2], already_found2,
+                    adapter_sequences_store[2], adapter_counter);
             }
             if (Rray[3] & fmask3) {
                 already_found3 = update_adapter_count_array(
-                    pos, Rray[3], already_found3, adapter_sequences_store[3],
-                    adapter_counter);
+                    pos, sequence_length, Rray[3], already_found3,
+                    adapter_sequences_store[3], adapter_counter);
             }
         }
     }
@@ -2627,7 +2796,7 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
     bitmask_t *init_masks = self->init_masks;
     bitmask_t(*bitmasks)[5] = self->bitmasks;
     AdapterSequence **adapter_sequences = self->adapter_sequences;
-    uint64_t **adapter_count_array = self->adapter_counter;
+    struct AdapterCounts *adapter_count_array = self->adapter_counter;
     while (matcher_index < number_of_matchers) {
         /* Only run when a vectorized function pointer is initialized */
         if (find_four_matchers && number_of_matchers - matcher_index > 1) {
@@ -2735,17 +2904,24 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         return NULL;
     }
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        PyObject *tup = PyTuple_New(2);
-        PyObject *counts = PythonArray_FromBuffer(
-            'Q', self->adapter_counter[i], self->max_length * sizeof(uint64_t),
-            PythonArray_Type);
-        if (counts == NULL) {
+        PyObject *counts_forward = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].forward,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_forward == NULL) {
+            return NULL;
+        }
+        PyObject *counts_reverse = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].reverse,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_reverse == NULL) {
             return NULL;
         }
         PyObject *adapter = PyTuple_GetItem(self->adapters, i);
         Py_INCREF(adapter);
+        PyObject *tup = PyTuple_New(3);
         PyTuple_SetItem(tup, 0, adapter);
-        PyTuple_SetItem(tup, 1, counts);
+        PyTuple_SetItem(tup, 1, counts_forward);
+        PyTuple_SetItem(tup, 2, counts_reverse);
         PyList_SetItem(counts_list, i, tup);
     }
     return counts_list;
@@ -5987,6 +6163,11 @@ _qc_exec(PyObject *module)
         return -1;
     }
     ret = PyModule_AddIntMacro(module, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+
+    ret = PyModule_AddIntMacro(module, DEFAULT_END_ANCHOR_LENGTH);
     if (ret < 0) {
         return -1;
     }
