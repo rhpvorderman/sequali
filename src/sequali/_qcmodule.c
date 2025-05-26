@@ -2047,13 +2047,16 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         base_counts0 + base_counts1 + base_counts2 + base_counts3;
     uint64_t at_counts = base_counts & 0xFFFFFFFF;
     uint64_t gc_counts = (base_counts >> 32) & 0xFFFFFFFF;
-    double gc_content_percentage =
-        (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
-    uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
-    assert(gc_content_index >= 0);
-    assert(gc_content_index <= 100);
-    self->gc_content[gc_content_index] += 1;
-
+    uint64_t total = gc_counts + at_counts;
+    // if total == 0 there will be divide by 0, so only run if total > 0.
+    if (total > 0) {
+        double gc_content_percentage =
+            (double)gc_counts * (double)100.0 / (double)total;
+        uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
+        assert(gc_content_index >= 0);
+        assert(gc_content_index <= 100);
+        self->gc_content[gc_content_index] += 1;
+    }
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
@@ -2122,14 +2125,17 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
     }
 
     meta->accumulated_error_rate = accumulated_error_rate;
-    double average_error_rate = accumulated_error_rate / (double)sequence_length;
-    double average_phred = -10.0 * log10(average_error_rate);
-    // Floor the average phred so q9.7 does not get represented as q10 but
-    // q9. Otherwise the Q>=10 count is going to be off.
-    uint64_t phred_score_index = (uint64_t)floor(average_phred);
-    assert(phred_score_index >= 0);
-    assert(phred_score_index <= PHRED_MAX);
-    self->phred_scores[phred_score_index] += 1;
+    if (sequence_length > 0) {
+        double average_error_rate =
+            accumulated_error_rate / (double)sequence_length;
+        double average_phred = -10.0 * log10(average_error_rate);
+        // Floor the average phred so q9.7 does not get represented as q10 but
+        // q9. Otherwise the Q>=10 count is going to be off.
+        uint64_t phred_score_index = (uint64_t)floor(average_phred);
+        assert(phred_score_index >= 0);
+        assert(phred_score_index <= PHRED_MAX);
+        self->phred_scores[phred_score_index] += 1;
+    }
     return 0;
 }
 
