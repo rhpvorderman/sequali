@@ -7,8 +7,11 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
-version 0.13.0-dev
+version 1.0.0
 ------------------
+This release addresses part of the received feedback after Sequali's
+publication. The application is mature enough to warrant a 1.0.0 release.
+
 + Python 3.13 support was added.
 + Python 3.8 and 3.9 are no longer supported.
 + Add an ``--images-zip`` flag to set a path where a zip with all the images
