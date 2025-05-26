@@ -19,7 +19,7 @@ version = sequali.__version__
 extensions = ['sphinxarg.ext']
 
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'includes']
 
 
 # -- Options for HTML output -------------------------------------------------
