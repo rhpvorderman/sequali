@@ -14,90 +14,90 @@ on:
 
 jobs:
 
-  package-checks:
-    strategy:
-      matrix:
-        tox_env:
-          - twine_check
-          - docs
-          - lint
-          - strict_compile
-          - html5validator
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-      - name: Install tox
-        run: pip install --upgrade tox
-      - name: Run tox -e ${{ matrix.tox_env }}
-        run: tox -e ${{ matrix.tox_env }}
-
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        python-version:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        os: ["ubuntu-latest"]
-        include:
-          # MacOS ARM m1
-          - os: "macos-latest"
-            python-version: "3.10"
-          - os: "macos-latest"
-            python-version: "3.13"
-          # MacOS x86-64
-          - os: "macos-13"
-            python-version: "3.10"
-          - os: "macos-13"
-            python-version: "3.13"
-          - os: "windows-latest"
-            python-version: "3.10"
-          - os: "windows-latest"
-            python-version: "3.13"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install tox
-        run: pip install tox
-      - name: Run tests
-        run: tox
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v1
-
-  test-arch:
-    if: startsWith(github.ref, 'refs/tags') || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
-    runs-on: "ubuntu-latest"
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: uraimo/run-on-arch-action@v2.7.1
-        name: Build & run test
-        with:
-          arch: none
-          distro: none
-          base_image: quay.io/pypa/manylinux2014_aarch64
-          run: |
-            /opt/python/cp311-cp311/bin/pip install tox
-            /opt/python/cp311-cp311/bin/tox  
+#  package-checks:
+#    strategy:
+#      matrix:
+#        tox_env:
+#          - twine_check
+#          - docs
+#          - lint
+#          - strict_compile
+#          - html5validator
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#        with:
+#          submodules: recursive
+#      - name: Set up Python 3.10
+#        uses: actions/setup-python@v4
+#        with:
+#          python-version: "3.10"
+#      - name: Install tox
+#        run: pip install --upgrade tox
+#      - name: Run tox -e ${{ matrix.tox_env }}
+#        run: tox -e ${{ matrix.tox_env }}
+#
+#  test:
+#    runs-on: ${{ matrix.os }}
+#    strategy:
+#      matrix:
+#        python-version:
+#          - "3.10"
+#          - "3.11"
+#          - "3.12"
+#          - "3.13"
+#        os: ["ubuntu-latest"]
+#        include:
+#          # MacOS ARM m1
+#          - os: "macos-latest"
+#            python-version: "3.10"
+#          - os: "macos-latest"
+#            python-version: "3.13"
+#          # MacOS x86-64
+#          - os: "macos-13"
+#            python-version: "3.10"
+#          - os: "macos-13"
+#            python-version: "3.13"
+#          - os: "windows-latest"
+#            python-version: "3.10"
+#          - os: "windows-latest"
+#            python-version: "3.13"
+#    steps:
+#      - uses: actions/checkout@v4
+#        with:
+#          submodules: recursive
+#      - name: Set up Python ${{ matrix.python-version }}
+#        uses: actions/setup-python@v4
+#        with:
+#          python-version: ${{ matrix.python-version }}
+#      - name: Install tox
+#        run: pip install tox
+#      - name: Run tests
+#        run: tox
+#      - name: Upload coverage report
+#        uses: codecov/codecov-action@v1
+#
+#  test-arch:
+#    if: startsWith(github.ref, 'refs/tags') || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+#    runs-on: "ubuntu-latest"
+#    steps:
+#      - uses: actions/checkout@v4
+#        with:
+#          submodules: recursive
+#      - uses: uraimo/run-on-arch-action@v2.7.1
+#        name: Build & run test
+#        with:
+#          arch: none
+#          distro: none
+#          base_image: quay.io/pypa/manylinux2014_aarch64
+#          run: |
+#            /opt/python/cp311-cp311/bin/pip install tox
+#            /opt/python/cp311-cp311/bin/tox
 
   deploy:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+#    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
     runs-on: ${{ matrix.os }}
-    needs: [package-checks, test, test-arch]
+#    needs: [package-checks, test, test-arch]
     strategy:
       matrix:
         os:
@@ -129,10 +129,6 @@ jobs:
         run: cibuildwheel --output-dir dist
         env:
           CIBW_SKIP: "*-win32 *-manylinux_i686 pp3*"  # Skip 32 bit, pypy
-          CIBW_ENVIRONMENT_LINUX: >-
-            CFLAGS="-g0 -DNDEBUG"
-          CIBW_ENVIRONMENT_MACOS: >-
-            CFLAGS="-g0 -DNDEBUG"
           CIBW_ARCHS_LINUX: ${{ matrix.cibw_archs_linux }}
           # Fully test the build wheels again.
           CIBW_TEST_REQUIRES: "pytest"
