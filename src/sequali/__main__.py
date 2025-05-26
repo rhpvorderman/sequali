@@ -23,6 +23,8 @@ import sys
 
 from ._qc import (
     AdapterCounter,
+    DEFAULT_BASES_FROM_END,
+    DEFAULT_BASES_FROM_START,
     DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH,
     DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET,
@@ -34,14 +36,19 @@ from ._qc import (
     DedupEstimator,
     InsertSizeMetrics,
     NanoStats,
+    OverrepresentedSequences,
     PerTileQuality,
     QCMetrics,
-    SequenceDuplication
 )
 from ._version import __version__
 from .adapters import DEFAULT_ADAPTER_FILE, adapters_from_file
-from .report_modules import (calculate_stats, dict_to_report_modules,
-                             report_modules_to_dict, write_html_report)
+from .report_modules import (
+    calculate_stats,
+    dict_to_report_modules,
+    pack_module_svgs,
+    report_modules_to_dict,
+    write_html_report
+)
 from .util import NGSFile, sequence_names_match
 
 DEFAULT_FINGERPRINT_BACK_SEQUENCE_PAIRED_OFFSET = 0
@@ -67,6 +74,9 @@ def argument_parser() -> argparse.ArgumentParser:
                         help="Output directory for the report files. default: "
                              "current working directory.",
                         default=os.getcwd())
+    parser.add_argument("--images-zip", type=str, metavar="ZIP",
+                        help="If supplied, will create a zip file with the "
+                             "images at the supplied location.")
     parser.add_argument("--adapter-file",
                         default=DEFAULT_ADAPTER_FILE,
                         help=f"File with adapters to search for. See default "
@@ -119,6 +129,22 @@ def argument_parser() -> argparse.ArgumentParser:
                              f"gets filled up with more sequences from the "
                              f"beginning. "
                              f"Default: 1 in {DEFAULT_UNIQUE_SAMPLE_EVERY}.")
+    parser.add_argument("--overrepresentation-bases-from-start", type=int,
+                        default=DEFAULT_BASES_FROM_START,
+                        metavar="BP",
+                        help=f"The minimum amount of bases sampled from the "
+                             f"start of the read. There might be slight overshoot "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
+                             f"Default: {DEFAULT_BASES_FROM_START}")
+    parser.add_argument("--overrepresentation-bases-from-end", type=int,
+                        default=DEFAULT_BASES_FROM_END,
+                        metavar="BP",
+                        help=f"The minimum amount of bases sampled from the "
+                             f"end of the read. There might be slight overshoot "
+                             f"depending on the fragment length. Set to a "
+                             f"negative value to sample the entire read. "
+                             f"Default: {DEFAULT_BASES_FROM_END}")
     parser.add_argument("--duplication-max-stored-fingerprints", type=int,
                         default=DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS,
                         metavar="N",
@@ -188,7 +214,7 @@ def main() -> None:
     metrics1 = QCMetrics()
     per_tile_quality1 = PerTileQuality()
     nanostats1 = NanoStats()
-    sequence_duplication1 = SequenceDuplication(
+    overrepresented_sequences1 = OverrepresentedSequences(
         max_unique_fragments=args.overrepresentation_max_unique_fragments,
         fragment_length=args.overrepresentation_fragment_length,
         sample_every=args.overrepresentation_sample_every
@@ -219,7 +245,7 @@ def main() -> None:
         insert_size_metrics = InsertSizeMetrics()
         metrics2 = QCMetrics()
         per_tile_quality2 = PerTileQuality()
-        sequence_duplication2 = SequenceDuplication(
+        overrepresented_sequences2 = OverrepresentedSequences(
             max_unique_fragments=args.overrepresentation_max_unique_fragments,
             fragment_length=args.overrepresentation_fragment_length,
             sample_every=args.overrepresentation_sample_every
@@ -227,7 +253,7 @@ def main() -> None:
     else:
         metrics2 = None
         per_tile_quality2 = None
-        sequence_duplication2 = None
+        overrepresented_sequences2 = None
         insert_size_metrics = None
     with contextlib.ExitStack() as exit_stack:
         reader1 = NGSFile(args.input, threads - 1)
@@ -253,7 +279,7 @@ def main() -> None:
         for record_array1 in reader1:
             metrics1.add_record_array(record_array1)
             per_tile_quality1.add_record_array(record_array1)
-            sequence_duplication1.add_record_array(record_array1)
+            overrepresented_sequences1.add_record_array(record_array1)
             nanostats1.add_record_array(record_array1)
             if paired:
                 record_array2 = reader2.read(len(record_array1))
@@ -274,7 +300,7 @@ def main() -> None:
                 insert_size_metrics.add_record_array_pair(record_array1, record_array2)  # type: ignore  # noqa: E501
                 metrics2.add_record_array(record_array2)  # type: ignore  # noqa: E501
                 per_tile_quality2.add_record_array(record_array2)  # type: ignore  # noqa: E501
-                sequence_duplication2.add_record_array(record_array2)  # type: ignore  # noqa: E501
+                overrepresented_sequences2.add_record_array(record_array2)  # type: ignore  # noqa: E501
             else:
                 adapter_counter1.add_record_array(record_array1)   # type: ignore  # noqa: E501
                 dedup_estimator.add_record_array(record_array1)
@@ -289,14 +315,14 @@ def main() -> None:
         metrics=metrics1,
         adapter_counter=adapter_counter1,
         per_tile_quality=per_tile_quality1,
-        sequence_duplication=sequence_duplication1,
+        sequence_duplication=overrepresented_sequences1,
         dedup_estimator=dedup_estimator,
         nanostats=nanostats1,
         insert_size_metrics=insert_size_metrics,
         filename_reverse=args.input_reverse,
         metrics_reverse=metrics2,
         per_tile_quality_reverse=per_tile_quality2,
-        sequence_duplication_reverse=sequence_duplication2,
+        sequence_duplication_reverse=overrepresented_sequences2,
         adapters=adapters,
         fraction_threshold=fraction_threshold,
         min_threshold=min_threshold,
@@ -315,6 +341,8 @@ def main() -> None:
         # Indent=0 is ~40% smaller than indent=2 while still human-readable
         json.dump(json_dict, json_file, indent=0)
     write_html_report(report_modules, args.html)
+    if args.images_zip is not None:
+        pack_module_svgs(report_modules, args.images_zip)
 
 
 if __name__ == "__main__":  # pragma: no cover

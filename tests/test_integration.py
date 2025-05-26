@@ -16,6 +16,7 @@
 
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,8 @@ def test_simple_fastq(tmp_path):
     assert result["summary"]["minimum_length"] == 7
     assert result["summary"]["total_gc_bases"] == 4
     assert result["summary"]["total_bases"] == 22
+    assert result["sequence_length_distribution"]["n50"] == 7
+    assert result["sequence_length_distribution"]["n90"] == 7
 
 
 def test_empty_file(tmp_path):
@@ -130,6 +133,8 @@ def test_nanopore_reads(tmp_path):
     fastq_json = tmp_path / "100_nanopore_reads.fastq.gz.json"
     result = json.loads(fastq_json.read_text())
     assert result["summary"]["total_reads"] == 100
+    assert result["sequence_length_distribution"]["n50"] == 59502
+    assert result["sequence_length_distribution"]["n90"] == 7517
 
 
 def test_dorado_nanopore_bam(tmp_path):
@@ -277,3 +282,22 @@ def test_version_command(capsys):
     result = capsys.readouterr()
     import sequali
     assert result.out.replace("\n", "") == sequali.__version__
+
+
+@pytest.mark.parametrize("testfiles", [
+    [str(TEST_DATA / "simple.fastq")],
+    [str(TEST_DATA / "LTB-A-BC001_S1_L003_R1_001_shortened.fastq.gz"),
+     str(TEST_DATA / "LTB-A-BC001_S1_L003_R2_001_shortened.fastq.gz")],
+    [str(TEST_DATA / "100_nanopore_reads.fastq.gz")]
+])
+def test_images_zip(tmp_path, testfiles):
+    images_zip = tmp_path / "images.zip"
+    sys.argv = ["", "--dir", str(tmp_path), *testfiles,
+                "--images-zip", str(images_zip)]
+    main()
+
+    assert images_zip.exists()
+    with zipfile.ZipFile(images_zip) as z:
+        for info in z.infolist():
+            assert info.filename.endswith(".svg")
+            assert info.date_time == (1980, 1, 1, 0, 0, 0)

@@ -1,0 +1,7 @@
+@HD	VN:1.6	SO:unsorted
+@RG	ID:A	SM:simple
+unmapped	4	*	0	0	*	*	0	0	GATTACA	*	RG:Z:A
+secondary	256	*	0	0	*	*	0	0	GATTACA	*	RG:Z:A
+supplementary	2048	*	0	0	*	*	0	0	GATTACA	*	RG:Z:A
+secondary_and_supplementary	2304	*	0	0	*	*	0	0	GATTACA	*	RG:Z:A
+everything_but_secondary_and_supplementary	1663	*	0	0	*	*	0	0	GATTACA	*	RG:Z:A

@@ -7,6 +7,37 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 1.0.0
+------------------
+This release addresses part of the received feedback after Sequali's
+publication. The application is mature enough to warrant a 1.0.0 release.
+
++ Python 3.13 support was added.
++ Python 3.8 and 3.9 are no longer supported.
++ Add an ``--images-zip`` flag to set a path where a zip with all the images
+  will be created.
++ Make reports reproducible by eliminating timestamps.
++ Add end-anchored plots, similar to how it is done in
+  `NanoQC <https://github.com/wdecoster/nanoQC>`_.
++ Add a plot show how many reads originate from read splitting. This primarily
+  serves to notify the user that chimeric read splitting has already been
+  performed by dorado.
++ Add a N50 and N90 statistic to the sequence length distribution report.
++ Allow proper judging of aligned BAM files as input data by ignoring any
+  secondary or supplementary alignment records. This is equivalent to running
+  ``samtools fastq > input.fastq`` on the input data before submitting it to
+  sequali, except that useful tag information is retained.
++ Only sample the first 100 bp from the beginning and end of the read by
+  default for the overrepresented sequences analysis. This prevents a lot of
+  false positives from common human genome repeats. The amount of base pairs
+  that are sampled from the beginning and end is user settable with an option
+  to sample everything.
++ The code for the adapter counting was refactored and the vectorized algorithm
+  was replaced by an AVX2 version that is used when the CPU supports that
+  instruction set. This is both faster and far less code than the original
+  implementation.
++ Extended the README with a few usage examples.
+
 version 0.12.0
 ------------------
 + Properly name percentiles as such in the sequence length distribution rather

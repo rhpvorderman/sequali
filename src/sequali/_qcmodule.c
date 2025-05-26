@@ -16,11 +16,20 @@ You should have received a copy of the GNU Affero General Public License
 along with Sequali.  If not, see <https://www.gnu.org/licenses/
 */
 
+#define Py_LIMITED_API 0x030A0000
 #define PY_SSIZE_T_CLEAN
 #include "Python.h"
 #include "structmember.h"
 
-#include "function_dispatch.h"
+/* Buffer constants have remained the same and it is a shame not to be
+   available for python versions below 3.11 for just these two missing
+   constants. */
+#ifndef PyBUF_READ
+#define PyBUF_READ 0x100
+#define PyBUF_WRITE 0x200
+#endif
+
+#include "compiler_defs.h"
 #include "murmur3.h"
 #include "score_to_error_rate.h"
 #include "wanghash.h"
@@ -28,13 +37,66 @@ along with Sequali.  If not, see <https://www.gnu.org/licenses/
 #include <math.h>
 #include <stdbool.h>
 
-#ifdef __SSE2__
-#include "emmintrin.h"
-#endif
+/* Pointers to types that will be imported/initialized in the module
+   initialization section */
 
-/* Pointers to types that will be imported in the module initialization section */
+struct QCModuleState {
+    PyTypeObject *PythonArray_Type;  // array.array
+    PyTypeObject *FastqRecordView_Type;
+    PyTypeObject *FastqRecordArrayView_Type;
+    PyTypeObject *FastqParser_Type;
+    PyTypeObject *BamParser_Type;
+    PyTypeObject *QCMetrics_Type;
+    PyTypeObject *AdapterCounter_Type;
+    PyTypeObject *OverrepresentedSequences_Type;
+    PyTypeObject *DedupEstimator_Type;
+    PyTypeObject *PerTileQuality_Type;
+    PyTypeObject *NanoporeReadInfo_Type;
+    PyTypeObject *NanoStats_Type;
+    PyTypeObject *NanoStatsIterator_Type;
+    PyTypeObject *InsertSizeMetrics_Type;
+};
 
-static PyTypeObject *PythonArray;  // array.array
+static inline struct QCModuleState *
+get_qc_module_state_from_type(PyTypeObject *tp)
+{
+    return (struct QCModuleState *)PyType_GetModuleState(tp);
+}
+
+/**
+ * @brief Get the qc module state from obj object. Object is a void to allow
+ *        custom classes to be passed in.
+ *
+ * @param obj
+ * @return struct QCModuleState*
+ */
+static inline struct QCModuleState *
+get_qc_module_state_from_obj(void *obj)
+{
+    return get_qc_module_state_from_type(Py_TYPE((PyObject *)obj));
+}
+
+static inline int
+is_FastqRecordView(void *module_obj, void *obj_to_check)
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(module_obj);
+    if (state == NULL) {
+        return -1;
+    }
+    return PyObject_IsInstance(obj_to_check,
+                               (PyObject *)state->FastqRecordView_Type);
+}
+
+static inline int
+is_FastqRecordArrayView(void *module_obj, void *obj_to_check)
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(module_obj);
+    if (state == NULL) {
+        return -1;
+    }
+    return PyObject_IsInstance(obj_to_check,
+                               (PyObject *)state->FastqRecordArrayView_Type);
+}
 
 #define PHRED_MAX 93
 
@@ -56,10 +118,11 @@ non_temporal_write_prefetch(void *address)
 }
 
 static PyObject *
-PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize)
+PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize,
+                       PyTypeObject *PythonArray_Type)
 {
     PyObject *array =
-        PyObject_CallFunction((PyObject *)PythonArray, "C", typecode);
+        PyObject_CallFunction((PyObject *)PythonArray_Type, "C", typecode);
     if (array == NULL) {
         return NULL;
     }
@@ -268,8 +331,10 @@ time_string_to_timestamp(const uint8_t *time_string)
 */
 
 struct FastqMeta {
-    uint8_t *record_start;
-    // name_offset is always 1, so no variable needed
+    union {
+        uint8_t *record_start;
+        uint8_t *name;  // Name is always at the start of the record.
+    };
     uint32_t name_length;
     uint32_t sequence_offset;
     // Sequence length and qualities length should be the same
@@ -278,13 +343,11 @@ struct FastqMeta {
         uint32_t qualities_length;
     };
     uint32_t qualities_offset;
+    uint32_t tags_offset;
+    uint32_t tags_length;
     /* Store the accumulated error once calculated so it can be reused by
        the NanoStats module */
     double accumulated_error_rate;
-    // Nanopore specific metadata
-    time_t start_time;
-    float duration;
-    int32_t channel;
 };
 
 typedef struct _FastqRecordViewStruct {
@@ -297,7 +360,9 @@ static void
 FastqRecordView_dealloc(FastqRecordView *self)
 {
     Py_XDECREF(self->obj);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyObject *tp = (PyObject *)Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject *
@@ -306,36 +371,46 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     PyObject *name_obj = NULL;
     PyObject *sequence_obj = NULL;
     PyObject *qualities_obj = NULL;
-    static char *kwargnames[] = {"name", "sequence", "qualities", NULL};
-    static char *format = "UUU|:FastqRecordView";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-                                     &name_obj, &sequence_obj, &qualities_obj)) {
+    PyObject *tags_obj = NULL;
+    static char *kwargnames[] = {"name", "sequence", "qualities", "tags", NULL};
+    static char *format = "UUU|S:FastqRecordView";
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &name_obj,
+                                     &sequence_obj, &qualities_obj, &tags_obj)) {
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(name_obj)) {
+    // Unicode check already performed by the parser, so error checking can be
+    // ignored in some cases.
+    Py_ssize_t original_name_length = PyUnicode_GetLength(name_obj);
+    Py_ssize_t name_length = 0;
+    const uint8_t *name =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(name_obj, &name_length);
+    if (original_name_length != name_length) {
         PyErr_Format(PyExc_ValueError,
                      "name should contain only ASCII characters: %R", name_obj);
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence_obj)) {
+
+    Py_ssize_t original_sequence_length = PyUnicode_GetLength(sequence_obj);
+    Py_ssize_t sequence_length = 0;
+    const uint8_t *sequence =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence_obj, &sequence_length);
+    if (original_sequence_length != sequence_length) {
         PyErr_Format(PyExc_ValueError,
                      "sequence should contain only ASCII characters: %R",
                      sequence_obj);
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(qualities_obj)) {
+
+    Py_ssize_t original_qualities_length = PyUnicode_GetLength(qualities_obj);
+    Py_ssize_t qualities_length = 0;
+    const uint8_t *qualities = (const uint8_t *)PyUnicode_AsUTF8AndSize(
+        qualities_obj, &qualities_length);
+    if (original_qualities_length != qualities_length) {
         PyErr_Format(PyExc_ValueError,
                      "qualities should contain only ASCII characters: %R",
-                     qualities_obj);
+                     sequence_obj);
         return NULL;
     }
-
-    uint8_t *name = PyUnicode_DATA(name_obj);
-    size_t name_length = PyUnicode_GET_LENGTH(name_obj);
-    uint8_t *sequence = PyUnicode_DATA(sequence_obj);
-    size_t sequence_length = PyUnicode_GET_LENGTH(sequence_obj);
-    uint8_t *qualities = PyUnicode_DATA(qualities_obj);
-    size_t qualities_length = PyUnicode_GET_LENGTH(qualities_obj);
 
     if (sequence_length != qualities_length) {
         PyErr_Format(
@@ -344,8 +419,13 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
             sequence_length, qualities_length);
         return NULL;
     }
-
-    size_t total_length = name_length + sequence_length + qualities_length + 6;
+    Py_ssize_t tags_length = 0;
+    char *tags = NULL;
+    if (tags_obj != NULL) {
+        tags_length = PyBytes_Size(tags_obj);
+        tags = PyBytes_AsString(tags_obj);
+    }
+    size_t total_length = name_length + sequence_length * 2 + tags_length;
     if (total_length > UINT32_MAX) {
         // lengths are saved as uint32_t types so throw an error;
         PyErr_Format(
@@ -356,7 +436,7 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
 
     double accumulated_error_rate = 0.0;
-    for (size_t i = 0; i < sequence_length; i++) {
+    for (Py_ssize_t i = 0; i < sequence_length; i++) {
         uint8_t q = qualities[i] - 33;
         if (q > PHRED_MAX) {
             PyErr_Format(PyExc_ValueError, "Not a valid phred character: %c",
@@ -376,34 +456,24 @@ FastqRecordView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         return PyErr_NoMemory();
     }
 
-    uint8_t *buffer = (uint8_t *)PyBytes_AS_STRING(bytes_obj);
+    uint8_t *buffer = (uint8_t *)PyBytes_AsString(bytes_obj);  // No check needed.
     self->meta.record_start = buffer;
     self->meta.name_length = name_length;
-    self->meta.sequence_offset = 2 + name_length;
+    self->meta.sequence_offset = name_length;
     self->meta.sequence_length = sequence_length;
-    self->meta.qualities_offset = 5 + name_length + sequence_length;
+    self->meta.qualities_offset = name_length + sequence_length;
+    self->meta.tags_offset = name_length + sequence_length * 2;
+    self->meta.tags_length = tags_length;
     self->meta.accumulated_error_rate = accumulated_error_rate;
-    self->meta.duration = 0.0;
-    self->meta.start_time = 0;
-    self->meta.channel = -1;
     self->obj = bytes_obj;
 
-    buffer[0] = '@';
-    memcpy(buffer + 1, name, name_length);
-    size_t cursor = 1 + name_length;
-    buffer[cursor] = '\n';
-    cursor += 1;
+    memcpy(buffer, name, name_length);
+    size_t cursor = name_length;
     memcpy(buffer + cursor, sequence, sequence_length);
     cursor += sequence_length;
-    buffer[cursor] = '\n';
-    cursor += 1;
-    buffer[cursor] = '+';
-    cursor += 1;
-    buffer[cursor] = '\n';
-    cursor += 1;
     memcpy(buffer + cursor, qualities, sequence_length);
     cursor += sequence_length;
-    buffer[cursor] = '\n';
+    memcpy(buffer + cursor, tags, tags_length);
     return (PyObject *)self;
 }
 
@@ -416,13 +486,8 @@ PyDoc_STRVAR(FastqRecordView_name__doc__,
 static PyObject *
 FastqRecordView_name(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->meta.name_length, 127);
-    if (result == NULL) {
-        return NULL;
-    }
-    memcpy(PyUnicode_DATA(result), self->meta.record_start + 1,
-           self->meta.name_length);
-    return result;
+    return PyUnicode_DecodeASCII((char *)self->meta.name,
+                                 self->meta.name_length, NULL);
 }
 
 PyDoc_STRVAR(FastqRecordView_sequence__doc__,
@@ -434,14 +499,9 @@ PyDoc_STRVAR(FastqRecordView_sequence__doc__,
 static PyObject *
 FastqRecordView_sequence(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->meta.sequence_length, 127);
-    if (result == NULL) {
-        return NULL;
-    }
-    memcpy(PyUnicode_DATA(result),
-           self->meta.record_start + self->meta.sequence_offset,
-           self->meta.sequence_length);
-    return result;
+    return PyUnicode_DecodeASCII(
+        (char *)self->meta.record_start + self->meta.sequence_offset,
+        self->meta.sequence_length, NULL);
 }
 
 PyDoc_STRVAR(FastqRecordView_qualities__doc__,
@@ -453,14 +513,22 @@ PyDoc_STRVAR(FastqRecordView_qualities__doc__,
 static PyObject *
 FastqRecordView_qualities(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
 {
-    PyObject *result = PyUnicode_New(self->meta.sequence_length, 127);
-    if (result == NULL) {
-        return NULL;
-    }
-    memcpy(PyUnicode_DATA(result),
-           self->meta.record_start + self->meta.qualities_offset,
-           self->meta.sequence_length);
-    return result;
+    return PyUnicode_DecodeASCII(
+        (char *)self->meta.record_start + self->meta.qualities_offset,
+        self->meta.sequence_length, NULL);
+}
+
+PyDoc_STRVAR(FastqRecordView_tags__doc__,
+             "tags($self)\n"
+             "--\n"
+             "\n"
+             "Returns the raw tags as a bytes object.\n");
+static PyObject *
+FastqRecordView_tags(FastqRecordView *self, PyObject *Py_UNUSED(ignore))
+{
+    return PyBytes_FromStringAndSize(
+        (char *)self->meta.record_start + self->meta.tags_offset,
+        self->meta.tags_length);
 }
 
 static PyMethodDef FastqRecordView_methods[] = {
@@ -470,6 +538,8 @@ static PyMethodDef FastqRecordView_methods[] = {
      FastqRecordView_sequence__doc__},
     {"qualities", (PyCFunction)FastqRecordView_qualities, METH_NOARGS,
      FastqRecordView_qualities__doc__},
+    {"tags", (PyCFunction)FastqRecordView_tags, METH_NOARGS,
+     FastqRecordView_tags__doc__},
     {NULL}};
 
 static PyMemberDef FastqRecordView_members[] = {
@@ -478,34 +548,21 @@ static PyMemberDef FastqRecordView_members[] = {
     {NULL},
 };
 
-static PyTypeObject FastqRecordView_Type = {
-    .tp_name = "_qc.FastqRecordView",
-    .tp_basicsize = sizeof(FastqRecordView),
-    .tp_dealloc = (destructor)FastqRecordView_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = (newfunc)FastqRecordView__new__,
-    .tp_methods = FastqRecordView_methods,
-    .tp_members = FastqRecordView_members,
+static PyType_Slot FastqRecordView_slots[] = {
+    {Py_tp_dealloc, (destructor)FastqRecordView_dealloc},
+    {Py_tp_new, (newfunc)FastqRecordView__new__},
+    {Py_tp_methods, FastqRecordView_methods},
+    {Py_tp_members, FastqRecordView_members},
+    {0, NULL},
 };
 
-static inline int
-FastqRecordView_CheckExact(void *obj)
-{
-    return Py_TYPE(obj) == &FastqRecordView_Type;
-}
-
-static PyObject *
-FastqRecordView_FromFastqMetaAndObject(struct FastqMeta *meta, PyObject *object)
-{
-    FastqRecordView *self = PyObject_New(FastqRecordView, &FastqRecordView_Type);
-    if (self == NULL) {
-        return PyErr_NoMemory();
-    }
-    memcpy(&self->meta, meta, sizeof(struct FastqMeta));
-    Py_XINCREF(object);
-    self->obj = object;
-    return (PyObject *)self;
-}
+static PyType_Spec FastqRecordView_spec = {
+    .name = "_qc.FastqRecordView",
+    .basicsize = sizeof(FastqRecordView),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = FastqRecordView_slots,
+};
 
 /************************
  * FastqRecordArrayView *
@@ -521,19 +578,20 @@ static void
 FastqRecordArrayView_dealloc(FastqRecordArrayView *self)
 {
     Py_XDECREF(self->obj);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyObject *tp = (PyObject *)Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_DECREF(tp);
 }
-
-static PyTypeObject FastqRecordArrayView_Type;
 
 static PyObject *
 FastqRecordArrayView_FromPointerSizeAndObject(struct FastqMeta *records,
                                               size_t number_of_records,
-                                              PyObject *obj)
+                                              PyObject *obj,
+                                              PyTypeObject *FastqRecordArrayView_Type)
 {
     size_t size = number_of_records * sizeof(struct FastqMeta);
     FastqRecordArrayView *self = PyObject_NewVar(
-        FastqRecordArrayView, &FastqRecordArrayView_Type, number_of_records);
+        FastqRecordArrayView, FastqRecordArrayView_Type, number_of_records);
     if (self == NULL) {
         return PyErr_NoMemory();
     }
@@ -560,23 +618,35 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
     if (view_fastseq == NULL) {
         return NULL;
     }
-    Py_ssize_t number_of_items = PySequence_Fast_GET_SIZE(view_fastseq);
-    PyObject **items = PySequence_Fast_ITEMS(view_fastseq);
+    Py_ssize_t number_of_items = PySequence_Length(view_fastseq);
+
     size_t total_memory_size = 0;
+    struct QCModuleState *qc_module_state = get_qc_module_state_from_type(type);
+    PyTypeObject *FastqRecordView_Type = qc_module_state->FastqRecordView_Type;
+
     for (Py_ssize_t i = 0; i < number_of_items; i++) {
-        PyObject *item = items[i];
-        if (Py_TYPE(item) != &FastqRecordView_Type) {
+        PyObject *item = PySequence_GetItem(view_fastseq, i);
+        int correct_type =
+            PyObject_IsInstance(item, (PyObject *)FastqRecordView_Type);
+        if (correct_type == -1) {
+            Py_DECREF(item);
+            return NULL;
+        }
+        else if (correct_type == 0) {
             PyErr_Format(
                 PyExc_TypeError,
                 "Expected an iterable of FastqRecordView objects, but item %z "
-                "is of type %s: %R",
-                i, Py_TYPE(item)->tp_name, item);
+                "is of type %R: %R",
+                i, (PyObject *)Py_TYPE((PyObject *)item), item);
+            Py_DECREF(item);
             return NULL;
         }
         FastqRecordView *record = (FastqRecordView *)item;
-        size_t memory_size =
-            6 + record->meta.name_length + record->meta.sequence_length * 2;
+        size_t memory_size = record->meta.name_length +
+                             record->meta.sequence_length * 2 +
+                             record->meta.tags_length;
         total_memory_size += memory_size;
+        Py_DECREF(item);
     }
     PyObject *obj = PyBytes_FromStringAndSize(NULL, total_memory_size);
     if (obj == NULL) {
@@ -584,36 +654,31 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
     }
     FastqRecordArrayView *record_array =
         (FastqRecordArrayView *)FastqRecordArrayView_FromPointerSizeAndObject(
-            NULL, number_of_items, obj);
+            NULL, number_of_items, obj,
+            qc_module_state->FastqRecordArrayView_Type);
     Py_DECREF(obj);  // Reference count increased by 1 by previous function.
     if (record_array == NULL) {
         Py_DECREF(obj);
         return NULL;
     }
-    char *record_ptr = PyBytes_AS_STRING(obj);
+    char *record_ptr = PyBytes_AsString(obj);  // No check needed.
     struct FastqMeta *metas = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_items; i++) {
-        FastqRecordView *record = (FastqRecordView *)items[i];
+        FastqRecordView *record =
+            (FastqRecordView *)PySequence_GetItem(view_fastseq, i);
         struct FastqMeta meta = record->meta;
-        record_ptr[0] = '@';
-        record_ptr += 1;
-        memcpy(record_ptr, meta.record_start + 1, meta.name_length);
+        memcpy(record_ptr, meta.record_start, meta.name_length);
         record_ptr += meta.name_length;
-        record_ptr[0] = '\n';
-        record_ptr += 1;
         memcpy(record_ptr, meta.record_start + meta.sequence_offset,
                meta.sequence_length);
         record_ptr += meta.sequence_length;
-        record_ptr[0] = '\n';
-        record_ptr[1] = '+';
-        record_ptr[2] = '\n';
-        record_ptr += 3;
         memcpy(record_ptr, meta.record_start + meta.qualities_offset,
                meta.sequence_length);
         record_ptr += meta.sequence_length;
-        record_ptr[0] = '\n';
-        record_ptr += 1;
+        memcpy(record_ptr, meta.record_start + meta.tags_offset, meta.tags_length);
+        record_ptr += meta.tags_length;
         memcpy(metas + i, &record->meta, sizeof(struct FastqMeta));
+        Py_DECREF(record);
     }
     return (PyObject *)record_array;
 }
@@ -621,7 +686,7 @@ FastqRecordArrayView__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs
 static PyObject *
 FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
 {
-    Py_ssize_t size = Py_SIZE(self);
+    Py_ssize_t size = Py_SIZE((PyObject *)self);
     if (i < 0) {
         i = size + i;
     }
@@ -629,19 +694,70 @@ FastqRecordArrayView__get_item__(FastqRecordArrayView *self, Py_ssize_t i)
         PyErr_SetString(PyExc_IndexError, "array index out of range");
         return NULL;
     }
-    return FastqRecordView_FromFastqMetaAndObject(self->records + i, self->obj);
+    struct QCModuleState *qc_module_state = get_qc_module_state_from_obj(self);
+    if (qc_module_state == NULL) {
+        return NULL;
+    }
+    FastqRecordView *view =
+        PyObject_New(FastqRecordView, qc_module_state->FastqRecordView_Type);
+    if (self == NULL) {
+        return PyErr_NoMemory();
+    }
+    memcpy(&view->meta, self->records + i, sizeof(struct FastqMeta));
+    Py_XINCREF(self->obj);
+    view->obj = self->obj;
+    return (PyObject *)view;
 }
 
 static inline Py_ssize_t
 FastqRecordArrayView__length__(FastqRecordArrayView *self)
 {
-    return Py_SIZE(self);
+    return Py_SIZE((PyObject *)self);
 }
 
-static inline int
-FastqRecordArrayView_CheckExact(void *obj)
+static inline bool
+is_space(char c)
 {
-    return Py_TYPE(obj) == &FastqRecordArrayView_Type;
+    return (c == ' ' || c == '\t');
+}
+
+#define FIND_SPACE_CHUNK_SIZE 8
+/**
+ * @brief strcspn(str, " \t") replacement with length. Returns the offset of
+ * ' ' or '\t' or the length of the string.
+ *
+ * @param str
+ * @param length
+ * @return size_t
+ */
+static inline size_t
+find_space(const char *restrict str, size_t length)
+{
+    const char *restrict cursor = str;
+    const char *end = str + length;
+    const char *vec_end = end - (FIND_SPACE_CHUNK_SIZE - 1);
+    while (cursor < vec_end) {
+        /* Fixed size for loop allows compiler to use inline vectors. */
+        uint8_t results[FIND_SPACE_CHUNK_SIZE];
+        for (size_t i = 0; i < FIND_SPACE_CHUNK_SIZE; i++) {
+            /* Set all bits when is_space is true. This is the same result as
+               when _mm_cmpeq_epi8 is used. Hence an extra AND instruction is
+               prevented. */
+            results[i] = is_space(cursor[i]) ? 255 : 0;
+        }
+        uint64_t *result = (uint64_t *)results;
+        if (result[0]) {
+            break;
+        }
+        cursor += 8;
+    }
+    while (cursor < end) {
+        if (is_space(*cursor)) {
+            break;
+        }
+        cursor++;
+    }
+    return cursor - str;
 }
 
 /**
@@ -656,17 +772,16 @@ FastqRecordArrayView_CheckExact(void *obj)
  * @param name2_length The length of the second name
  */
 static inline bool
-fastq_names_are_mates(const char *name1, const char *name2, size_t name2_length)
+fastq_names_are_mates(const char *name1, const char *name2,
+                      size_t name1_length, size_t name2_length)
 {
-    /* strcspn will return the length of the string if none of the complement
-       characters is found, so name1_length is not necessary as a parameter.*/
-    size_t id_length = strcspn(name1, " \t\n");
+    size_t id_length = find_space(name1, name1_length);
     if (name2_length < id_length) {
         return false;
     }
     if (name2_length > id_length) {
         char id2_sep = name2[id_length];
-        if (!(id2_sep == ' ' || id2_sep == '\t' || id2_sep == '\n')) {
+        if (!(id2_sep == ' ' || id2_sep == '\t')) {
             return false;
         }
     }
@@ -695,19 +810,24 @@ PyDoc_STRVAR(
 static PyObject *
 FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
 {
-    if (!FastqRecordArrayView_CheckExact(other_obj)) {
+    int instance_check =
+        PyObject_IsInstance(other_obj, (PyObject *)Py_TYPE((PyObject *)self));
+    if (instance_check == 0) {
         PyErr_Format(PyExc_TypeError,
-                     "other must be of type FastqRecordArrayView, got %s",
-                     Py_TYPE(other_obj)->tp_name);
+                     "other must be of type FastqRecordArrayView, got %R",
+                     (PyObject *)Py_TYPE((PyObject *)other_obj));
+        return NULL;
+    }
+    else if (instance_check == -1) {
         return NULL;
     }
     FastqRecordArrayView *other = (FastqRecordArrayView *)other_obj;
-    Py_ssize_t length = Py_SIZE(self);
-    if (length != Py_SIZE(other)) {
+    Py_ssize_t length = Py_SIZE((PyObject *)self);
+    if (length != Py_SIZE((PyObject *)other)) {
         PyErr_Format(PyExc_ValueError,
                      "other is not the same length as this record array view. "
                      "This length: %zd, other length: %zd",
-                     length, Py_SIZE(other));
+                     length, Py_SIZE((PyObject *)other));
         return NULL;
     }
     struct FastqMeta *self_records = self->records;
@@ -715,10 +835,11 @@ FastqRecordArrayView_is_mate(FastqRecordArrayView *self, PyObject *other_obj)
     for (Py_ssize_t i = 0; i < length; i++) {
         struct FastqMeta *record1 = self_records + i;
         struct FastqMeta *record2 = other_records + i;
-        char *name1 = (char *)record1->record_start + 1;
-        char *name2 = (char *)record2->record_start + 1;
+        char *name1 = (char *)record1->name;
+        char *name2 = (char *)record2->name;
+        size_t name1_length = record1->name_length;
         size_t name2_length = record2->name_length;
-        if (!fastq_names_are_mates(name1, name2, name2_length)) {
+        if (!fastq_names_are_mates(name1, name2, name1_length, name2_length)) {
             Py_RETURN_FALSE;
         }
     }
@@ -731,26 +852,31 @@ static PyMethodDef FastqRecordArrayView_methods[] = {
     {NULL},
 };
 
-static PySequenceMethods FastqRecordArrayView_sequence_methods = {
-    .sq_item = (ssizeargfunc)FastqRecordArrayView__get_item__,
-    .sq_length = (lenfunc)FastqRecordArrayView__length__,
-};
-
 static PyMemberDef FastqRecordArrayView_members[] = {
     {"obj", T_OBJECT, offsetof(FastqRecordArrayView, obj), READONLY,
      "The underlying buffer where the fastq records are located"},
     {NULL},
 };
 
-static PyTypeObject FastqRecordArrayView_Type = {
-    .tp_name = "_qc.FastqRecordArrayView",
-    .tp_dealloc = (destructor)FastqRecordArrayView_dealloc,
-    .tp_basicsize = sizeof(FastqRecordArrayView),
-    .tp_itemsize = sizeof(struct FastqMeta),
-    .tp_as_sequence = &FastqRecordArrayView_sequence_methods,
-    .tp_new = FastqRecordArrayView__new__,
-    .tp_members = FastqRecordArrayView_members,
-    .tp_methods = FastqRecordArrayView_methods,
+static PyType_Slot FastqRecordArrayView_slots[] = {
+    {Py_sq_item, (ssizeargfunc)FastqRecordArrayView__get_item__},
+    {Py_sq_length, (lenfunc)FastqRecordArrayView__length__},
+    {Py_tp_members, FastqRecordArrayView_members},
+    {Py_tp_methods, FastqRecordArrayView_methods},
+    {Py_tp_new, FastqRecordArrayView__new__},
+    {
+        Py_tp_dealloc,
+        (destructor)FastqRecordArrayView_dealloc,
+    },
+    {0, NULL},
+};
+
+static PyType_Spec FastqRecordArrayView_spec = {
+    .name = "_qc.FastqRecordArrayView",
+    .basicsize = sizeof(FastqRecordArrayView),
+    .itemsize = sizeof(struct FastqMeta),
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = FastqRecordArrayView_slots,
 };
 
 /****************
@@ -774,7 +900,9 @@ FastqParser_dealloc(FastqParser *self)
     Py_XDECREF(self->buffer_obj);
     Py_XDECREF(self->file_obj);
     PyMem_Free(self->meta_buffer);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyObject *
@@ -803,7 +931,7 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         Py_DECREF(buffer_obj);
         return NULL;
     }
-    self->record_start = (uint8_t *)PyBytes_AS_STRING(buffer_obj);
+    self->record_start = (uint8_t *)PyBytes_AsString(buffer_obj);
     self->buffer_end = self->record_start;
     self->buffer_obj = buffer_obj;
     self->read_in_size = read_in_size;
@@ -842,10 +970,14 @@ static PyObject *
 FastqParser_create_record_array(FastqParser *self, size_t min_records,
                                 size_t max_records)
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    PyTypeObject *FastqRecordArrayView_Type = state->FastqRecordArrayView_Type;
+
     uint8_t *record_start = self->record_start;
     uint8_t *buffer_end = self->buffer_end;
     size_t parsed_records = 0;
     PyObject *new_buffer_obj = NULL;
+
     while (parsed_records < min_records) {
         size_t leftover_size = buffer_end - record_start;
         size_t read_in_size;
@@ -860,7 +992,7 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
             if (new_buffer_obj == NULL) {
                 return NULL;
             }
-            memcpy(PyBytes_AS_STRING(new_buffer_obj), record_start, leftover_size);
+            memcpy(PyBytes_AsString(new_buffer_obj), record_start, leftover_size);
             read_in_size = new_buffer_size - leftover_size;
             read_in_offset = leftover_size;
             record_start_offset = 0;
@@ -868,15 +1000,20 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
         else {
             /* On subsequent loops, enlarge the buffer until the minimum
                amount of records fits. */
-            uint8_t *old_start = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+            PyObject *older_buffer_obj = new_buffer_obj;
+            uint8_t *old_start = (uint8_t *)PyBytes_AsString(older_buffer_obj);
             record_start_offset = record_start - old_start;
             size_t old_size = buffer_end - old_start;
             new_buffer_size = old_size + self->read_in_size;
-            if (_PyBytes_Resize(&new_buffer_obj, new_buffer_size) == -1) {
+            new_buffer_obj = PyBytes_FromStringAndSize(NULL, new_buffer_size);
+            if (new_buffer_obj == NULL) {
                 return NULL;
             }
+            uint8_t *new_start = (uint8_t *)PyBytes_AsString(new_buffer_obj);
+            memcpy(new_start, old_start, old_size);
+            Py_DECREF(older_buffer_obj);
+
             /* Change the already parsed records to point to the new buffer. */
-            uint8_t *new_start = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
             struct FastqMeta *meta_buffer = self->meta_buffer;
             for (size_t i = 0; i < parsed_records; i++) {
                 struct FastqMeta *record = meta_buffer + i;
@@ -886,7 +1023,7 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
             read_in_size = self->read_in_size;
             read_in_offset = old_size;
         }
-        uint8_t *new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        uint8_t *new_buffer = (uint8_t *)PyBytes_AsString(new_buffer_obj);
 
         PyObject *remaining_space_view = PyMemoryView_FromMemory(
             (char *)new_buffer + read_in_offset, read_in_size, PyBUF_WRITE);
@@ -908,11 +1045,17 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
         Py_DECREF(read_bytes_obj);
         Py_ssize_t actual_buffer_size = read_in_offset + read_bytes;
         if (actual_buffer_size < new_buffer_size) {
-            if (_PyBytes_Resize(&new_buffer_obj, actual_buffer_size) == -1) {
+            PyObject *old_buffer_obj = new_buffer_obj;
+            new_buffer_obj = PyBytes_FromStringAndSize(NULL, actual_buffer_size);
+            if (new_buffer_obj == NULL) {
+                Py_DECREF(old_buffer_obj);
                 return NULL;
             }
+            memcpy(PyBytes_AsString(new_buffer_obj),
+                   PyBytes_AsString(old_buffer_obj), actual_buffer_size);
+            Py_DECREF(old_buffer_obj);
         }
-        new_buffer = (uint8_t *)PyBytes_AS_STRING(new_buffer_obj);
+        new_buffer = (uint8_t *)PyBytes_AsString(new_buffer_obj);
         new_buffer_size = actual_buffer_size;
         if (!string_is_ascii((char *)new_buffer + read_in_offset, read_bytes)) {
             Py_ssize_t pos;
@@ -963,12 +1106,13 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
                 Py_DECREF(new_buffer_obj);
                 return NULL;
             }
+            uint8_t *name_start = record_start + 1;
             uint8_t *name_end =
-                memchr(record_start, '\n', buffer_end - record_start);
+                memchr(name_start, '\n', buffer_end - record_start);
             if (name_end == NULL) {
                 break;
             }
-            size_t name_length = name_end - (record_start + 1);
+            size_t name_length = name_end - name_start;
             uint8_t *sequence_start = name_end + 1;
             uint8_t *sequence_end =
                 memchr(sequence_start, '\n', buffer_end - sequence_start);
@@ -999,8 +1143,8 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
             }
             size_t qualities_length = qualities_end - qualities_start;
             if (sequence_length != qualities_length) {
-                PyObject *record_name_obj = PyUnicode_DecodeASCII(
-                    (char *)record_start + 1, name_length, NULL);
+                PyObject *record_name_obj =
+                    PyUnicode_DecodeASCII((char *)name_start, name_length, NULL);
                 PyErr_Format(PyExc_ValueError,
                              "Record sequence and qualities do not have equal "
                              "length, %R",
@@ -1020,15 +1164,14 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
                 self->meta_buffer_size = parsed_records;
             }
             struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
-            meta->record_start = record_start;
+            meta->record_start = name_start;
             meta->name_length = name_length;
-            meta->sequence_offset = sequence_start - record_start;
+            meta->sequence_offset = sequence_start - name_start;
             meta->sequence_length = sequence_length;
-            meta->qualities_offset = qualities_start - record_start;
+            meta->qualities_offset = qualities_start - name_start;
+            meta->tags_offset = qualities_end - name_start;
+            meta->tags_length = 0;
             meta->accumulated_error_rate = 0.0;
-            meta->channel = -1;
-            meta->duration = 0.0;
-            meta->start_time = 0;
             record_start = qualities_end + 1;
         }
     }
@@ -1041,14 +1184,15 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     return FastqRecordArrayView_FromPointerSizeAndObject(
-        self->meta_buffer, parsed_records, new_buffer_obj);
+        self->meta_buffer, parsed_records, new_buffer_obj,
+        FastqRecordArrayView_Type);
 }
 
 static PyObject *
 FastqParser__next__(FastqParser *self)
 {
     PyObject *ret = FastqParser_create_record_array(self, 1, SIZE_MAX);
-    if ((ret != NULL) && (Py_SIZE(ret) == 0)) {
+    if ((ret != NULL) && (Py_SIZE((PyObject *)ret) == 0)) {
         PyErr_SetNone(PyExc_StopIteration);
         Py_DECREF(ret);
         return NULL;
@@ -1087,19 +1231,138 @@ static PyMethodDef FastqParser_methods[] = {
     {NULL},
 };
 
-PyTypeObject FastqParser_Type = {
-    .tp_name = "_qc.FastqParser",
-    .tp_basicsize = sizeof(FastqParser),
-    .tp_dealloc = (destructor)FastqParser_dealloc,
-    .tp_new = FastqParser__new__,
-    .tp_iter = (iternextfunc)FastqParser__iter__,
-    .tp_iternext = (iternextfunc)FastqParser__next__,
-    .tp_methods = FastqParser_methods,
+static PyType_Slot FastqParser_slots[] = {
+    {Py_tp_dealloc, (destructor)FastqParser_dealloc},
+    {Py_tp_new, FastqParser__new__},
+    {Py_tp_iter, FastqParser__iter__},
+    {Py_tp_iternext, FastqParser__next__},
+    {Py_tp_methods, FastqParser_methods},
+    {0, NULL},
+};
+
+static PyType_Spec FastqParser_spec = {
+    .name = "_qc.FastqParser",
+    .basicsize = sizeof(FastqParser),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = FastqParser_slots,
 };
 
 /**************
  * BAM PARSER *
  * ************/
+
+#define BAM_FPAIRED 1
+#define BAM_FPROPER_PAIR 2
+#define BAM_FUNMAP 4
+#define BAM_FMUNMAP 8
+#define BAM_FREVERSE 16
+#define BAM_FMREVERSE 32
+#define BAM_FREAD1 64
+#define BAM_FREAD2 128
+#define BAM_FSECONDARY 256
+#define BAM_FQCFAIL 512
+#define BAM_FDUP 1024
+#define BAM_FSUPPLEMENTARY 2048
+
+#define BAM_EXCLUDE_FLAGS (BAM_FSECONDARY | BAM_FSUPPLEMENTARY)
+
+static void
+decode_bam_sequence_default(uint8_t *dest, const uint8_t *encoded_sequence,
+                            size_t length)
+{
+    static const char code2base[512] =
+        "===A=C=M=G=R=S=V=T=W=Y=H=K=D=B=N"
+        "A=AAACAMAGARASAVATAWAYAHAKADABAN"
+        "C=CACCCMCGCRCSCVCTCWCYCHCKCDCBCN"
+        "M=MAMCMMMGMRMSMVMTMWMYMHMKMDMBMN"
+        "G=GAGCGMGGGRGSGVGTGWGYGHGKGDGBGN"
+        "R=RARCRMRGRRRSRVRTRWRYRHRKRDRBRN"
+        "S=SASCSMSGSRSSSVSTSWSYSHSKSDSBSN"
+        "V=VAVCVMVGVRVSVVVTVWVYVHVKVDVBVN"
+        "T=TATCTMTGTRTSTVTTTWTYTHTKTDTBTN"
+        "W=WAWCWMWGWRWSWVWTWWWYWHWKWDWBWN"
+        "Y=YAYCYMYGYRYSYVYTYWYYYHYKYDYBYN"
+        "H=HAHCHMHGHRHSHVHTHWHYHHHKHDHBHN"
+        "K=KAKCKMKGKRKSKVKTKWKYKHKKKDKBKN"
+        "D=DADCDMDGDRDSDVDTDWDYDHDKDDDBDN"
+        "B=BABCBMBGBRBSBVBTBWBYBHBKBDBBBN"
+        "N=NANCNMNGNRNSNVNTNWNYNHNKNDNBNN";
+    static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
+    size_t length_2 = length / 2;
+    for (size_t i = 0; i < length_2; i++) {
+        memcpy(dest + i * 2, code2base + ((size_t)encoded_sequence[i] * 2), 2);
+    }
+    if (length & 1) {
+        uint8_t encoded = encoded_sequence[length_2] >> 4;
+        dest[(length - 1)] = nuc_lookup[encoded];
+    }
+}
+
+static void (*decode_bam_sequence)(uint8_t *dest, const uint8_t *encoded_sequence,
+                                   size_t length) = decode_bam_sequence_default;
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
+__attribute__((__target__("ssse3"))) static void
+decode_bam_sequence_ssse3(uint8_t *dest, const uint8_t *encoded_sequence,
+                          size_t length)
+{
+    static const uint8_t *nuc_lookup = (uint8_t *)"=ACMGRSVTWYHKDBN";
+    const uint8_t *dest_end_ptr = dest + length;
+    uint8_t *dest_cursor = dest;
+    const uint8_t *encoded_cursor = encoded_sequence;
+    const uint8_t *dest_vec_end_ptr = dest_end_ptr - (2 * sizeof(__m128i) - 1);
+    __m128i nuc_lookup_vec = _mm_lddqu_si128((__m128i *)nuc_lookup);
+    /* Nucleotides are encoded 4-bits per nucleotide and stored in 8-bit bytes
+       as follows: |AB|CD|EF|GH|. The 4-bit codes (going from 0-15) can be used
+       together with the pshufb instruction as a lookup table. The most
+       efficient way is to use bitwise AND and shift to create two vectors. One
+       with all the upper codes (|A|C|E|G|) and one with the lower codes
+       (|B|D|F|H|). The lookup can then be performed and the resulting vectors
+       can be interleaved again using the unpack instructions. */
+    while (dest_cursor < dest_vec_end_ptr) {
+        __m128i encoded = _mm_lddqu_si128((__m128i *)encoded_cursor);
+        __m128i encoded_upper = _mm_srli_epi64(encoded, 4);
+        encoded_upper = _mm_and_si128(encoded_upper, _mm_set1_epi8(15));
+        __m128i encoded_lower = _mm_and_si128(encoded, _mm_set1_epi8(15));
+        __m128i nucs_upper = _mm_shuffle_epi8(nuc_lookup_vec, encoded_upper);
+        __m128i nucs_lower = _mm_shuffle_epi8(nuc_lookup_vec, encoded_lower);
+        __m128i first_nucleotides = _mm_unpacklo_epi8(nucs_upper, nucs_lower);
+        __m128i second_nucleotides = _mm_unpackhi_epi8(nucs_upper, nucs_lower);
+        _mm_storeu_si128((__m128i *)dest_cursor, first_nucleotides);
+        _mm_storeu_si128((__m128i *)(dest_cursor + 16), second_nucleotides);
+        encoded_cursor += sizeof(__m128i);
+        dest_cursor += 2 * sizeof(__m128i);
+    }
+    decode_bam_sequence_default(dest_cursor, encoded_cursor,
+                                dest_end_ptr - dest_cursor);
+}
+
+/* Constructor runs at dynamic load time */
+__attribute__((constructor)) static void
+decode_bam_sequence_init_func_ptr(void)
+{
+    if (__builtin_cpu_supports("ssse3")) {
+        decode_bam_sequence = decode_bam_sequence_ssse3;
+    }
+    else {
+        decode_bam_sequence = decode_bam_sequence_default;
+    }
+}
+#endif
+
+// Code is simple enough to be auto vectorized.
+#if COMPILER_HAS_OPTIMIZE
+__attribute__((optimize("O3")))
+#endif
+static void
+decode_bam_qualities(uint8_t *restrict dest,
+                     const uint8_t *restrict encoded_qualities, size_t length)
+{
+    for (size_t i = 0; i < length; i++) {
+        dest[i] = encoded_qualities[i] + 33;
+    }
+}
 
 typedef struct _BamParserStruct {
     PyObject_HEAD
@@ -1121,7 +1384,9 @@ BamParser_dealloc(BamParser *self)
     PyMem_Free(self->meta_buffer);
     Py_XDECREF(self->file_obj);
     Py_XDECREF(self->header);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyObject *
@@ -1151,17 +1416,17 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
     if (!PyBytes_CheckExact(magic_and_header_size)) {
         PyErr_Format(PyExc_TypeError,
-                     "file_obj %R is not a binary IO type, got %s", file_obj,
-                     Py_TYPE(file_obj)->tp_name);
+                     "file_obj %R is not a binary IO type, got %R", file_obj,
+                     Py_TYPE((PyObject *)file_obj));
         Py_DECREF(magic_and_header_size);
         return NULL;
     }
-    if (PyBytes_GET_SIZE(magic_and_header_size) < 8) {
+    if (PyBytes_Size(magic_and_header_size) < 8) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
         Py_DECREF(magic_and_header_size);
         return NULL;
     }
-    uint8_t *file_start = (uint8_t *)PyBytes_AS_STRING(magic_and_header_size);
+    uint8_t *file_start = (uint8_t *)PyBytes_AsString(magic_and_header_size);
     if (memcmp(file_start, "BAM\1", 4) != 0) {
         PyErr_Format(
             PyExc_ValueError,
@@ -1173,36 +1438,35 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     uint32_t l_text = *(uint32_t *)(file_start + 4);
     Py_DECREF(magic_and_header_size);
     PyObject *header = PyObject_CallMethod(file_obj, "read", "n", l_text);
-    if (PyBytes_GET_SIZE(header) != l_text) {
+    if (PyBytes_Size(header) != l_text) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
         Py_DECREF(header);
         return NULL;
     }
     PyObject *n_ref_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
-    if (PyBytes_GET_SIZE(n_ref_obj) != 4) {
+    if (PyBytes_Size(n_ref_obj) != 4) {
         PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
         Py_DECREF(n_ref_obj);
         Py_DECREF(header);
         return NULL;
     }
-    uint32_t n_ref = *(uint32_t *)PyBytes_AS_STRING(n_ref_obj);
+    uint32_t n_ref = *(uint32_t *)PyBytes_AsString(n_ref_obj);
     Py_DECREF(n_ref_obj);
 
     for (size_t i = 0; i < n_ref; i++) {
         PyObject *l_name_obj = PyObject_CallMethod(file_obj, "read", "n", 4);
-        if (PyBytes_GET_SIZE(l_name_obj) != 4) {
+        if (PyBytes_Size(l_name_obj) != 4) {
             PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
             Py_DECREF(header);
             return NULL;
         }
-        size_t l_name = *(uint32_t *)PyBytes_AS_STRING(l_name_obj);
+        size_t l_name = *(uint32_t *)PyBytes_AsString(l_name_obj);
         Py_DECREF(l_name_obj);
         Py_ssize_t reference_chunk_size =
             l_name + 4;  // Includes name and uint32_t for size.
         PyObject *reference_chunk =
             PyObject_CallMethod(file_obj, "read", "n", reference_chunk_size);
-        Py_ssize_t actual_reference_chunk_size =
-            PyBytes_GET_SIZE(reference_chunk);
+        Py_ssize_t actual_reference_chunk_size = PyBytes_Size(reference_chunk);
         Py_DECREF(reference_chunk);
         if (actual_reference_chunk_size != reference_chunk_size) {
             PyErr_SetString(PyExc_EOFError, "Truncated BAM file");
@@ -1232,7 +1496,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 static PyObject *
 BamParser__iter__(BamParser *self)
 {
-    Py_INCREF(self);
+    Py_INCREF((PyObject *)self);
     return (PyObject *)self;
 }
 
@@ -1251,101 +1515,6 @@ struct BamRecordHeader {
     int32_t tlen;
 };
 
-static int
-bam_tags_to_fastq_meta(const uint8_t *tags, size_t tags_length,
-                       struct FastqMeta *meta)
-{
-    meta->channel = -1;
-    meta->duration = 0.0;
-    meta->start_time = 0;
-    while (tags_length > 0) {
-        if (tags_length < 4) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
-            return -1;
-        }
-        const uint8_t *tag_id = tags;
-        uint8_t tag_type = tags[2];
-        bool is_array = false;
-        const uint8_t *value_start = tags + 3;
-        uint32_t array_length = 1;
-        if (tag_type == 'B') {
-            is_array = true;
-            value_start = tags + 8;
-            tag_type = tags[3];
-            if (tags_length < 8) {
-                PyErr_SetString(PyExc_ValueError, "truncated tags");
-                return -1;
-            }
-            array_length = *(uint32_t *)(tags + 4);
-        };
-        size_t value_length;
-        switch (tag_type) {
-            case 'A':
-                value_length = 1;
-                break;
-            case 'c':
-            case 'C':
-                /* A very annoying habit of htslib to store a tag in the
-                   smallest possible size rather than being consistent. */
-                value_length = 1;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 4) {
-                    meta->channel = *(uint8_t *)(value_start);
-                }
-                break;
-            case 's':
-            case 'S':
-                value_length = 2;
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 5) {
-                    meta->channel = *(uint16_t *)(value_start);
-                }
-                break;
-            case 'I':
-            case 'i':
-                if (memcmp(tag_id, "ch", 2) == 0 && tags_length >= 7) {
-                    meta->channel = *(uint32_t *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'f':
-                if (memcmp(tag_id, "du", 2) == 0 && tags_length >= 7) {
-                    meta->duration = *(float *)(value_start);
-                }
-                value_length = 4;
-                break;
-            case 'Z':
-            case 'H':
-                if (is_array) {
-                    PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
-                                 tag_type);
-                    return -1;
-                }
-                uint8_t *string_end = memchr(value_start, 0, tags_length - 3);
-                if (string_end == NULL) {
-                    PyErr_SetString(PyExc_ValueError, "truncated tags");
-                    return -1;
-                }
-                value_length =
-                    (string_end - value_start) + 1;  // +1 for terminating null
-                if (memcmp(tag_id, "st", 2) == 0) {
-                    meta->start_time = time_string_to_timestamp(value_start);
-                }
-                break;
-            default:
-                PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
-                return -1;
-        }
-        size_t this_tag_length =
-            (value_start - tags) + array_length * value_length;
-        if (this_tag_length > tags_length) {
-            PyErr_SetString(PyExc_ValueError, "truncated tags");
-            return -1;
-        }
-        tags = tags + this_tag_length;
-        tags_length -= this_tag_length;
-    }
-    return 0;
-}
-
 static PyObject *
 BamParser__next__(BamParser *self)
 {
@@ -1356,7 +1525,12 @@ BamParser__next__(BamParser *self)
     record_start = self->read_in_buffer;
     buffer_end = record_start + leftover_size;
     size_t parsed_records = 0;
-    PyObject *fastq_buffer_obj = NULL;
+    PyObject *read_data_obj = NULL;
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    PyTypeObject *FastqRecordArrayView_Type = state->FastqRecordArrayView_Type;
 
     while (parsed_records == 0) {
         /* Keep expanding input buffer until at least one record is parsed */
@@ -1376,7 +1550,7 @@ BamParser__next__(BamParser *self)
             uint8_t *tmp_read_in_buffer =
                 PyMem_Realloc(self->read_in_buffer, minimum_space_required);
             if (tmp_read_in_buffer == NULL) {
-                Py_XDECREF(fastq_buffer_obj);
+                Py_XDECREF(read_data_obj);
                 return PyErr_NoMemory();
             }
             self->read_in_buffer = tmp_read_in_buffer;
@@ -1392,7 +1566,7 @@ BamParser__next__(BamParser *self)
             PyObject_CallMethod(self->file_obj, "readinto", "O", buffer_view);
         Py_DECREF(buffer_view);
         if (read_bytes_obj == NULL) {
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
         Py_ssize_t read_bytes = PyLong_AsSsize_t(read_bytes_obj);
@@ -1401,7 +1575,7 @@ BamParser__next__(BamParser *self)
         if (new_buffer_size == 0) {
             // Entire file is read
             PyErr_SetNone(PyExc_StopIteration);
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
         else if (read_bytes == 0) {
@@ -1411,7 +1585,7 @@ BamParser__next__(BamParser *self)
                          "Incomplete record at the end of file %R",
                          remaining_obj);
             Py_DECREF(remaining_obj);
-            Py_XDECREF(fastq_buffer_obj);
+            Py_XDECREF(read_data_obj);
             return NULL;
         }
 
@@ -1425,22 +1599,28 @@ BamParser__next__(BamParser *self)
            of the bam record. Quality always maps one to one, but sequence is
            compressed and maps one to two. So that is a 3:4 ratio for BAM:FASTQ.
         */
-        Py_ssize_t fastq_buffer_size = (new_buffer_size * 4 + 2) / 3;
-        if (fastq_buffer_obj == NULL) {
-            fastq_buffer_obj = PyBytes_FromStringAndSize(NULL, fastq_buffer_size);
-            if (fastq_buffer_obj == NULL) {
-                Py_XDECREF(fastq_buffer_obj);
+        Py_ssize_t read_data_size = (new_buffer_size * 4 + 2) / 3;
+        if (read_data_obj == NULL) {
+            read_data_obj = PyBytes_FromStringAndSize(NULL, read_data_size);
+            if (read_data_obj == NULL) {
+                Py_XDECREF(read_data_obj);
                 return PyErr_NoMemory();
             }
         }
         else {
-            if (_PyBytes_Resize(&fastq_buffer_obj, fastq_buffer_size) < 0) {
-                Py_XDECREF(fastq_buffer_obj);
+            PyObject *old_read_data_obj = read_data_obj;
+            read_data_obj = PyBytes_FromStringAndSize(NULL, read_data_size);
+            if (read_data_obj == NULL) {
+                Py_DECREF(old_read_data_obj);
                 return NULL;
             }
+            memcpy(PyBytes_AsString(read_data_obj),
+                   PyBytes_AsString(old_read_data_obj),
+                   PyBytes_Size(old_read_data_obj));
+            Py_DECREF(old_read_data_obj);
         }
-        uint8_t *fastq_buffer_record_start =
-            (uint8_t *)PyBytes_AS_STRING(fastq_buffer_obj);
+        uint8_t *read_data_record_start =
+            (uint8_t *)PyBytes_AsString(read_data_obj);
 
         while (1) {
             if (record_start + 4 >= buffer_end) {
@@ -1452,6 +1632,11 @@ BamParser__next__(BamParser *self)
             if (record_end > buffer_end) {
                 break;
             }
+            if (header->flag & BAM_EXCLUDE_FLAGS) {
+                // Skip excluded records such as secondary and supplementary alignments.
+                record_start = record_end;
+                continue;
+            }
             uint8_t *bam_name_start =
                 record_start + sizeof(struct BamRecordHeader);
             uint32_t name_length = header->l_read_name;
@@ -1460,38 +1645,29 @@ BamParser__next__(BamParser *self)
             uint32_t seq_length = header->l_seq;
             uint32_t encoded_seq_length = (seq_length + 1) / 2;
             uint8_t *bam_qual_start = bam_seq_start + encoded_seq_length;
-            fastq_buffer_record_start[0] = '@';
-            uint8_t *fastq_buffer_cursor = fastq_buffer_record_start + 1;
             uint8_t *tag_start = bam_qual_start + seq_length;
             size_t tags_length = record_end - tag_start;
+
+            uint8_t *read_data_cursor = read_data_record_start;
             if (name_length > 0) {
                 name_length -= 1; /* Includes terminating NULL byte */
-                memcpy(fastq_buffer_cursor, bam_name_start, name_length);
+                memcpy(read_data_cursor, bam_name_start, name_length);
             }
-            /* The + and newlines are unncessary, but also do not require much
-               space and compute time. So keep the in-memory presentation as
-               a FASTQ record for homogeneity with FASTQ input. */
-            fastq_buffer_cursor += name_length;
-            fastq_buffer_cursor[0] = '\n';
-            fastq_buffer_cursor += 1;
-            decode_bam_sequence(fastq_buffer_cursor, bam_seq_start, seq_length);
-            fastq_buffer_cursor += seq_length;
-            memcpy(fastq_buffer_cursor, "\n+\n", 3);
-            fastq_buffer_cursor += 3;
+            read_data_cursor += name_length;
+            decode_bam_sequence(read_data_cursor, bam_seq_start, seq_length);
+            read_data_cursor += seq_length;
             if (seq_length && bam_qual_start[0] == 0xff) {
                 /* If qualities are missing, all bases are set to 0xff, which
                    is an invalid phred value. Create a quality string with only
                    zero Phreds for a valid FASTQ representation */
-                memset(fastq_buffer_cursor, 33, seq_length);
+                memset(read_data_cursor, 33, seq_length);
             }
             else {
-                decode_bam_qualities(fastq_buffer_cursor, bam_qual_start,
-                                     seq_length);
+                decode_bam_qualities(read_data_cursor, bam_qual_start, seq_length);
             }
-            fastq_buffer_cursor += seq_length;
-            fastq_buffer_cursor[0] = '\n';
-            fastq_buffer_cursor += 1;
-
+            read_data_cursor += seq_length;
+            memcpy(read_data_cursor, tag_start, tags_length);
+            read_data_cursor += tags_length;
             parsed_records += 1;
             if (parsed_records > self->meta_buffer_size) {
                 struct FastqMeta *tmp = PyMem_Realloc(
@@ -1503,27 +1679,27 @@ BamParser__next__(BamParser *self)
                 self->meta_buffer_size = parsed_records;
             }
             struct FastqMeta *meta = self->meta_buffer + (parsed_records - 1);
-            uint32_t sequence_offset = 1 + name_length + 1;  // For '@' and '\n'
-            uint32_t qualities_offset =
-                sequence_offset + seq_length + 3;  // for '\n+\n'
-            meta->record_start = fastq_buffer_record_start;
+            uint32_t sequence_offset = name_length;
+            uint32_t qualities_offset = sequence_offset + seq_length;
+            uint32_t tags_offset = qualities_offset + seq_length;
+            meta->record_start = read_data_record_start;
             meta->name_length = name_length;
             meta->sequence_offset = sequence_offset;
             meta->sequence_length = seq_length;
             meta->qualities_offset = qualities_offset;
+            meta->tags_offset = tags_offset;
+            meta->tags_length = tags_length;
             meta->accumulated_error_rate = 0.0;
-            if (bam_tags_to_fastq_meta(tag_start, tags_length, meta) < 0) {
-                return NULL;
-            }
             record_start = record_end;
-            fastq_buffer_record_start = fastq_buffer_cursor;
+            read_data_record_start = read_data_cursor;
         }
     }
     self->record_start = record_start;
     self->buffer_end = buffer_end;
     PyObject *record_array = FastqRecordArrayView_FromPointerSizeAndObject(
-        self->meta_buffer, parsed_records, fastq_buffer_obj);
-    Py_DECREF(fastq_buffer_obj);
+        self->meta_buffer, parsed_records, read_data_obj,
+        FastqRecordArrayView_Type);
+    Py_DECREF(read_data_obj);
     return record_array;
 }
 
@@ -1532,14 +1708,21 @@ static PyMemberDef BamParser_members[] = {
      "The BAM header"},
     {NULL}};
 
-PyTypeObject BamParser_Type = {
-    .tp_name = "_qc.BamParser",
-    .tp_basicsize = sizeof(BamParser),
-    .tp_dealloc = (destructor)BamParser_dealloc,
-    .tp_new = BamParser__new__,
-    .tp_iter = (iternextfunc)BamParser__iter__,
-    .tp_iternext = (iternextfunc)BamParser__next__,
-    .tp_members = BamParser_members,
+static PyType_Slot BamParser_slots[] = {
+    {Py_tp_dealloc, (destructor)BamParser_dealloc},
+    {Py_tp_new, BamParser__new__},
+    {Py_tp_iter, BamParser__iter__},
+    {Py_tp_iternext, BamParser__next__},
+    {Py_tp_members, BamParser_members},
+    {0, NULL},
+};
+
+static PyType_Spec BamParser_spec = {
+    .name = "_qc.BamParser",
+    .basicsize = sizeof(BamParser),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = BamParser_slots,
 };
 
 /**************
@@ -1585,6 +1768,8 @@ static const uint8_t NUCLEOTIDE_TO_INDEX[128] = {
 #define PHRED_LIMIT 47
 #define PHRED_TABLE_SIZE ((PHRED_LIMIT / 4) + 1)
 
+#define DEFAULT_END_ANCHOR_LENGTH 100
+
 typedef uint16_t staging_base_table[NUC_TABLE_SIZE];
 typedef uint16_t staging_phred_table[PHRED_TABLE_SIZE];
 typedef uint64_t base_table[NUC_TABLE_SIZE];
@@ -1603,11 +1788,16 @@ typedef struct _QCMetricsStruct {
     PyObject_HEAD
     uint8_t phred_offset;
     uint16_t staging_count;
+    size_t end_anchor_length;
     size_t max_length;
     staging_base_table *staging_base_counts;
     staging_phred_table *staging_phred_counts;
+    staging_base_table *staging_end_anchored_base_counts;
+    staging_phred_table *staging_end_anchored_phred_counts;
     base_table *base_counts;
     phred_table *phred_counts;
+    base_table *end_anchored_base_counts;
+    phred_table *end_anchored_phred_counts;
     size_t number_of_reads;
     uint64_t gc_content[101];
     uint64_t phred_scores[PHRED_MAX + 1];
@@ -1618,27 +1808,60 @@ QCMetrics_dealloc(QCMetrics *self)
 {
     PyMem_Free(self->staging_base_counts);
     PyMem_Free(self->staging_phred_counts);
+    PyMem_Free(self->staging_end_anchored_base_counts);
+    PyMem_Free(self->staging_end_anchored_phred_counts);
     PyMem_Free(self->base_counts);
     PyMem_Free(self->phred_counts);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyMem_Free(self->end_anchored_base_counts);
+    PyMem_Free(self->end_anchored_phred_counts);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_DECREF(tp);
 }
 
 static PyObject *
 QCMetrics__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
-    static char *kwargnames[] = {NULL};
-    static char *format = ":QCMetrics";
+    Py_ssize_t end_anchor_length = DEFAULT_END_ANCHOR_LENGTH;
+    static char *kwargnames[] = {"end_anchor_length", NULL};
+    static char *format = "|n:QCMetrics";
     uint8_t phred_offset = 33;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
+                                     &end_anchor_length)) {
         return NULL;
     }
+    if (end_anchor_length < 0 || end_anchor_length > UINT32_MAX) {
+        PyErr_Format(PyExc_ValueError,
+                     "end_anchor_length must be between 0 and %zd, got %zd",
+                     (Py_ssize_t)UINT32_MAX, end_anchor_length);
+        return NULL;
+    }
+    staging_base_table *staging_end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_base_table));
+    staging_phred_table *staging_end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(staging_phred_table));
+    base_table *end_anchored_base_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(base_table));
+    phred_table *end_anchored_phred_counts =
+        PyMem_Calloc(end_anchor_length, sizeof(phred_table));
     QCMetrics *self = PyObject_New(QCMetrics, type);
-    self->max_length = 0;
+    if (self == NULL || staging_end_anchored_base_counts == NULL ||
+        staging_end_anchored_phred_counts == NULL ||
+        end_anchored_base_counts == NULL || end_anchored_phred_counts == NULL) {
+        return PyErr_NoMemory();
+    }
     self->phred_offset = phred_offset;
+    self->staging_count = 0;
+    self->end_anchor_length = end_anchor_length;
+    self->max_length = 0;
     self->staging_base_counts = NULL;
     self->staging_phred_counts = NULL;
+    self->staging_end_anchored_base_counts = staging_end_anchored_base_counts;
+    self->staging_end_anchored_phred_counts = staging_end_anchored_phred_counts;
     self->base_counts = NULL;
     self->phred_counts = NULL;
+    self->end_anchored_base_counts = end_anchored_base_counts;
+    self->end_anchored_phred_counts = end_anchored_phred_counts;
     self->number_of_reads = 0;
     memset(self->gc_content, 0, 101 * sizeof(uint64_t));
     memset(self->phred_scores, 0, (PHRED_MAX + 1) * sizeof(uint64_t));
@@ -1714,6 +1937,29 @@ QCMetrics_flush_staging(QCMetrics *self)
     }
     memset(staging_phred_counts, 0, number_of_phred_slots * sizeof(uint16_t));
 
+    size_t end_anchor_length = self->end_anchor_length;
+
+    size_t end_anchor_base_slots = end_anchor_length * NUC_TABLE_SIZE;
+    uint64_t *end_anchored_base_counts =
+        (uint64_t *)self->end_anchored_base_counts;
+    uint16_t *staging_end_anchored_base_counts =
+        (uint16_t *)self->staging_end_anchored_base_counts;
+    for (size_t i = 0; i < end_anchor_base_slots; i++) {
+        end_anchored_base_counts[i] += staging_end_anchored_base_counts[i];
+    }
+    memset(staging_end_anchored_base_counts, 0,
+           end_anchor_base_slots * sizeof(uint16_t));
+
+    size_t end_anchor_phred_slots = end_anchor_length * PHRED_TABLE_SIZE;
+    uint64_t *end_anchored_phred_counts =
+        (uint64_t *)self->end_anchored_phred_counts;
+    uint16_t *staging_end_anchored_phred_counts =
+        (uint16_t *)self->staging_end_anchored_phred_counts;
+    for (size_t i = 0; i < end_anchor_phred_slots; i++) {
+        end_anchored_phred_counts[i] += staging_end_anchored_phred_counts[i];
+    }
+    memset(staging_end_anchored_phred_counts, 0,
+           end_anchor_phred_slots * sizeof(uint16_t));
     self->staging_count = 0;
 }
 
@@ -1722,6 +1968,10 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
 {
     const uint8_t *record_start = meta->record_start;
     size_t sequence_length = meta->sequence_length;
+    size_t full_end_anchor_length = self->end_anchor_length;
+    size_t end_anchor_length = Py_MIN(full_end_anchor_length, sequence_length);
+    size_t end_anchor_store_offset = full_end_anchor_length - end_anchor_length;
+
     const uint8_t *sequence = record_start + meta->sequence_offset;
     const uint8_t *qualities = record_start + meta->qualities_offset;
 
@@ -1780,17 +2030,33 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         sequence_ptr += 1;
         staging_base_counts_ptr += 1;
     }
+
+    // End-anchored run while sequence still hot in cache
+    staging_base_table *staging_end_anchored_bases =
+        self->staging_end_anchored_base_counts + end_anchor_store_offset;
+    sequence_ptr -= end_anchor_length;
+    while (sequence_ptr < end_ptr) {
+        size_t c = *sequence_ptr;
+        size_t c_index = NUCLEOTIDE_TO_INDEX[c];
+        staging_end_anchored_bases[0][c_index] += 1;
+        staging_end_anchored_bases += 1;
+        sequence_ptr += 1;
+    }
+
     uint64_t base_counts =
         base_counts0 + base_counts1 + base_counts2 + base_counts3;
     uint64_t at_counts = base_counts & 0xFFFFFFFF;
     uint64_t gc_counts = (base_counts >> 32) & 0xFFFFFFFF;
-    double gc_content_percentage =
-        (double)gc_counts * (double)100.0 / (double)(at_counts + gc_counts);
-    uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
-    assert(gc_content_index >= 0);
-    assert(gc_content_index <= 100);
-    self->gc_content[gc_content_index] += 1;
-
+    uint64_t total = gc_counts + at_counts;
+    // if total == 0 there will be divide by 0, so only run if total > 0.
+    if (total > 0) {
+        double gc_content_percentage =
+            (double)gc_counts * (double)100.0 / (double)total;
+        uint64_t gc_content_index = (uint64_t)round(gc_content_percentage);
+        assert(gc_content_index >= 0);
+        assert(gc_content_index <= 100);
+        self->gc_content[gc_content_index] += 1;
+    }
     staging_phred_table *staging_phred_counts_ptr = self->staging_phred_counts;
     const uint8_t *qualities_ptr = qualities;
     const uint8_t *qualities_end_ptr = qualities + sequence_length;
@@ -1846,15 +2112,30 @@ QCMetrics_add_meta(QCMetrics *self, struct FastqMeta *meta)
         qualities_ptr += 1;
     }
 
+    // End-anchored run while qualities still hot in cache
+    staging_phred_table *staging_end_anchored_phreds =
+        self->staging_end_anchored_phred_counts + end_anchor_store_offset;
+    qualities_ptr -= end_anchor_length;
+    while (qualities_ptr < qualities_end_ptr) {
+        size_t q = *qualities_ptr - phred_offset;
+        size_t q_index = phred_to_index(q);
+        staging_end_anchored_phreds[0][q_index] += 1;
+        staging_end_anchored_phreds += 1;
+        qualities_ptr += 1;
+    }
+
     meta->accumulated_error_rate = accumulated_error_rate;
-    double average_error_rate = accumulated_error_rate / (double)sequence_length;
-    double average_phred = -10.0 * log10(average_error_rate);
-    // Floor the average phred so q9.7 does not get represented as q10 but
-    // q9. Otherwise the Q>=10 count is going to be off.
-    uint64_t phred_score_index = (uint64_t)floor(average_phred);
-    assert(phred_score_index >= 0);
-    assert(phred_score_index <= PHRED_MAX);
-    self->phred_scores[phred_score_index] += 1;
+    if (sequence_length > 0) {
+        double average_error_rate =
+            accumulated_error_rate / (double)sequence_length;
+        double average_phred = -10.0 * log10(average_error_rate);
+        // Floor the average phred so q9.7 does not get represented as q10 but
+        // q9. Otherwise the Q>=10 count is going to be off.
+        uint64_t phred_score_index = (uint64_t)floor(average_phred);
+        assert(phred_score_index >= 0);
+        assert(phred_score_index <= PHRED_MAX);
+        self->phred_scores[phred_score_index] += 1;
+    }
     return 0;
 }
 
@@ -1872,10 +2153,14 @@ PyDoc_STRVAR(QCMetrics_add_read__doc__,
 static PyObject *
 QCMetrics_add_read(QCMetrics *self, FastqRecordView *read)
 {
-    if (!FastqRecordView_CheckExact(read)) {
+    int is_view = is_FastqRecordView(self, read);
+    if (is_view == -1) {
+        return NULL;
+    }
+    else if (is_view == 0) {
         PyErr_Format(PyExc_TypeError,
-                     "read should be a FastqRecordView object, got %s",
-                     Py_TYPE(read)->tp_name);
+                     "read should be a FastqRecordView object, got %R",
+                     Py_TYPE((PyObject *)read));
         return NULL;
     }
     if (QCMetrics_add_meta(self, &read->meta) != 0) {
@@ -1898,14 +2183,18 @@ PyDoc_STRVAR(QCMetrics_add_record_array__doc__,
 static PyObject *
 QCMetrics_add_record_array(QCMetrics *self, FastqRecordArrayView *record_array)
 {
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    else if (is_record_array == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         if (QCMetrics_add_meta(self, records + i) != 0) {
@@ -1926,9 +2215,14 @@ PyDoc_STRVAR(QCMetrics_base_count_table__doc__,
 static PyObject *
 QCMetrics_base_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
     QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer('Q', self->base_counts,
-                                  self->max_length * sizeof(base_table));
+                                  self->max_length * sizeof(base_table),
+                                  state->PythonArray_Type);
 }
 
 PyDoc_STRVAR(QCMetrics_phred_count_table__doc__,
@@ -1942,9 +2236,60 @@ PyDoc_STRVAR(QCMetrics_phred_count_table__doc__,
 static PyObject *
 QCMetrics_phred_count_table(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
     QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer('Q', self->phred_counts,
-                                  self->max_length * sizeof(phred_table));
+                                  self->max_length * sizeof(phred_table),
+                                  state->PythonArray_Type);
+}
+
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_base_count_table__doc__,
+    "end_anchored_base_count_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored base count table. \n");
+
+#define QCMetrics_end_anchored_base_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_base_count_table(QCMetrics *self,
+                                        PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_base_counts,
+                                  self->end_anchor_length * sizeof(base_table),
+                                  state->PythonArray_Type);
+}
+
+PyDoc_STRVAR(
+    QCMetrics_end_anchored_phred_count_table__doc__,
+    "end_anchored_phred_table($self, /)\n"
+    "--\n"
+    "\n"
+    "Return a array.array on the produced end anchored phred count table. \n");
+
+#define QCMetrics_end_anchored_phred_count_table_method METH_NOARGS
+
+static PyObject *
+QCMetrics_end_anchored_phred_count_table(QCMetrics *self,
+                                         PyObject *Py_UNUSED(ignore))
+{
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    QCMetrics_flush_staging(self);
+    return PythonArray_FromBuffer('Q', self->end_anchored_phred_counts,
+                                  self->end_anchor_length * sizeof(phred_table),
+                                  state->PythonArray_Type);
 }
 
 PyDoc_STRVAR(QCMetrics_gc_content__doc__,
@@ -1958,8 +2303,13 @@ PyDoc_STRVAR(QCMetrics_gc_content__doc__,
 static PyObject *
 QCMetrics_gc_content(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
     QCMetrics_flush_staging(self);
-    return PythonArray_FromBuffer('Q', self->gc_content, sizeof(self->gc_content));
+    return PythonArray_FromBuffer(
+        'Q', self->gc_content, sizeof(self->gc_content), state->PythonArray_Type);
 }
 
 PyDoc_STRVAR(
@@ -1974,9 +2324,14 @@ PyDoc_STRVAR(
 static PyObject *
 QCMetrics_phred_scores(QCMetrics *self, PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
     QCMetrics_flush_staging(self);
     return PythonArray_FromBuffer('Q', self->phred_scores,
-                                  sizeof(self->phred_scores));
+                                  sizeof(self->phred_scores),
+                                  state->PythonArray_Type);
 }
 
 static PyMethodDef QCMetrics_methods[] = {
@@ -1988,6 +2343,15 @@ static PyMethodDef QCMetrics_methods[] = {
      QCMetrics_base_count_table_method, QCMetrics_base_count_table__doc__},
     {"phred_count_table", (PyCFunction)QCMetrics_phred_count_table,
      QCMetrics_phred_count_table_method, QCMetrics_phred_count_table__doc__},
+    {"end_anchored_base_count_table",
+     (PyCFunction)QCMetrics_end_anchored_base_count_table,
+     QCMetrics_end_anchored_base_count_table_method,
+     QCMetrics_end_anchored_base_count_table__doc__},
+    {"end_anchored_phred_count_table",
+     (PyCFunction)QCMetrics_end_anchored_phred_count_table,
+     QCMetrics_end_anchored_phred_count_table_method,
+     QCMetrics_end_anchored_phred_count_table__doc__},
+
     {"gc_content", (PyCFunction)QCMetrics_gc_content,
      QCMetrics_gc_content_method, QCMetrics_gc_content__doc__},
     {"phred_scores", (PyCFunction)QCMetrics_phred_scores,
@@ -2000,16 +2364,25 @@ static PyMemberDef QCMetrics_members[] = {
      "The length of the longest read"},
     {"number_of_reads", T_ULONGLONG, offsetof(QCMetrics, number_of_reads),
      READONLY, "The total amount of reads counted"},
+    {"end_anchor_length", T_ULONGLONG, offsetof(QCMetrics, end_anchor_length),
+     READONLY, "The length of the end of the read that is sampled."},
     {NULL},
 };
 
-static PyTypeObject QCMetrics_Type = {
-    .tp_name = "_qc.QCMetrics",
-    .tp_basicsize = sizeof(QCMetrics),
-    .tp_dealloc = (destructor)QCMetrics_dealloc,
-    .tp_new = (newfunc)QCMetrics__new__,
-    .tp_members = QCMetrics_members,
-    .tp_methods = QCMetrics_methods,
+static PyType_Slot QCMetrics_slots[] = {
+    {Py_tp_dealloc, (destructor)QCMetrics_dealloc},
+    {Py_tp_new, QCMetrics__new__},
+    {Py_tp_members, QCMetrics_members},
+    {Py_tp_methods, QCMetrics_methods},
+    {0, NULL},
+};
+
+static PyType_Spec QCMetrics_spec = {
+    .name = "_qc.QCMetrics",
+    .basicsize = sizeof(QCMetrics),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = QCMetrics_slots,
 };
 
 /*******************
@@ -2026,62 +2399,25 @@ typedef struct AdapterSequenceStruct {
     bitmask_t found_mask;
 } AdapterSequence;
 
-/* Because we use NUCLEOTIDE_TO_INDEX we can save the bitmasks in the struct
-   itself. There are only 5 nucleotides (ACGTN) so this uses 40 bytes. With
-   init_mask and found_mask costing 8 bytes each the entire struct up to
-   number of sequences fits on one cache line of 64 bytes. Except for the
-   sequences pointer, but that is only used in case of a match. That makes
-   accessing the bitmasks very quick memorywise. */
-typedef struct MachineWordPatternMatcherStruct {
-    bitmask_t init_mask;
-    bitmask_t found_mask;
-    bitmask_t bitmasks[NUC_TABLE_SIZE];
-    size_t number_of_sequences;
-    AdapterSequence *sequences;
-} MachineWordPatternMatcher;
-
-static void
-MachineWordPatternMatcher_destroy(MachineWordPatternMatcher *matcher)
-{
-    PyMem_Free(matcher->sequences);
-    matcher->sequences = NULL;
-}
-
-#ifdef __SSE2__
-typedef struct AdapterSequenceSSE2Struct {
-    size_t adapter_index;
-    size_t adapter_length;
-    __m128i found_mask;
-} AdapterSequenceSSE2;
-
-typedef struct MachineWordPatternMatcherSSE2Struct {
-    __m128i init_mask;
-    __m128i found_mask;
-    __m128i bitmasks[NUC_TABLE_SIZE];
-    size_t number_of_sequences;
-    AdapterSequenceSSE2 *sequences;
-} MachineWordPatternMatcherSSE2;
-
-static void
-MachineWordPatternMatcherSSE2_destroy(MachineWordPatternMatcherSSE2 *matcher)
-{
-    PyMem_Free(matcher->sequences);
-}
-#endif
+struct AdapterCounts {
+    uint64_t *forward;
+    uint64_t *reverse;
+};
 
 typedef struct AdapterCounterStruct {
     PyObject_HEAD
     size_t number_of_adapters;
     size_t max_length;
     size_t number_of_sequences;
-    uint64_t **adapter_counter;
+    struct AdapterCounts *adapter_counter;
     PyObject *adapters;
     size_t number_of_matchers;
-    MachineWordPatternMatcher *matchers;
-    size_t number_of_sse2_matchers;
-#ifdef __SSE2__
-    MachineWordPatternMatcherSSE2 *sse2_matchers;
-#endif
+    bitmask_t *init_masks;
+    bitmask_t *found_masks;
+    bitmask_t (*bitmasks)[NUC_TABLE_SIZE];
+    /* Same as bitmasks, but better organization for vectorized approach. */
+    bitmask_t (*by_four_bitmasks)[NUC_TABLE_SIZE][4];
+    AdapterSequence **adapter_sequences;
 } AdapterCounter;
 
 static void
@@ -2090,109 +2426,30 @@ AdapterCounter_dealloc(AdapterCounter *self)
     Py_XDECREF(self->adapters);
     if (self->adapter_counter != NULL) {
         for (size_t i = 0; i < self->number_of_adapters; i++) {
-            PyMem_Free(self->adapter_counter[i]);
+            struct AdapterCounts counts = self->adapter_counter[i];
+            PyMem_Free(counts.forward);
+            PyMem_Free(counts.reverse);
         }
     }
     PyMem_Free(self->adapter_counter);
-    for (size_t i = 0; i < self->number_of_matchers; i++) {
-        MachineWordPatternMatcher_destroy(self->matchers + i);
-    }
-    PyMem_Free(self->matchers);
-
-#ifdef __SSE2__
-    for (size_t i = 0; i < self->number_of_sse2_matchers; i++) {
-        MachineWordPatternMatcherSSE2_destroy(self->sse2_matchers + i);
-    }
-    PyMem_Free(self->sse2_matchers);
-#endif
-    Py_TYPE(self)->tp_free((PyObject *)self);
-}
-
-#ifdef __SSE2__
-int
-AdapterCounter_SSE2_convert(AdapterCounter *self)
-{
-    self->number_of_sse2_matchers = self->number_of_matchers / 2;
-    if (self->number_of_sse2_matchers == 0) {
-        return 0;
-    }
-    MachineWordPatternMatcherSSE2 *tmp = PyMem_Malloc(
-        self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
-    if (tmp == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    self->sse2_matchers = tmp;
-    memset(self->sse2_matchers, 0,
-           self->number_of_sse2_matchers * sizeof(MachineWordPatternMatcherSSE2));
-    for (size_t i = 0; i < self->number_of_sse2_matchers; i++) {
-        MachineWordPatternMatcherSSE2 *sse2_matcher = self->sse2_matchers + i;
-        MachineWordPatternMatcher *normal_matcher1 = self->matchers + (i * 2);
-        MachineWordPatternMatcher *normal_matcher2 = self->matchers + (i * 2 + 1);
-        sse2_matcher->init_mask = _mm_set_epi64x(normal_matcher1->init_mask,
-                                                 normal_matcher2->init_mask);
-        sse2_matcher->found_mask = _mm_set_epi64x(normal_matcher1->found_mask,
-                                                  normal_matcher2->found_mask);
-        for (size_t j = 0; j < NUC_TABLE_SIZE; j++) {
-            sse2_matcher->bitmasks[j] = _mm_set_epi64x(
-                normal_matcher1->bitmasks[j], normal_matcher2->bitmasks[j]);
+    if (self->adapter_sequences != NULL) {
+        for (size_t i = 0; i < self->number_of_matchers; i++) {
+            PyMem_Free(self->adapter_sequences[i]);
         }
-        sse2_matcher->number_of_sequences = normal_matcher1->number_of_sequences +
-                                            normal_matcher2->number_of_sequences;
-        AdapterSequenceSSE2 *seq_tmp = PyMem_Malloc(
-            sse2_matcher->number_of_sequences * sizeof(AdapterSequenceSSE2));
-        if (seq_tmp == NULL) {
-            PyErr_NoMemory();
-            return -1;
-        }
-        sse2_matcher->sequences = seq_tmp;
-        for (size_t j = 0; j < normal_matcher1->number_of_sequences; j++) {
-            AdapterSequenceSSE2 *sse2_adapter = sse2_matcher->sequences + j;
-            AdapterSequence *normal_adapter = normal_matcher1->sequences + j;
-            sse2_adapter->adapter_index = normal_adapter->adapter_index;
-            sse2_adapter->adapter_length = normal_adapter->adapter_length;
-            sse2_adapter->found_mask =
-                _mm_set_epi64x(normal_adapter->found_mask, 0);
-        };
-        for (size_t j = 0; j < normal_matcher2->number_of_sequences; j++) {
-            size_t offset = normal_matcher1->number_of_sequences;
-            AdapterSequenceSSE2 *sse2_adapter =
-                sse2_matcher->sequences + j + offset;
-            AdapterSequence *normal_adapter = normal_matcher2->sequences + j;
-            sse2_adapter->adapter_index = normal_adapter->adapter_index;
-            sse2_adapter->adapter_length = normal_adapter->adapter_length;
-            sse2_adapter->found_mask =
-                _mm_set_epi64x(0, normal_adapter->found_mask);
-        };
     }
+    PyMem_Free(self->found_masks);
+    PyMem_Free(self->init_masks);
+    PyMem_Free(self->bitmasks);
+    PyMem_Free(self->by_four_bitmasks);
+    PyMem_Free(self->adapter_sequences);
 
-    for (size_t i = 0; i < (self->number_of_sse2_matchers * 2); i++) {
-        MachineWordPatternMatcher_destroy(self->matchers + i);
-    }
-    size_t number_of_remaining_matchers = self->number_of_matchers % 2;
-    if (number_of_remaining_matchers == 0) {
-        self->number_of_matchers = 0;
-        PyMem_FREE(self->matchers);
-        self->matchers = NULL;
-        return 0;
-    }
-    MachineWordPatternMatcher *matcher_tmp =
-        PyMem_Malloc(sizeof(MachineWordPatternMatcher));
-    if (matcher_tmp == NULL) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    memcpy(matcher_tmp, self->matchers + (self->number_of_sse2_matchers * 2),
-           sizeof(MachineWordPatternMatcher));
-    PyMem_FREE(self->matchers);
-    self->matchers = matcher_tmp;
-    self->number_of_matchers = 1;
-    return 0;
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
-#endif
 
 static void
-populate_bitmask(bitmask_t *bitmask, char *word, size_t word_length)
+populate_bitmask(bitmask_t bitmask[NUC_TABLE_SIZE], char *word, size_t word_length)
 {
     for (size_t i = 0; i < word_length; i++) {
         char c = word[i];
@@ -2222,52 +2479,68 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     if (adapters == NULL) {
         return NULL;
     }
-    size_t number_of_adapters = PyTuple_GET_SIZE(adapters);
+    size_t number_of_adapters = PyTuple_Size(adapters);
+    size_t number_of_matchers = 1;
+    size_t matcher_length = 0;
     if (number_of_adapters < 1) {
         PyErr_SetString(PyExc_ValueError, "At least one adapter is expected");
         goto error;
     }
     for (size_t i = 0; i < number_of_adapters; i++) {
-        PyObject *adapter = PyTuple_GET_ITEM(adapters, i);
+        PyObject *adapter = PyTuple_GetItem(adapters, i);
         if (!PyUnicode_CheckExact(adapter)) {
             PyErr_Format(PyExc_TypeError,
                          "All adapter sequences must be of type str, "
-                         "got %s, for %R",
-                         Py_TYPE(adapter)->tp_name, adapter);
+                         "got %R, for %R",
+                         Py_TYPE((PyObject *)adapter), adapter);
             goto error;
         }
-        if (!PyUnicode_IS_COMPACT_ASCII(adapter)) {
+        Py_ssize_t utf8size = 0;
+        Py_ssize_t adapter_length = PyUnicode_GetLength(adapter);
+        PyUnicode_AsUTF8AndSize(adapter, &utf8size);
+        if (adapter_length != utf8size) {
             PyErr_Format(PyExc_ValueError,
                          "Adapter must contain only ASCII characters: %R",
                          adapter);
             goto error;
         }
-        if ((size_t)PyUnicode_GET_LENGTH(adapter) > MAX_SEQUENCE_SIZE) {
-            PyErr_Format(
-                PyExc_ValueError, "Maximum adapter size is %d, got %zd for %R",
-                MAX_SEQUENCE_SIZE, PyUnicode_GET_LENGTH(adapter), adapter);
+        if ((size_t)adapter_length > MAX_SEQUENCE_SIZE) {
+            PyErr_Format(PyExc_ValueError,
+                         "Maximum adapter size is %d, got %zd for %R",
+                         MAX_SEQUENCE_SIZE, adapter_length, adapter);
             goto error;
+        }
+        if (matcher_length + adapter_length > MAX_SEQUENCE_SIZE) {
+            matcher_length = adapter_length;
+            number_of_matchers += 1;
+        }
+        else {
+            matcher_length += adapter_length;
         }
     }
     self = PyObject_New(AdapterCounter, type);
-    uint64_t **counter_tmp =
-        PyMem_Malloc(sizeof(uint64_t *) * number_of_adapters);
-    if (counter_tmp == NULL) {
+    self->adapter_counter =
+        PyMem_Calloc(number_of_adapters, sizeof(struct AdapterCounts));
+    /* Ensure there is enough space to always do vector loads. */
+    size_t matcher_array_size = number_of_matchers + 3;
+    self->found_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
+    self->init_masks = PyMem_Calloc(matcher_array_size, sizeof(bitmask_t));
+    self->adapter_sequences =
+        PyMem_Calloc(matcher_array_size, sizeof(AdapterSequence *));
+    self->bitmasks =
+        PyMem_Calloc(matcher_array_size, NUC_TABLE_SIZE * sizeof(bitmask_t));
+    self->by_four_bitmasks = PyMem_Calloc(
+        matcher_array_size / 4, NUC_TABLE_SIZE * 4 * sizeof(bitmask_t));
+    if (self->adapter_counter == NULL || self->found_masks == NULL ||
+        self->init_masks == NULL || self->adapter_sequences == NULL ||
+        self->bitmasks == NULL || self->by_four_bitmasks == NULL) {
         PyErr_NoMemory();
         goto error;
     }
-    memset(counter_tmp, 0, sizeof(uint64_t *) * number_of_adapters);
-    self->adapter_counter = counter_tmp;
-    self->adapters = NULL;
-    self->matchers = NULL;
     self->max_length = 0;
     self->number_of_adapters = number_of_adapters;
-    self->number_of_matchers = 0;
+    self->number_of_matchers = number_of_matchers;
     self->number_of_sequences = 0;
-    self->number_of_sse2_matchers = 0;
-#ifdef __SSE2__
-    self->sse2_matchers = NULL;
-#endif
     size_t adapter_index = 0;
     size_t matcher_index = 0;
     PyObject *adapter;
@@ -2275,31 +2548,19 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     char machine_word[MACHINE_WORD_BITS];
     matcher_index = 0;
     while (adapter_index < number_of_adapters) {
-        self->number_of_matchers += 1;
-        MachineWordPatternMatcher *tmp =
-            PyMem_Realloc(self->matchers, sizeof(MachineWordPatternMatcher) *
-                                              self->number_of_matchers);
-        if (tmp == NULL) {
-            PyErr_NoMemory();
-            goto error;
-        }
-        self->matchers = tmp;
-        memset(self->matchers + matcher_index, 0,
-               sizeof(MachineWordPatternMatcher));
         bitmask_t found_mask = 0;
         bitmask_t init_mask = 0;
         size_t adapter_in_word_index = 0;
         size_t word_index = 0;
-        MachineWordPatternMatcher *matcher = self->matchers + matcher_index;
         memset(machine_word, 0, MACHINE_WORD_BITS);
         while (adapter_index < number_of_adapters) {
-            adapter = PyTuple_GET_ITEM(adapters, adapter_index);
-            adapter_length = PyUnicode_GET_LENGTH(adapter);
+            adapter = PyTuple_GetItem(adapters, adapter_index);
+            const char *adapter_data =
+                PyUnicode_AsUTF8AndSize(adapter, &adapter_length);
             if ((word_index + adapter_length) > MACHINE_WORD_BITS) {
                 break;
             }
-            memcpy(machine_word + word_index, PyUnicode_DATA(adapter),
-                   adapter_length);
+            memcpy(machine_word + word_index, adapter_data, adapter_length);
             init_mask |= (1ULL << word_index);
             word_index += adapter_length;
             AdapterSequence adapter_sequence = {
@@ -2307,36 +2568,44 @@ AdapterCounter__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                 .adapter_length = adapter_length,
                 .found_mask = 1ULL << (word_index - 1), /* Last character */
             };
-            AdapterSequence *adapt_tmp =
-                PyMem_Realloc(matcher->sequences, (adapter_in_word_index + 1) *
-                                                      sizeof(AdapterSequence));
+            AdapterSequence empty_adapter_sequence = {0, 0, 0};
+            AdapterSequence *adapt_tmp = PyMem_Realloc(
+                self->adapter_sequences[matcher_index],
+                (adapter_in_word_index + 2) * sizeof(AdapterSequence));
             if (adapt_tmp == NULL) {
                 PyErr_NoMemory();
                 goto error;
             }
-            matcher->sequences = adapt_tmp;
-            matcher->sequences[adapter_in_word_index] = adapter_sequence;
+            self->adapter_sequences[matcher_index] = adapt_tmp;
+            self->adapter_sequences[matcher_index][adapter_in_word_index] =
+                adapter_sequence;
+            self->adapter_sequences[matcher_index][adapter_in_word_index + 1] =
+                empty_adapter_sequence;
             found_mask |= adapter_sequence.found_mask;
             adapter_in_word_index += 1;
             adapter_index += 1;
         }
-        populate_bitmask(matcher->bitmasks, machine_word, word_index);
-        matcher->found_mask = found_mask;
-        matcher->init_mask = init_mask;
-        matcher->number_of_sequences = adapter_in_word_index;
+        populate_bitmask(self->bitmasks[matcher_index], machine_word, word_index);
+        self->found_masks[matcher_index] = found_mask;
+        self->init_masks[matcher_index] = init_mask;
         matcher_index += 1;
     }
-    self->adapters = adapters;
-#ifdef __SSE2__
-    if (AdapterCounter_SSE2_convert(self) != 0) {
-        return NULL;
+    /* Initialize an array for better vectorized loading. Doing it here is
+       much more efficient than doing it for every string. */
+    for (size_t i = 0; i < self->number_of_matchers; i += 4) {
+        for (size_t j = 0; j < NUC_TABLE_SIZE; j++) {
+            self->by_four_bitmasks[i / 4][j][0] = self->bitmasks[i][j];
+            self->by_four_bitmasks[i / 4][j][1] = self->bitmasks[i + 1][j];
+            self->by_four_bitmasks[i / 4][j][2] = self->bitmasks[i + 2][j];
+            self->by_four_bitmasks[i / 4][j][3] = self->bitmasks[i + 3][j];
+        }
     }
-#endif
+    self->adapters = adapters;
     return (PyObject *)self;
 
 error:
     Py_XDECREF(adapters);
-    Py_XDECREF(self);
+    Py_XDECREF((PyObject *)self);
     return NULL;
 }
 
@@ -2348,88 +2617,171 @@ AdapterCounter_resize(AdapterCounter *self, size_t new_size)
     }
     size_t old_size = self->max_length;
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        uint64_t *tmp =
-            PyMem_Realloc(self->adapter_counter[i], new_size * sizeof(uint64_t));
-        if (tmp == NULL) {
+        struct AdapterCounts counts = self->adapter_counter[i];
+        uint64_t *tmp_forward =
+            PyMem_Realloc(counts.forward, new_size * sizeof(uint64_t));
+        if (tmp_forward == NULL) {
             PyErr_NoMemory();
             return -1;
         }
-        self->adapter_counter[i] = tmp;
-        memset(self->adapter_counter[i] + old_size, 0,
+        memset(tmp_forward + old_size, 0,
                (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].forward = tmp_forward;
+        uint64_t *tmp_reverse =
+            PyMem_Realloc(counts.reverse, new_size * sizeof(uint64_t));
+        if (tmp_reverse == NULL) {
+            PyErr_NoMemory();
+            return -1;
+        }
+        memset(tmp_reverse + old_size, 0,
+               (new_size - old_size) * sizeof(uint64_t));
+        self->adapter_counter[i].reverse = tmp_reverse;
     }
     self->max_length = new_size;
     return 0;
 }
 
-#ifdef __SSE2__
-static inline int
-bitwise_and_nonzero_si128(__m128i vector1, __m128i vector2)
+static inline bitmask_t
+update_adapter_count_array(size_t position, size_t length, bitmask_t match,
+                           bitmask_t already_found,
+                           AdapterSequence *adapter_sequences,
+                           struct AdapterCounts *adapter_counter)
 {
-    /* There is no way to directly check if an entire vector is set to 0
-       so some trickery needs to be done to ascertain if one of the bits is
-       set.
-       _mm_movemask_epi8 only catches the most significant bit. So we need to
-       set that bit. Comparison for larger than 0 does not work since only
-       signed comparisons are available. So the most significant bit makes
-       integers smaller than 0. Instead we do a saturated add of 127.
-       _mm_adds_epu8 works on unsigned integers. So 0b10000000 (128) will
-       become 255. Also everything above 0 will trigger the last bit to be set.
-       0 itself results in 0b01111111 so the most significant bit will not be
-       set.
-       The sequence of instructions below is faster than
-       return (!_mm_test_all_zeros(vector1, vector2));
-       which is available in SSE4.1. So there is no value in moving up one
-       instruction set. */
-    __m128i and = _mm_and_si128(vector1, vector2);
-    __m128i res = _mm_adds_epu8(and, _mm_set1_epi8(127));
-    return _mm_movemask_epi8(res);
-}
-
-static inline __m128i
-update_adapter_count_array_sse2(size_t position, __m128i R, __m128i already_found,
-                                MachineWordPatternMatcherSSE2 *matcher,
-                                uint64_t **adapter_counter)
-{
-    size_t number_of_adapters = matcher->number_of_sequences;
-    for (size_t i = 0; i < number_of_adapters; i++) {
-        AdapterSequenceSSE2 *adapter = matcher->sequences + i;
-        __m128i adapter_found_mask = adapter->found_mask;
-        if (bitwise_and_nonzero_si128(adapter_found_mask, already_found)) {
-            continue;
+    size_t adapter_index = 0;
+    while (true) {
+        AdapterSequence *adapter = adapter_sequences + adapter_index;
+        size_t adapter_length = adapter->adapter_length;
+        if (adapter_length == 0) {
+            break;
         }
-        if (bitwise_and_nonzero_si128(R, adapter_found_mask)) {
-            size_t found_position = position - adapter->adapter_length + 1;
-            adapter_counter[adapter->adapter_index][found_position] += 1;
-            // Make sure we only find the adapter once at the earliest position;
-            already_found = _mm_or_si128(already_found, adapter_found_mask);
-        }
-    }
-    return already_found;
-}
-#endif
-
-static inline uint64_t
-update_adapter_count_array(size_t position, uint64_t R, uint64_t already_found,
-                           MachineWordPatternMatcher *matcher,
-                           uint64_t **adapter_counter)
-{
-    size_t number_of_adapters = matcher->number_of_sequences;
-    for (size_t k = 0; k < number_of_adapters; k++) {
-        AdapterSequence *adapter = matcher->sequences + k;
         bitmask_t adapter_found_mask = adapter->found_mask;
         if (adapter_found_mask & already_found) {
+            adapter_index += 1;
             continue;
         }
-        if (R & adapter_found_mask) {
-            size_t found_position = position - adapter->adapter_length + 1;
-            adapter_counter[adapter->adapter_index][found_position] += 1;
-            // Make sure we only find the adapter once at the earliest position;
+        if (match & adapter_found_mask) {
+            size_t found_position = position - adapter_length + 1;
+            struct AdapterCounts *counts =
+                adapter_counter + adapter->adapter_index;
+            counts->forward[found_position] += 1;
+            counts->reverse[(length - 1) - found_position] += 1;
             already_found |= adapter_found_mask;
         }
+        adapter_index += 1;
     }
     return already_found;
 }
+
+static void
+find_single_matcher(const uint8_t *sequence, size_t sequence_length,
+                    const bitmask_t *restrict init_masks,
+                    const bitmask_t *restrict found_masks,
+                    const bitmask_t (*bitmasks)[NUC_TABLE_SIZE],
+                    AdapterSequence **adapter_sequences_store,
+                    struct AdapterCounts *adapter_counter)
+{
+    bitmask_t found_mask = found_masks[0];
+    bitmask_t init_mask = init_masks[0];
+    bitmask_t R = 0;
+    bitmask_t already_found = 0;
+    const bitmask_t *bitmask = bitmasks[0];
+    AdapterSequence *adapter_sequences = adapter_sequences_store[0];
+    for (size_t pos = 0; pos < sequence_length; pos++) {
+        R <<= 1;
+        R |= init_mask;
+        uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+        R &= bitmask[index];
+        if (R & found_mask) {
+            already_found = update_adapter_count_array(
+                pos, sequence_length, R, already_found, adapter_sequences,
+                adapter_counter);
+        }
+    }
+}
+
+static void (*find_four_matchers)(const uint8_t *sequence, size_t sequence_length,
+                                  const bitmask_t *restrict init_masks,
+                                  const bitmask_t *restrict found_masks,
+                                  const bitmask_t (*by_four_bitmasks)[4],
+                                  AdapterSequence **adapter_sequences_store,
+                                  struct AdapterCounts *adapter_counter) = NULL;
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
+__attribute__((__target__("avx2"))) static void
+find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
+                        const bitmask_t *restrict init_masks,
+                        const bitmask_t *restrict found_masks,
+                        const bitmask_t (*by_four_bitmasks)[4],
+                        AdapterSequence **adapter_sequences_store,
+                        struct AdapterCounts *adapter_counter)
+{
+    bitmask_t fmask0 = found_masks[0];
+    bitmask_t fmask1 = found_masks[1];
+    bitmask_t fmask2 = found_masks[2];
+    bitmask_t fmask3 = found_masks[3];
+    bitmask_t already_found0 = 0;
+    bitmask_t already_found1 = 0;
+    bitmask_t already_found2 = 0;
+    bitmask_t already_found3 = 0;
+
+    __m256i found_mask = _mm256_loadu_si256((const __m256i *)(found_masks));
+    __m256i init_mask = _mm256_loadu_si256((const __m256i *)(init_masks));
+
+    __m256i R = _mm256_setzero_si256();
+    const bitmask_t(*bitmask)[4] = by_four_bitmasks;
+
+    for (size_t pos = 0; pos < sequence_length; pos++) {
+        R = _mm256_slli_epi64(R, 1);
+        R = _mm256_or_si256(R, init_mask);
+        uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+        R = _mm256_and_si256(R, _mm256_loadu_si256((__m256i *)bitmask[index]));
+
+        __m256i check = _mm256_and_si256(R, found_mask);
+        /* Adding 0b01111111 (127) to any number higher than 0 sets the bit for
+           128. Movemask collects these bits. This way we can test if there is
+           a 1 across the entire 256-bit vector. */
+        int check_int =
+            _mm256_movemask_epi8(_mm256_adds_epu8(check, _mm256_set1_epi8(127)));
+        if (check_int) {
+            bitmask_t Rray[4];
+            _mm256_storeu_si256(((__m256i *)Rray), R);
+
+            if (Rray[0] & fmask0) {
+                already_found0 = update_adapter_count_array(
+                    pos, sequence_length, Rray[0], already_found0,
+                    adapter_sequences_store[0], adapter_counter);
+            }
+            if (Rray[1] & fmask1) {
+                already_found1 = update_adapter_count_array(
+                    pos, sequence_length, Rray[1], already_found1,
+                    adapter_sequences_store[1], adapter_counter);
+            }
+            if (Rray[2] & fmask2) {
+                already_found2 = update_adapter_count_array(
+                    pos, sequence_length, Rray[2], already_found2,
+                    adapter_sequences_store[2], adapter_counter);
+            }
+            if (Rray[3] & fmask3) {
+                already_found3 = update_adapter_count_array(
+                    pos, sequence_length, Rray[3], already_found3,
+                    adapter_sequences_store[3], adapter_counter);
+            }
+        }
+    }
+}
+
+/* Constructor runs at dynamic load time */
+__attribute__((constructor)) static void
+find_four_matchers_init_func_ptr(void)
+{
+    if (__builtin_cpu_supports("avx2")) {
+        find_four_matchers = find_four_matchers_avx2;
+    }
+    else {
+        find_four_matchers = NULL;
+    }
+}
+#endif
 
 static int
 AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
@@ -2444,142 +2796,29 @@ AdapterCounter_add_meta(AdapterCounter *self, struct FastqMeta *meta)
             return -1;
         }
     }
-    size_t scalar_matcher_index = 0;
-    size_t vector_matcher_index = 0;
-    size_t number_of_scalar_matchers = self->number_of_matchers;
-    size_t number_of_vector_matchers = self->number_of_sse2_matchers;
-    while (scalar_matcher_index < number_of_scalar_matchers ||
-           vector_matcher_index < number_of_vector_matchers) {
-        size_t remaining_scalar_matchers =
-            number_of_scalar_matchers - scalar_matcher_index;
-        size_t remaining_vector_matchers =
-            number_of_vector_matchers - vector_matcher_index;
-
-        if (remaining_vector_matchers == 0 && remaining_scalar_matchers > 0) {
-            MachineWordPatternMatcher *matcher =
-                self->matchers + scalar_matcher_index;
-            bitmask_t found_mask = matcher->found_mask;
-            bitmask_t init_mask = matcher->init_mask;
-            bitmask_t R = 0;
-            bitmask_t *bitmask = matcher->bitmasks;
-            bitmask_t already_found = 0;
-            scalar_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R <<= 1;
-                R |= init_mask;
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                R &= bitmask[index];
-                if (R & found_mask) {
-                    already_found = update_adapter_count_array(
-                        pos, R, already_found, matcher, self->adapter_counter);
-                }
-            }
+    size_t number_of_matchers = self->number_of_matchers;
+    size_t matcher_index = 0;
+    bitmask_t *found_masks = self->found_masks;
+    bitmask_t *init_masks = self->init_masks;
+    bitmask_t(*bitmasks)[5] = self->bitmasks;
+    AdapterSequence **adapter_sequences = self->adapter_sequences;
+    struct AdapterCounts *adapter_count_array = self->adapter_counter;
+    while (matcher_index < number_of_matchers) {
+        /* Only run when a vectorized function pointer is initialized */
+        if (find_four_matchers && number_of_matchers - matcher_index > 1) {
+            find_four_matchers(
+                sequence, sequence_length, init_masks + matcher_index,
+                found_masks + matcher_index,
+                self->by_four_bitmasks[matcher_index / 4],
+                adapter_sequences + matcher_index, adapter_count_array);
+            matcher_index += 4;
+            continue;
         }
-#ifdef __SSE2__
-        else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 0) {
-            MachineWordPatternMatcherSSE2 *matcher =
-                self->sse2_matchers + vector_matcher_index;
-            __m128i found_mask = matcher->found_mask;
-            __m128i init_mask = matcher->init_mask;
-            __m128i R = _mm_setzero_si128();
-            __m128i *bitmask = matcher->bitmasks;
-            __m128i already_found = _mm_setzero_si128();
-            vector_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R = _mm_slli_epi64(R, 1);
-                R = _mm_or_si128(R, init_mask);
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                __m128i mask = bitmask[index];
-                R = _mm_and_si128(R, mask);
-                if (bitwise_and_nonzero_si128(R, found_mask)) {
-                    already_found = update_adapter_count_array_sse2(
-                        pos, R, already_found, matcher, self->adapter_counter);
-                }
-            }
-            /* In the cases below we take advantage of out of order execution
-               on the CPU by checking two matchers at the same time. Either two
-               sse2 matchers, or a bitmask_t matcher and a vector matcher.
-               Shift-AND is a highly dependent chain of actions, meaning there
-               is no opportunity for the CPU to do two thing simultaneously. By
-               doing two shift-AND routines at the same time, there are two
-               independent paths that the CPU can evaluate using out of order
-               execution. This leads to significant speedups. */
-        }
-        else if (remaining_vector_matchers == 1 && remaining_scalar_matchers == 1) {
-            MachineWordPatternMatcherSSE2 *vector_matcher =
-                self->sse2_matchers + vector_matcher_index;
-            MachineWordPatternMatcher *scalar_matcher =
-                self->matchers + scalar_matcher_index;
-            __m128i vector_found_mask = vector_matcher->found_mask;
-            bitmask_t scalar_found_mask = scalar_matcher->found_mask;
-            __m128i vector_init_mask = vector_matcher->init_mask;
-            bitmask_t scalar_init_mask = scalar_matcher->init_mask;
-            __m128i vector_R = _mm_setzero_si128();
-            bitmask_t scalar_R = 0;
-            __m128i *vector_bitmasks = vector_matcher->bitmasks;
-            bitmask_t *scalar_bitmasks = scalar_matcher->bitmasks;
-            __m128i vector_already_found = _mm_setzero_si128();
-            bitmask_t scalar_already_found = 0;
-            vector_matcher_index += 1;
-            scalar_matcher_index += 1;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                vector_R = _mm_slli_epi64(vector_R, 1);
-                scalar_R <<= 1;
-                vector_R = _mm_or_si128(vector_R, vector_init_mask);
-                scalar_R |= scalar_init_mask;
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                scalar_R &= scalar_bitmasks[index];
-                __m128i vector_mask = vector_bitmasks[index];
-                vector_R = _mm_and_si128(vector_R, vector_mask);
-                if (bitwise_and_nonzero_si128(vector_R, vector_found_mask)) {
-                    vector_already_found = update_adapter_count_array_sse2(
-                        pos, vector_R, vector_already_found, vector_matcher,
-                        self->adapter_counter);
-                }
-                if (scalar_R & scalar_found_mask) {
-                    scalar_already_found = update_adapter_count_array(
-                        pos, scalar_R, scalar_already_found, scalar_matcher,
-                        self->adapter_counter);
-                }
-            }
-        }
-        else if (remaining_vector_matchers > 1) {
-            MachineWordPatternMatcherSSE2 *matcher1 =
-                self->sse2_matchers + vector_matcher_index;
-            MachineWordPatternMatcherSSE2 *matcher2 =
-                self->sse2_matchers + vector_matcher_index + 1;
-            __m128i found_mask1 = matcher1->found_mask;
-            __m128i found_mask2 = matcher2->found_mask;
-            __m128i init_mask1 = matcher1->init_mask;
-            __m128i init_mask2 = matcher2->init_mask;
-            __m128i R1 = _mm_setzero_si128();
-            __m128i R2 = _mm_setzero_si128();
-            __m128i *bitmasks1 = matcher1->bitmasks;
-            __m128i *bitmasks2 = matcher2->bitmasks;
-            __m128i already_found1 = _mm_setzero_si128();
-            __m128i already_found2 = _mm_setzero_si128();
-            vector_matcher_index += 2;
-            for (size_t pos = 0; pos < sequence_length; pos++) {
-                R1 = _mm_slli_epi64(R1, 1);
-                R2 = _mm_slli_epi64(R2, 1);
-                R1 = _mm_or_si128(R1, init_mask1);
-                R2 = _mm_or_si128(R2, init_mask2);
-                uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
-                __m128i mask1 = bitmasks1[index];
-                __m128i mask2 = bitmasks2[index];
-                R1 = _mm_and_si128(R1, mask1);
-                R2 = _mm_and_si128(R2, mask2);
-                if (bitwise_and_nonzero_si128(R1, found_mask1)) {
-                    already_found1 = update_adapter_count_array_sse2(
-                        pos, R1, already_found1, matcher1, self->adapter_counter);
-                }
-                if (bitwise_and_nonzero_si128(R2, found_mask2)) {
-                    already_found2 = update_adapter_count_array_sse2(
-                        pos, R2, already_found2, matcher2, self->adapter_counter);
-                }
-            }
-        }
-#endif
+        find_single_matcher(
+            sequence, sequence_length, init_masks + matcher_index,
+            found_masks + matcher_index, bitmasks + matcher_index,
+            adapter_sequences + matcher_index, adapter_count_array);
+        matcher_index += 1;
     }
     return 0;
 }
@@ -2598,10 +2837,14 @@ PyDoc_STRVAR(AdapterCounter_add_read__doc__,
 static PyObject *
 AdapterCounter_add_read(AdapterCounter *self, FastqRecordView *read)
 {
-    if (!FastqRecordView_CheckExact(read)) {
+    int is_view = is_FastqRecordView(self, read);
+    if (is_view == -1) {
+        return NULL;
+    }
+    else if (is_view == 0) {
         PyErr_Format(PyExc_TypeError,
-                     "read should be a FastqRecordView object, got %s",
-                     Py_TYPE(read)->tp_name);
+                     "read should be a FastqRecordView object, got %R",
+                     Py_TYPE((PyObject *)read));
         return NULL;
     }
     if (AdapterCounter_add_meta(self, &read->meta) != 0) {
@@ -2625,14 +2868,18 @@ static PyObject *
 AdapterCounter_add_record_array(AdapterCounter *self,
                                 FastqRecordArrayView *record_array)
 {
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    else if (is_record_array == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         if (AdapterCounter_add_meta(self, records + i) != 0) {
@@ -2655,23 +2902,33 @@ PyDoc_STRVAR(AdapterCounter_get_counts__doc__,
 static PyObject *
 AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    PyTypeObject *PythonArray_Type = state->PythonArray_Type;
     PyObject *counts_list = PyList_New(self->number_of_adapters);
     if (counts_list == NULL) {
         PyErr_NoMemory();
         return NULL;
     }
     for (size_t i = 0; i < self->number_of_adapters; i++) {
-        PyObject *tup = PyTuple_New(2);
-        PyObject *counts = PythonArray_FromBuffer(
-            'Q', self->adapter_counter[i], self->max_length * sizeof(uint64_t));
-        if (counts == NULL) {
+        PyObject *counts_forward = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].forward,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_forward == NULL) {
             return NULL;
         }
-        PyObject *adapter = PyTuple_GET_ITEM(self->adapters, i);
+        PyObject *counts_reverse = PythonArray_FromBuffer(
+            'Q', self->adapter_counter[i].reverse,
+            self->max_length * sizeof(uint64_t), PythonArray_Type);
+        if (counts_reverse == NULL) {
+            return NULL;
+        }
+        PyObject *adapter = PyTuple_GetItem(self->adapters, i);
         Py_INCREF(adapter);
-        PyTuple_SET_ITEM(tup, 0, adapter);
-        PyTuple_SET_ITEM(tup, 1, counts);
-        PyList_SET_ITEM(counts_list, i, tup);
+        PyObject *tup = PyTuple_New(3);
+        PyTuple_SetItem(tup, 0, adapter);
+        PyTuple_SetItem(tup, 1, counts_forward);
+        PyTuple_SetItem(tup, 2, counts_reverse);
+        PyList_SetItem(counts_list, i, tup);
     }
     return counts_list;
 }
@@ -2698,13 +2955,19 @@ static PyMemberDef AdapterCounter_members[] = {
     {NULL},
 };
 
-static PyTypeObject AdapterCounter_type = {
-    .tp_name = "_qc.AdapterCounter",
-    .tp_basicsize = sizeof(AdapterCounter),
-    .tp_dealloc = (destructor)AdapterCounter_dealloc,
-    .tp_new = (newfunc)AdapterCounter__new__,
-    .tp_members = AdapterCounter_members,
-    .tp_methods = AdapterCounter_methods,
+static PyType_Slot AdapterCounter_slots[] = {
+    {Py_tp_dealloc, (destructor)AdapterCounter_dealloc},
+    {Py_tp_new, (newfunc)AdapterCounter__new__},
+    {Py_tp_members, AdapterCounter_members},
+    {Py_tp_methods, AdapterCounter_methods},
+    {0, NULL},
+};
+
+static PyType_Spec AdapterCounter_spec = {
+    .name = "_qc.AdapterCounter",
+    .basicsize = sizeof(AdapterCounter),
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = AdapterCounter_slots,
 };
 
 /********************
@@ -2737,7 +3000,9 @@ PerTileQuality_dealloc(PerTileQuality *self)
         PyMem_Free(tile_qual.total_errors);
     }
     PyMem_Free(self->tile_qualities);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyObject *
@@ -2864,7 +3129,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
         return 0;
     }
     uint8_t *record_start = meta->record_start;
-    const uint8_t *header = record_start + 1;
+    const uint8_t *header = record_start;
     size_t header_length = meta->name_length;
     const uint8_t *qualities = record_start + meta->qualities_offset;
     size_t sequence_length = meta->sequence_length;
@@ -2975,10 +3240,14 @@ PerTileQuality_add_read(PerTileQuality *self, FastqRecordView *read)
     if (self->skipped) {
         Py_RETURN_NONE;
     }
-    if (!FastqRecordView_CheckExact(read)) {
+    int is_view = is_FastqRecordView(self, read);
+    if (is_view == -1) {
+        return NULL;
+    }
+    else if (is_view == 0) {
         PyErr_Format(PyExc_TypeError,
-                     "read should be a FastqRecordView object, got %s",
-                     Py_TYPE(read)->tp_name);
+                     "read should be a FastqRecordView object, got %R",
+                     Py_TYPE((PyObject *)read));
         return NULL;
     }
     if (PerTileQuality_add_meta(self, &read->meta) != 0) {
@@ -3005,14 +3274,18 @@ PerTileQuality_add_record_array(PerTileQuality *self,
     if (self->skipped) {
         Py_RETURN_NONE;
     }
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    else if (is_record_array == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         if (PerTileQuality_add_meta(self, records + i) != 0) {
@@ -3071,12 +3344,12 @@ PerTileQuality_get_tile_counts(PerTileQuality *self, PyObject *Py_UNUSED(ignore)
                 Py_DECREF(result);
                 return PyErr_NoMemory();
             }
-            PyList_SET_ITEM(summed_error_list, j, summed_error_obj);
-            PyList_SET_ITEM(count_list, j, count_obj);
+            PyList_SetItem(summed_error_list, j, summed_error_obj);
+            PyList_SetItem(count_list, j, count_obj);
         }
-        PyTuple_SET_ITEM(entry, 0, tile_id);
-        PyTuple_SET_ITEM(entry, 1, summed_error_list);
-        PyTuple_SET_ITEM(entry, 2, count_list);
+        PyTuple_SetItem(entry, 0, tile_id);
+        PyTuple_SetItem(entry, 1, summed_error_list);
+        PyTuple_SetItem(entry, 2, count_list);
         int ret = PyList_Append(result, entry);
         if (ret != 0) {
             Py_DECREF(result);
@@ -3109,13 +3382,20 @@ static PyMemberDef PerTileQuality_members[] = {
     {NULL},
 };
 
-static PyTypeObject PerTileQuality_Type = {
-    .tp_name = "_qc.PerTileQuality",
-    .tp_basicsize = sizeof(PerTileQuality),
-    .tp_dealloc = (destructor)PerTileQuality_dealloc,
-    .tp_new = (newfunc)PerTileQuality__new__,
-    .tp_members = PerTileQuality_members,
-    .tp_methods = PerTileQuality_methods,
+static PyType_Slot PerTileQuality_slots[] = {
+    {Py_tp_dealloc, (destructor)PerTileQuality_dealloc},
+    {Py_tp_new, (newfunc)PerTileQuality__new__},
+    {Py_tp_members, PerTileQuality_members},
+    {Py_tp_methods, PerTileQuality_methods},
+    {0, NULL},
+};
+
+static PyType_Spec PerTileQuality_spec = {
+    .name = "_qc.PerTileQuality",
+    .basicsize = sizeof(PerTileQuality),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = PerTileQuality_slots,
 };
 
 /**********************
@@ -3135,9 +3415,9 @@ kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence)
     }
 }
 
-/*************************
- * SEQUENCE DUPLICATION *
- *************************/
+/****************************
+ * OverrepresentedSequences *
+ ****************************/
 
 /* A module that cuts the sequence in bits of k size. The canonical (lowest)
    representation of the bit is used.
@@ -3151,8 +3431,10 @@ kmer_to_sequence(uint64_t kmer, size_t k, uint8_t *sequence)
 #define DEFAULT_MAX_UNIQUE_FRAGMENTS 5000000
 #define DEFAULT_FRAGMENT_LENGTH 21
 #define DEFAULT_UNIQUE_SAMPLE_EVERY 8
+#define DEFAULT_BASES_FROM_START 100
+#define DEFAULT_BASES_FROM_END 100
 
-typedef struct _SequenceDuplicationStruct {
+typedef struct _OverrepresentedSequencesStruct {
     PyObject_HEAD
     size_t fragment_length;
     uint64_t number_of_sequences;
@@ -3166,29 +3448,36 @@ typedef struct _SequenceDuplicationStruct {
     uint64_t number_of_unique_fragments;
     uint64_t total_fragments;
     size_t sample_every;
-} SequenceDuplication;
+    Py_ssize_t fragments_from_start;
+    Py_ssize_t fragments_from_end;
+} OverrepresentedSequences;
 
 static void
-SequenceDuplication_dealloc(SequenceDuplication *self)
+OverrepresentedSequences_dealloc(OverrepresentedSequences *self)
 {
     PyMem_Free(self->staging_hash_table);
     PyMem_Free(self->hashes);
     PyMem_Free(self->counts);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyObject *
-SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+OverrepresentedSequences__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     Py_ssize_t max_unique_fragments = DEFAULT_MAX_UNIQUE_FRAGMENTS;
     Py_ssize_t fragment_length = DEFAULT_FRAGMENT_LENGTH;
     Py_ssize_t sample_every = DEFAULT_UNIQUE_SAMPLE_EVERY;
+    Py_ssize_t bases_from_start = DEFAULT_BASES_FROM_START;
+    Py_ssize_t bases_from_end = DEFAULT_BASES_FROM_END;
     static char *kwargnames[] = {"max_unique_fragments", "fragment_length",
-                                 "sample_every", NULL};
-    static char *format = "|nnn:SequenceDuplication";
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames,
-                                     &max_unique_fragments, &fragment_length,
-                                     &sample_every)) {
+                                 "sample_every",         "bases_from_start",
+                                 "bases_from_end",       NULL};
+    static char *format = "|nnnnn:OverrepresentedSequences";
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwargs, format, kwargnames, &max_unique_fragments,
+            &fragment_length, &sample_every, &bases_from_start, &bases_from_end)) {
         return NULL;
     }
     if (max_unique_fragments < 1) {
@@ -3209,6 +3498,12 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
                      "sample_every must be 1 or greater. Got %zd", sample_every);
         return NULL;
     }
+    if (bases_from_start < 0) {
+        bases_from_start = UINT32_MAX;
+    }
+    if (bases_from_end < 0) {
+        bases_from_end = UINT32_MAX;
+    }
     /* If size is a power of 2, the modulo HASH_TABLE_SIZE can be optimised to
        a bitwise AND. Using 1.5 times as a base we ensure that the hashtable is
        utilized for at most 2/3. (Increased business degrades performance.) */
@@ -3221,7 +3516,7 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
         PyMem_Free(counts);
         return PyErr_NoMemory();
     }
-    SequenceDuplication *self = PyObject_New(SequenceDuplication, type);
+    OverrepresentedSequences *self = PyObject_New(OverrepresentedSequences, type);
     if (self == NULL) {
         PyMem_Free(hashes);
         PyMem_Free(counts);
@@ -3239,11 +3534,15 @@ SequenceDuplication__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->hashes = hashes;
     self->counts = counts;
     self->sample_every = sample_every;
+    self->fragments_from_start =
+        (bases_from_start + fragment_length - 1) / fragment_length;
+    self->fragments_from_end =
+        (bases_from_end + fragment_length - 1) / fragment_length;
     return (PyObject *)self;
 }
 
 static void
-Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
+Sequence_duplication_insert_hash(OverrepresentedSequences *self, uint64_t hash)
 {
     uint64_t hash_to_index_int = self->hash_table_size - 1;
     uint64_t *hashes = self->hashes;
@@ -3271,7 +3570,8 @@ Sequence_duplication_insert_hash(SequenceDuplication *self, uint64_t hash)
 }
 
 static int
-SequenceDuplication_resize_staging(SequenceDuplication *self, uint64_t new_size)
+OverrepresentedSequences_resize_staging(OverrepresentedSequences *self,
+                                        uint64_t new_size)
 {
     if (new_size <= self->staging_hash_table_size) {
         return 0;
@@ -3309,8 +3609,228 @@ add_to_staging(uint64_t *staging_hash_table, uint64_t staging_hash_table_size,
     return;
 }
 
+/* To be used in the sequence duplication part */
+// clang-format off
+static const uint8_t NUCLEOTIDE_TO_TWOBIT[128] = {
+// Control characters
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+// Interpunction numbers etc
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     A, B, C, D, E, F, G, H, I, J, K, L, M, N, O,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  P, Q, R, S, T, U, V, W, X, Y, Z,
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+//     a, b, c, d, e, f, g, h, i, j, k, l, m, n, o,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 8, 4,
+//  p, q, r, s, t, u, v, w, x, y, z,
+    4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+};
+// clang-format on
+
+#define TWOBIT_UNKNOWN_CHAR -1
+#define TWOBIT_N_CHAR -2
+#define TWOBIT_SUCCESS 0
+
+static uint64_t
+reverse_complement_kmer(uint64_t kmer, uint64_t k)
+{
+    // Invert all the bits, with 0,1,2,3 == A,C,G,T this automatically is the
+    // complement.
+    uint64_t comp = ~kmer;
+    // Progressively swap all the twobits inplace.
+    uint64_t revcomp = (comp << 32) | (comp >> 32);
+    revcomp = ((revcomp & 0xFFFF0000FFFF0000ULL) >> 16) |
+              ((revcomp & 0x0000FFFF0000FFFFULL) << 16);
+    revcomp = ((revcomp & 0xFF00FF00FF00FF00ULL) >> 8) |
+              ((revcomp & 0x00FF00FF00FF00FFULL) << 8);
+    /* Compiler properly recognizes the above as a byteswap and will simplify
+       using the bswap instruction. */
+    revcomp = ((revcomp & 0xF0F0F0F0F0F0F0F0ULL) >> 4) |
+              ((revcomp & 0x0F0F0F0F0F0F0F0FULL) << 4);
+    revcomp = ((revcomp & 0xCCCCCCCCCCCCCCCCULL) >> 2) |
+              ((revcomp & 0x3333333333333333ULL) << 2);
+    // If k < 32, the empty twobit slots will have ended up at the least
+    // significant bits. Use a shift to move them to the highest bits again.
+    return revcomp >> (64 - (k * 2));
+}
+
+static int64_t
+sequence_to_canonical_kmer_default(uint8_t *sequence, uint64_t k)
+{
+    uint64_t kmer = 0;
+    size_t all_nucs = 0;
+    int64_t i = 0;
+    int64_t vector_end = k - 4;
+    for (i = 0; i < vector_end; i += 4) {
+        size_t nuc0 = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
+        size_t nuc1 = NUCLEOTIDE_TO_TWOBIT[sequence[i + 1]];
+        size_t nuc2 = NUCLEOTIDE_TO_TWOBIT[sequence[i + 2]];
+        size_t nuc3 = NUCLEOTIDE_TO_TWOBIT[sequence[i + 3]];
+        all_nucs |= (nuc0 | nuc1 | nuc2 | nuc3);
+        uint64_t kchunk = ((nuc0 << 6) | (nuc1 << 4) | (nuc2 << 2) | (nuc3));
+        kmer <<= 8;
+        kmer |= kchunk;
+    }
+    for (; i < (int64_t)k; i++) {
+        size_t nuc = NUCLEOTIDE_TO_TWOBIT[sequence[i]];
+        all_nucs |= nuc;
+        kmer <<= 2;
+        kmer |= nuc;
+    }
+    if (all_nucs > 3) {
+        if (all_nucs & 4) {
+            return TWOBIT_UNKNOWN_CHAR;
+        }
+        if (all_nucs & 8) {
+            return TWOBIT_N_CHAR;
+        }
+    }
+    uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
+    // If k is uneven there can be no ambiguity
+    if (revcomp_kmer > kmer) {
+        return kmer;
+    }
+    return revcomp_kmer;
+}
+
+static int64_t (*sequence_to_canonical_kmer)(uint8_t *sequence, uint64_t k) =
+    sequence_to_canonical_kmer_default;
+
+#if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
+__attribute__((__target__("avx2"))) static int64_t
+sequence_to_canonical_kmer_avx2(uint8_t *sequence, uint64_t k)
+{
+    /* By using a load mask, at most 3 extra bytes are loaded. Given that a
+       sequence in sequali always ends with \n+\n this should not trigger
+       invalid memory access.*/
+    __m256i load_mask = _mm256_cmpgt_epi32(
+        _mm256_add_epi32(_mm256_set1_epi32((k + 3) / 4),
+                         _mm256_setr_epi32(0, -1, -2, -3, -4, -5, -6, -7)),
+        _mm256_setzero_si256());
+    __m256i seq_vec_raw = _mm256_maskload_epi32((int *)sequence, load_mask);
+    /* Use only the last 3 bits to create indices from 0-15. A,C,G and T are
+        distinct in the last 3 bits. This will yield results for any
+        input. The non-ACGT check is performed at the end of the function.
+    */
+    __m256i indices_vec = _mm256_and_si256(_mm256_set1_epi8(7), seq_vec_raw);
+    /* Use the shufb instruction to convert the 0-7 indices to corresponding
+       ACGT twobit representation. Everything non C, G, T will be 0, the same
+       as A. */
+    __m256i twobit_vec =
+        _mm256_shuffle_epi8(_mm256_setr_epi8(
+                                /*     A,  , C, T,  ,  , G */
+                                0, 0, 0, 1, 3, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0,
+                                0, 0, 0, 1, 3, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0),
+                            indices_vec);
+    /* Now the twobits need to be shifted to be in the position of their byte.
+     * For each group of 4, the first entry must be shifted by 6, the second by
+     * 4, the third by 2 and the last not shifted.
+     * To do this, an alternating mask ff00 is used to select only one byte of
+     * each byte pair. This byte is shifted by 2. This leads to a vector were
+     * bytes are shifted by 2, 0, 2, 0 etc.
+     * After that the first two bytes of each four byte group are selected and
+     * shifted by 4. This results in a vector were all bytes are shifted
+     * 6, 4, 2, 0.
+     */
+    __m256i alternate_byte_select = _mm256_set1_epi16(0x00ff);
+    __m256i alternate_word_select = _mm256_set1_epi32(0x0000ffff);
+    __m256i first_shift = _mm256_blendv_epi8(
+        twobit_vec, _mm256_slli_epi16(twobit_vec, 2), alternate_byte_select);
+    __m256i twobit_shifted_vec = _mm256_blendv_epi8(
+        first_shift, _mm256_slli_epi16(first_shift, 4), alternate_word_select);
+    /* Now the groups of four need to be bitwise ORred together. Due to the
+       way the data is prepared ADD and OR have the same effect. We can use
+       _mm256_sad_epu8 instruction with a zero function to horizontally add
+       8-bit integers. Since this adds 8-bit integers in groups of 8, we use
+       a mask to select only 4 bytes. We can then use a shift and a or to
+       get all resulting integers into one vector again.
+    */
+    __m256i four_select_mask = _mm256_set1_epi64x(0x00000000FFFFFFFF);
+    __m256i upper_twobit =
+        _mm256_sad_epu8(_mm256_and_si256(four_select_mask, twobit_shifted_vec),
+                        _mm256_setzero_si256());
+    __m256i lower_twobit = _mm256_sad_epu8(
+        _mm256_andnot_si256(four_select_mask, twobit_shifted_vec),
+        _mm256_setzero_si256());
+    __m256i combined_twobit =
+        _mm256_or_si256(_mm256_bslli_epi128(upper_twobit, 1), lower_twobit);
+
+    /* The following instructions arrange the 8 resulting twobit bytes in the
+       correct order to be extracted as a 64 bit integer. */
+    __m256i packed_twobit = _mm256_shuffle_epi8(
+        combined_twobit,
+        _mm256_setr_epi8(8, 9, 0, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                         -1, -1, 8, 9, 0, 1, -1, -1, -1, -1, -1, -1, -1, -1,
+                         -1, -1, -1, -1));
+    __m256i shuffled_twobit = _mm256_permutevar8x32_epi32(
+        packed_twobit, _mm256_setr_epi32(4, 0, 7, 7, 7, 7, 7, 7));
+    uint64_t kmer = _mm_cvtsi128_si64(_mm256_castsi256_si128(shuffled_twobit));
+    kmer = kmer >> (64 - (k * 2));
+
+    /* NON-ACGT CHECK*/
+
+    /* In order to mask only k characters.
+      Create an array with only k. Create an array with 0, -1, -2, -3 etc.
+      Add k array to descending array. If k=2 descending array will be,
+      2, 1, 0, -1, etc. cmpgt with zero array results in, yes, yes, no, no etc.
+      First two characters masked with k=2.
+   */
+    __m256i seq_mask = _mm256_cmpgt_epi8(
+        _mm256_add_epi8(
+            _mm256_set1_epi8(k),
+            _mm256_setr_epi8(0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11,
+                             -12, -13, -14, -15, -16, -17, -18, -19, -20, -21,
+                             -22, -23, -24, -25, -26, -27, -28, -29, -30, -31)),
+        _mm256_setzero_si256());
+    /* Mask all characters not of interest as A to not false positively trigger
+       the non-ACGT detection */
+    __m256i seq_vec =
+        _mm256_blendv_epi8(_mm256_set1_epi8('A'), seq_vec_raw, seq_mask);
+    /* 32 is the ASCII lowercase bit. Use and not to make everything upper case. */
+    __m256i seq_vec_upper = _mm256_andnot_si256(_mm256_set1_epi8(32), seq_vec);
+    __m256i ACGT_vec = _mm256_or_si256(
+        _mm256_or_si256(_mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('A')),
+                        _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('C'))),
+        _mm256_or_si256(_mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('G')),
+                        _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('T'))
+
+                            ));
+    /* Bitwise not of ACGT_vec should be all 0. */
+    int all_characters_acgt = _mm256_testc_si256(ACGT_vec, _mm256_set1_epi8(-1));
+    if (all_characters_acgt) {
+        uint64_t revcomp_kmer = reverse_complement_kmer(kmer, k);
+        if (revcomp_kmer < kmer) {
+            return revcomp_kmer;
+        }
+        return kmer;
+    }
+    __m256i N_vec = _mm256_cmpeq_epi8(seq_vec_upper, _mm256_set1_epi8('N'));
+    int all_characters_acgtn = _mm256_testc_si256(
+        _mm256_or_si256(ACGT_vec, N_vec), _mm256_set1_epi8(-1));
+    if (all_characters_acgtn) {
+        return TWOBIT_N_CHAR;
+    }
+    return TWOBIT_UNKNOWN_CHAR;
+}
+
+/* Constructor runs at dynamic load time */
+__attribute__((constructor)) static void
+sequence_to_canonical_kmer_init_func_ptr(void)
+{
+    if (__builtin_cpu_supports("avx2")) {
+        sequence_to_canonical_kmer = sequence_to_canonical_kmer_avx2;
+    }
+    else {
+        sequence_to_canonical_kmer = sequence_to_canonical_kmer_default;
+    }
+}
+#endif
+
 static int
-SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
+OverrepresentedSequences_add_meta(OverrepresentedSequences *self,
+                                  struct FastqMeta *meta)
 {
     if (self->number_of_sequences % self->sample_every != 0) {
         self->number_of_sequences += 1;
@@ -3341,25 +3861,44 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
        If the sequence length is exactly divisible by the fragment length, this
        results in exactly no overlap between front and back fragments, while
        still all of the sequence is being sampled.
+
+       If the sequence is very large the amount of samples is taken is limited
+       by a user-settable maximum.
     */
-    Py_ssize_t total_fragments =
+    /* Vader: Luke, Obi-Wan never told you about the algorithm...
+       Luke:  He told me enough! It uses integer division!
+       Vader: Yes Luke, we have to use integer division.
+       Luke:  No, that's not true! The compiler can optimize integer division
+              away for constants!
+       Vader: Search your feelings Luke! The fragment length has to be user
+              settable!
+       Luke:  NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+    */
+    Py_ssize_t max_fragments =
         (sequence_length + fragment_length - 1) / fragment_length;
+    Py_ssize_t from_mid_point_fragments = max_fragments / 2;
+    Py_ssize_t max_start_fragments = max_fragments - from_mid_point_fragments;
+    Py_ssize_t fragments_from_start =
+        Py_MIN(self->fragments_from_start, max_start_fragments);
+    Py_ssize_t fragments_from_end =
+        Py_MIN(self->fragments_from_end, from_mid_point_fragments);
+    Py_ssize_t total_fragments = fragments_from_start + fragments_from_end;
     size_t staging_hash_bits = (size_t)ceil(log2((double)total_fragments * 1.5));
     size_t staging_hash_size = 1ULL << staging_hash_bits;
     if (staging_hash_size > self->staging_hash_table_size) {
-        if (SequenceDuplication_resize_staging(self, staging_hash_size) < 0) {
+        if (OverrepresentedSequences_resize_staging(self, staging_hash_size) < 0) {
             return -1;
         }
     }
     uint64_t *staging_hash_table = self->staging_hash_table;
     memset(staging_hash_table, 0, staging_hash_size * sizeof(uint64_t));
 
-    Py_ssize_t from_mid_point_fragments = total_fragments / 2;
-    Py_ssize_t mid_point =
-        sequence_length - (from_mid_point_fragments * fragment_length);
+    Py_ssize_t start_end = fragments_from_start * fragment_length;
+    Py_ssize_t end_start =
+        sequence_length - (fragments_from_end * fragment_length);
     bool warn_unknown = false;
     // Sample front sequences
-    for (Py_ssize_t i = 0; i < mid_point; i += fragment_length) {
+    for (Py_ssize_t i = 0; i < start_end; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3373,7 +3912,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     }
 
     // Sample back sequences
-    for (Py_ssize_t i = mid_point; i < sequence_length; i += fragment_length) {
+    for (Py_ssize_t i = end_start; i < sequence_length; i += fragment_length) {
         int64_t kmer = sequence_to_canonical_kmer(sequence + i, fragment_length);
         if (kmer < 0) {
             if (kmer == TWOBIT_UNKNOWN_CHAR) {
@@ -3404,7 +3943,7 @@ SequenceDuplication_add_meta(SequenceDuplication *self, struct FastqMeta *meta)
     return 0;
 }
 
-PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_add_read__doc__,
              "add_read($self, read, /)\n"
              "--\n"
              "\n"
@@ -3413,24 +3952,29 @@ PyDoc_STRVAR(SequenceDuplication_add_read__doc__,
              "  read\n"
              "    A FastqRecordView object.\n");
 
-#define SequenceDuplication_add_read_method METH_O
+#define OverrepresentedSequences_add_read_method METH_O
 
 static PyObject *
-SequenceDuplication_add_read(SequenceDuplication *self, FastqRecordView *read)
+OverrepresentedSequences_add_read(OverrepresentedSequences *self,
+                                  FastqRecordView *read)
 {
-    if (!FastqRecordView_CheckExact(read)) {
-        PyErr_Format(PyExc_TypeError,
-                     "read should be a FastqRecordView object, got %s",
-                     Py_TYPE(read)->tp_name);
+    int is_view = is_FastqRecordView(self, read);
+    if (is_view == -1) {
         return NULL;
     }
-    if (SequenceDuplication_add_meta(self, &read->meta) != 0) {
+    else if (is_view == 0) {
+        PyErr_Format(PyExc_TypeError,
+                     "read should be a FastqRecordView object, got %R",
+                     Py_TYPE((PyObject *)read));
+        return NULL;
+    }
+    if (OverrepresentedSequences_add_meta(self, &read->meta) != 0) {
         return NULL;
     }
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(SequenceDuplication_add_record_array__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_add_record_array__doc__,
              "add_record_array($self, record_array, /)\n"
              "--\n"
              "\n"
@@ -3439,40 +3983,44 @@ PyDoc_STRVAR(SequenceDuplication_add_record_array__doc__,
              "  record_array\n"
              "    A FastqRecordArrayView object.\n");
 
-#define SequenceDuplication_add_record_array_method METH_O
+#define OverrepresentedSequences_add_record_array_method METH_O
 
 static PyObject *
-SequenceDuplication_add_record_array(SequenceDuplication *self,
-                                     FastqRecordArrayView *record_array)
+OverrepresentedSequences_add_record_array(OverrepresentedSequences *self,
+                                          FastqRecordArrayView *record_array)
 {
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    else if (is_record_array == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
-        if (SequenceDuplication_add_meta(self, records + i) != 0) {
+        if (OverrepresentedSequences_add_meta(self, records + i) != 0) {
             return NULL;
         }
     }
     Py_RETURN_NONE;
 }
 
-PyDoc_STRVAR(SequenceDuplication_sequence_counts__doc__,
+PyDoc_STRVAR(OverrepresentedSequences_sequence_counts__doc__,
              "sequence_counts($self, /)\n"
              "--\n"
              "\n"
              "Get a dictionary with sequence counts \n");
 
-#define SequenceDuplication_sequence_counts_method METH_NOARGS
+#define OverrepresentedSequences_sequence_counts_method METH_NOARGS
 
 static PyObject *
-SequenceDuplication_sequence_counts(SequenceDuplication *self,
-                                    PyObject *Py_UNUSED(ignore))
+OverrepresentedSequences_sequence_counts(OverrepresentedSequences *self,
+                                         PyObject *Py_UNUSED(ignore))
 {
     PyObject *count_dict = PyDict_New();
     if (count_dict == NULL) {
@@ -3482,6 +4030,8 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self,
     uint32_t *counts = self->counts;
     uint64_t hash_table_size = self->hash_table_size;
     Py_ssize_t fragment_length = self->fragment_length;
+    uint8_t seq_store[32];
+    memset(seq_store, 0, sizeof(seq_store));
     for (size_t i = 0; i < hash_table_size; i += 1) {
         uint64_t entry_hash = hashes[i];
         if (entry_hash == 0) {
@@ -3491,12 +4041,15 @@ SequenceDuplication_sequence_counts(SequenceDuplication *self,
         if (count_obj == NULL) {
             goto error;
         }
-        PyObject *key = PyUnicode_New(fragment_length, 127);
+        uint64_t kmer = wanghash64_inverse(entry_hash);
+        kmer_to_sequence(kmer, fragment_length, seq_store);
+        PyObject *key =
+            PyUnicode_DecodeASCII((char *)seq_store, fragment_length, NULL);
         if (key == NULL) {
+            Py_DECREF(count_obj);
             goto error;
         }
-        uint64_t kmer = wanghash64_inverse(entry_hash);
-        kmer_to_sequence(kmer, fragment_length, PyUnicode_DATA(key));
+        memset(seq_store, 0, sizeof(seq_store));
         if (PyDict_SetItem(count_dict, key, count_obj) != 0) {
             goto error;
         }
@@ -3511,7 +4064,7 @@ error:
 }
 
 PyDoc_STRVAR(
-    SequenceDuplication_overrepresented_sequences__doc__,
+    OverrepresentedSequences_overrepresented_sequences__doc__,
     "overrepresented_sequences($self, threshold=0.001)\n"
     "--\n"
     "\n"
@@ -3534,19 +4087,21 @@ PyDoc_STRVAR(
     "high "
     "    numbers of sequences.");
 
-#define SequenceDuplication_overrepresented_sequences_method \
+#define OverrepresentedSequences_overrepresented_sequences_method \
     METH_VARARGS | METH_KEYWORDS
 
 static PyObject *
-SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
-                                              PyObject *args, PyObject *kwargs)
+OverrepresentedSequences_overrepresented_sequences(OverrepresentedSequences *self,
+                                                   PyObject *args,
+                                                   PyObject *kwargs)
 {
     double threshold = 0.0001;  // 0.01 %
     Py_ssize_t min_threshold = 1;
     Py_ssize_t max_threshold = PY_SSIZE_T_MAX;
     static char *kwargnames[] = {"threshold_fraction", "min_threshold",
                                  "max_threshold", NULL};
-    static char *format = "|dnn:SequenceDuplication.overrepresented_sequences";
+    static char *format =
+        "|dnn:OverrepresentedSequences.overrepresented_sequences";
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, format, kwargnames, &threshold,
                                      &min_threshold, &max_threshold)) {
         return NULL;
@@ -3591,20 +4146,19 @@ SequenceDuplication_overrepresented_sequences(SequenceDuplication *self,
     uint32_t *counts = self->counts;
     size_t hash_table_size = self->hash_table_size;
     Py_ssize_t fragment_length = self->fragment_length;
+    uint8_t seq_store[32];
+    memset(seq_store, 0, sizeof(seq_store));
     for (size_t i = 0; i < hash_table_size; i += 1) {
         uint32_t count = counts[i];
         if (count >= minimum_hits) {
             uint64_t entry_hash = hashes[i];
             uint64_t kmer = wanghash64_inverse(entry_hash);
-            PyObject *sequence_obj = PyUnicode_New(fragment_length, 127);
-            if (sequence_obj == NULL) {
-                goto error;
-            }
-            kmer_to_sequence(kmer, fragment_length, PyUnicode_DATA(sequence_obj));
+            kmer_to_sequence(kmer, fragment_length, seq_store);
             PyObject *entry_tuple = Py_BuildValue(
-                "(KdN)", count,
-                (double)((double)count / (double)sampled_sequences),
-                sequence_obj);
+                "(KdU#)", count,
+                (double)((double)count / (double)sampled_sequences), seq_store,
+                (Py_ssize_t)fragment_length);
+            memset(seq_store, 0, sizeof(seq_store));
             if (entry_tuple == NULL) {
                 goto error;
             }
@@ -3627,51 +4181,60 @@ error:
     return NULL;
 }
 
-static PyMethodDef SequenceDuplication_methods[] = {
-    {"add_read", (PyCFunction)SequenceDuplication_add_read,
-     SequenceDuplication_add_read_method, SequenceDuplication_add_read__doc__},
-    {"add_record_array", (PyCFunction)SequenceDuplication_add_record_array,
-     SequenceDuplication_add_record_array_method,
-     SequenceDuplication_add_record_array__doc__},
-    {"sequence_counts", (PyCFunction)SequenceDuplication_sequence_counts,
-     SequenceDuplication_sequence_counts_method,
-     SequenceDuplication_sequence_counts__doc__},
+static PyMethodDef OverrepresentedSequences_methods[] = {
+    {"add_read", (PyCFunction)OverrepresentedSequences_add_read,
+     OverrepresentedSequences_add_read_method,
+     OverrepresentedSequences_add_read__doc__},
+    {"add_record_array", (PyCFunction)OverrepresentedSequences_add_record_array,
+     OverrepresentedSequences_add_record_array_method,
+     OverrepresentedSequences_add_record_array__doc__},
+    {"sequence_counts", (PyCFunction)OverrepresentedSequences_sequence_counts,
+     OverrepresentedSequences_sequence_counts_method,
+     OverrepresentedSequences_sequence_counts__doc__},
     {"overrepresented_sequences",
-     (PyCFunction)(void (*)(void))SequenceDuplication_overrepresented_sequences,
-     SequenceDuplication_overrepresented_sequences_method,
-     SequenceDuplication_overrepresented_sequences__doc__},
+     (PyCFunction)(void (*)(void))OverrepresentedSequences_overrepresented_sequences,
+     OverrepresentedSequences_overrepresented_sequences_method,
+     OverrepresentedSequences_overrepresented_sequences__doc__},
     {NULL},
 };
 
-static PyMemberDef SequenceDuplication_members[] = {
+static PyMemberDef OverrepresentedSequences_members[] = {
     {"number_of_sequences", T_ULONGLONG,
-     offsetof(SequenceDuplication, number_of_sequences), READONLY,
+     offsetof(OverrepresentedSequences, number_of_sequences), READONLY,
      "The total number of sequences submitted."},
     {"sampled_sequences", T_ULONGLONG,
-     offsetof(SequenceDuplication, sampled_sequences), READONLY,
+     offsetof(OverrepresentedSequences, sampled_sequences), READONLY,
      "The total number of sequences that were analysed."},
     {"collected_unique_fragments", T_ULONGLONG,
-     offsetof(SequenceDuplication, number_of_unique_fragments), READONLY,
+     offsetof(OverrepresentedSequences, number_of_unique_fragments), READONLY,
      "The number of unique fragments collected."},
     {"max_unique_fragments", T_ULONGLONG,
-     offsetof(SequenceDuplication, max_unique_fragments), READONLY,
+     offsetof(OverrepresentedSequences, max_unique_fragments), READONLY,
      "The maximum number of unique sequences stored in the object."},
-    {"fragment_length", T_BYTE, offsetof(SequenceDuplication, fragment_length),
+    {"fragment_length", T_BYTE, offsetof(OverrepresentedSequences, fragment_length),
      READONLY, "The length of the sampled sequences"},
-    {"sample_every", T_PYSSIZET, offsetof(SequenceDuplication, sample_every),
+    {"sample_every", T_PYSSIZET, offsetof(OverrepresentedSequences, sample_every),
      READONLY, "One in this many reads is sampled"},
-    {"total_fragments", T_ULONGLONG, offsetof(SequenceDuplication, total_fragments),
-     READONLY, "Total number of fragments."},
+    {"total_fragments", T_ULONGLONG,
+     offsetof(OverrepresentedSequences, total_fragments), READONLY,
+     "Total number of fragments."},
     {NULL},
 };
 
-static PyTypeObject SequenceDuplication_Type = {
-    .tp_name = "_qc.SequenceDuplication",
-    .tp_basicsize = sizeof(SequenceDuplication),
-    .tp_dealloc = (destructor)(SequenceDuplication_dealloc),
-    .tp_new = (newfunc)SequenceDuplication__new__,
-    .tp_members = SequenceDuplication_members,
-    .tp_methods = SequenceDuplication_methods,
+static PyType_Slot OverrepresentedSequences_slots[] = {
+    {Py_tp_dealloc, (destructor)OverrepresentedSequences_dealloc},
+    {Py_tp_new, (newfunc)OverrepresentedSequences__new__},
+    {Py_tp_members, OverrepresentedSequences_members},
+    {Py_tp_methods, OverrepresentedSequences_methods},
+    {0, NULL},
+};
+
+static PyType_Spec OverrepresentedSequences_spec = {
+    .name = "_qc.OverrepresentedSequences",
+    .basicsize = sizeof(OverrepresentedSequences),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = OverrepresentedSequences_slots,
 };
 
 /*******************
@@ -3731,7 +4294,9 @@ DedupEstimator_dealloc(DedupEstimator *self)
 {
     PyMem_Free(self->hash_table);
     PyMem_Free(self->fingerprint_store);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyObject *
@@ -3859,7 +4424,7 @@ DedupEstimator_increment_modulo(DedupEstimator *self)
 }
 
 static int
-DedupEstimator_add_fingerprint(DedupEstimator *self, uint8_t *fingerprint,
+DedupEstimator_add_fingerprint(DedupEstimator *self, const uint8_t *fingerprint,
                                size_t fingerprint_length, uint64_t seed)
 {
     uint64_t hash = MurmurHash3_x64_64(fingerprint, fingerprint_length, seed);
@@ -3896,7 +4461,7 @@ DedupEstimator_add_fingerprint(DedupEstimator *self, uint8_t *fingerprint,
 }
 
 static int
-DedupEstimator_add_sequence_ptr(DedupEstimator *self, uint8_t *sequence,
+DedupEstimator_add_sequence_ptr(DedupEstimator *self, const uint8_t *sequence,
                                 size_t sequence_length)
 {
     size_t front_sequence_length = self->front_sequence_length;
@@ -3921,9 +4486,10 @@ DedupEstimator_add_sequence_ptr(DedupEstimator *self, uint8_t *sequence,
 }
 
 static int
-DedupEstimator_add_sequence_pair_ptr(DedupEstimator *self, uint8_t *sequence1,
+DedupEstimator_add_sequence_pair_ptr(DedupEstimator *self,
+                                     const uint8_t *sequence1,
                                      Py_ssize_t sequence_length1,
-                                     uint8_t *sequence2,
+                                     const uint8_t *sequence2,
                                      Py_ssize_t sequence_length2)
 {
     Py_ssize_t front_sequence_length = self->front_sequence_length;
@@ -3966,14 +4532,18 @@ static PyObject *
 DedupEstimator_add_record_array(DedupEstimator *self,
                                 FastqRecordArrayView *record_array)
 {
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    else if (is_record_array == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         struct FastqMeta *meta = records + i;
@@ -4011,27 +4581,35 @@ DedupEstimator_add_record_array_pair(DedupEstimator *self,
     }
     FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
     FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
-    if (!FastqRecordArrayView_CheckExact(record_array1)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array1 should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array1)->tp_name);
+    int is_record_array1 = is_FastqRecordArrayView(self, record_array1);
+    if (is_record_array1 == -1) {
         return NULL;
     }
-    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+    else if (is_record_array1 == 0) {
         PyErr_Format(
             PyExc_TypeError,
-            "record_array2 should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array2)->tp_name);
+            "record_array1 should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array1));
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array1);
-    if (Py_SIZE(record_array2) != number_of_records) {
+    int is_record_array2 = is_FastqRecordArrayView(self, record_array2);
+    if (is_record_array2 == -1) {
+        return NULL;
+    }
+    else if (is_record_array2 == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array2 should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array2));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array1);
+    if (Py_SIZE((PyObject *)record_array2) != number_of_records) {
         PyErr_Format(
             PyExc_ValueError,
             "record_array1 and record_array2 must be of the same size. "
             "Got %zd and %zd respectively.",
-            number_of_records, Py_SIZE(record_array2));
+            number_of_records, Py_SIZE((PyObject *)record_array2));
     }
     struct FastqMeta *records1 = record_array1->records;
     struct FastqMeta *records2 = record_array2->records;
@@ -4066,17 +4644,20 @@ static PyObject *
 DedupEstimator_add_sequence(DedupEstimator *self, PyObject *sequence)
 {
     if (!PyUnicode_CheckExact(sequence)) {
-        PyErr_Format(PyExc_TypeError, "sequence should be a str object, got %s",
-                     Py_TYPE(sequence)->tp_name);
+        PyErr_Format(PyExc_TypeError, "sequence should be a str object, got %R",
+                     Py_TYPE((PyObject *)sequence));
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence)) {
+    Py_ssize_t original_length = PyUnicode_GetLength(sequence);
+    Py_ssize_t sequence_length = 0;
+    const uint8_t *sequence_ptr =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence, &sequence_length);
+    if (sequence_length != original_length) {
         PyErr_SetString(PyExc_ValueError,
                         "sequence should consist only of ASCII characters.");
         return NULL;
     }
-    if (DedupEstimator_add_sequence_ptr(self, PyUnicode_DATA(sequence),
-                                        PyUnicode_GET_LENGTH(sequence)) != 0) {
+    if (DedupEstimator_add_sequence_ptr(self, sequence_ptr, sequence_length) != 0) {
         return NULL;
     }
     Py_RETURN_NONE;
@@ -4104,20 +4685,24 @@ DedupEstimator_add_sequence_pair(DedupEstimator *self, PyObject *args)
                           &sequence2_obj)) {
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj)) {
+    Py_ssize_t sequence1_length = PyUnicode_GetLength(sequence1_obj);
+    Py_ssize_t sequence2_length = PyUnicode_GetLength(sequence2_obj);
+    Py_ssize_t utf8_length1;
+    Py_ssize_t utf8_length2;
+    const uint8_t *sequence1 =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence1_obj, &utf8_length1);
+    const uint8_t *sequence2 =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence2_obj, &utf8_length2);
+    if (sequence1_length != utf8_length1) {
         PyErr_SetString(PyExc_ValueError,
                         "sequence should consist only of ASCII characters.");
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+    if (sequence2_length != utf8_length2) {
         PyErr_SetString(PyExc_ValueError,
                         "sequence should consist only of ASCII characters.");
         return NULL;
     }
-    uint8_t *sequence1 = PyUnicode_DATA(sequence1_obj);
-    uint8_t *sequence2 = PyUnicode_DATA(sequence2_obj);
-    Py_ssize_t sequence1_length = PyUnicode_GET_LENGTH(sequence1_obj);
-    Py_ssize_t sequence2_length = PyUnicode_GET_LENGTH(sequence2_obj);
     if (DedupEstimator_add_sequence_pair_ptr(self, sequence1, sequence1_length,
                                              sequence2, sequence2_length) != 0) {
         return NULL;
@@ -4137,6 +4722,10 @@ static PyObject *
 DedupEstimator_duplication_counts(DedupEstimator *self,
                                   PyObject *Py_UNUSED(ignore))
 {
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
     size_t tracked_sequences = self->stored_entries;
     uint64_t *counts = PyMem_Calloc(tracked_sequences, sizeof(uint64_t));
     if (counts == NULL) {
@@ -4154,8 +4743,9 @@ DedupEstimator_duplication_counts(DedupEstimator *self,
         counts[count_index] = count;
         count_index += 1;
     }
-    PyObject *result = PythonArray_FromBuffer(
-        'Q', counts, tracked_sequences * sizeof(uint64_t));
+    PyObject *result =
+        PythonArray_FromBuffer('Q', counts, tracked_sequences * sizeof(uint64_t),
+                               state->PythonArray_Type);
     PyMem_Free(counts);
     return result;
 }
@@ -4196,13 +4786,20 @@ static PyMemberDef DedupEstimator_members[] = {
     {NULL},
 };
 
-static PyTypeObject DedupEstimator_Type = {
-    .tp_name = "_qc.DedupEstimator",
-    .tp_basicsize = sizeof(DedupEstimator),
-    .tp_dealloc = (destructor)(DedupEstimator_dealloc),
-    .tp_new = (newfunc)DedupEstimator__new__,
-    .tp_methods = DedupEstimator_methods,
-    .tp_members = DedupEstimator_members,
+static PyType_Slot DedupEstimator_slots[] = {
+    {Py_tp_dealloc, (destructor)DedupEstimator_dealloc},
+    {Py_tp_new, (newfunc)DedupEstimator__new__},
+    {Py_tp_methods, DedupEstimator_methods},
+    {Py_tp_members, DedupEstimator_members},
+    {0, NULL},
+};
+
+static PyType_Spec DedupEstimator_spec = {
+    .name = "_qc.DedupEstimator",
+    .basicsize = sizeof(DedupEstimator),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = DedupEstimator_slots,
 };
 
 /********************
@@ -4215,6 +4812,7 @@ struct NanoInfo {
     int32_t channel_id;
     uint32_t length;
     double cumulative_error_rate;
+    uint64_t parent_id_hash;
 };
 
 typedef struct {
@@ -4248,6 +4846,12 @@ NanoporeReadInfo_get_duration(NanoporeReadInfo *self, void *closure)
     return PyFloat_FromDouble((double)self->info.duration);
 }
 
+static PyObject *
+NanoporeReadInfo_get_parent_id_hash(NanoporeReadInfo *self, void *closure)
+{
+    return PyLong_FromUnsignedLongLong(self->info.parent_id_hash);
+}
+
 static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"start_time", (getter)NanoporeReadInfo_get_start_time, NULL,
      "unix UTC timestamp for start time", NULL},
@@ -4257,15 +4861,23 @@ static PyGetSetDef NanoporeReadInfo_properties[] = {
     {"cumulative_error_rate", (getter)NanoporeReadInfo_get_cumulative_error_rate,
      NULL, "sum off all the bases' error rates.", NULL},
     {"duration", (getter)NanoporeReadInfo_get_duration, NULL, NULL, NULL},
+    {"parent_id_hash", (getter)NanoporeReadInfo_get_parent_id_hash, NULL, NULL,
+     NULL},
     {NULL},
 };
 
-static PyTypeObject NanoporeReadInfo_Type = {
-    .tp_name = "_qc.NanoporeReadInfo",
-    .tp_basicsize = sizeof(NanoporeReadInfo),
-    .tp_dealloc = (destructor)PyObject_Del,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_getset = NanoporeReadInfo_properties,
+static PyType_Slot NanoporeReadInfo_slots[] = {
+    {Py_tp_dealloc, (destructor)PyObject_DEL},
+    {Py_tp_getset, NanoporeReadInfo_properties},
+    {0, NULL},
+};
+
+static PyType_Spec NanoporeReadInfo_spec = {
+    .name = "_qc.NanoporeReadInfo",
+    .basicsize = sizeof(NanoporeReadInfo),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = NanoporeReadInfo_slots,
 };
 
 typedef struct _NanoStatsStruct {
@@ -4284,7 +4896,9 @@ NanoStats_dealloc(NanoStats *self)
 {
     PyMem_Free(self->nano_infos);
     Py_XDECREF(self->skipped_reason);
-    Py_TYPE(self)->tp_free((PyObject *)self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_FREE(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 typedef struct {
@@ -4293,29 +4907,34 @@ typedef struct {
     struct NanoInfo *nano_infos;
     size_t current_pos;
     PyObject *nano_stats;
+    PyTypeObject *NanoporeReadInfo_Type;
 } NanoStatsIterator;
 
 static void
 NanoStatsIterator_dealloc(NanoStatsIterator *self)
 {
-    Py_DECREF(self->nano_stats);
-    Py_TYPE(self)->tp_free(self);
+    Py_XDECREF(self->nano_stats);
+    Py_XDECREF((PyObject *)self->NanoporeReadInfo_Type);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
-
-static PyTypeObject NanoStatsIterator_Type;
 
 static PyObject *
 NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
 {
+    struct QCModuleState *state =
+        get_qc_module_state_from_obj((PyObject *)nano_stats);
     NanoStatsIterator *self =
-        PyObject_New(NanoStatsIterator, &NanoStatsIterator_Type);
+        PyObject_New(NanoStatsIterator, state->NanoStatsIterator_Type);
     if (self == NULL) {
         return PyErr_NoMemory();
     }
+    self->NanoporeReadInfo_Type = state->NanoporeReadInfo_Type;
     self->nano_infos = nano_stats->nano_infos;
     self->number_of_reads = nano_stats->number_of_reads;
     self->current_pos = 0;
-    Py_INCREF(nano_stats);
+    Py_INCREF((PyObject *)nano_stats);
     self->nano_stats = (PyObject *)nano_stats;
     return (PyObject *)self;
 }
@@ -4323,7 +4942,7 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
 static PyObject *
 NanoStatsIterator__iter__(NanoStatsIterator *self)
 {
-    Py_INCREF(self);
+    Py_INCREF((PyObject *)self);
     return (PyObject *)self;
 }
 
@@ -4336,7 +4955,7 @@ NanoStatsIterator__next__(NanoStatsIterator *self)
         return NULL;
     }
     NanoporeReadInfo *info =
-        PyObject_New(NanoporeReadInfo, &NanoporeReadInfo_Type);
+        PyObject_New(NanoporeReadInfo, self->NanoporeReadInfo_Type);
     if (info == NULL) {
         return PyErr_NoMemory();
     }
@@ -4345,13 +4964,19 @@ NanoStatsIterator__next__(NanoStatsIterator *self)
     return (PyObject *)info;
 }
 
-static PyTypeObject NanoStatsIterator_Type = {
-    .tp_name = "_qc.NanoStatsIterator",
-    .tp_basicsize = sizeof(NanoStatsIterator),
-    .tp_dealloc = (destructor)NanoStatsIterator_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_iter = (iternextfunc)NanoStatsIterator__iter__,
-    .tp_iternext = (iternextfunc)NanoStatsIterator__next__,
+static PyType_Slot NanoStatsIterator_slots[] = {
+    {Py_tp_dealloc, (destructor)NanoStatsIterator_dealloc},
+    {Py_tp_iter, (iternextfunc)NanoStatsIterator__iter__},
+    {Py_tp_iternext, (iternextfunc)NanoStatsIterator__next__},
+    {0, NULL},
+};
+
+static PyType_Spec NanoStatsIterator_spec = {
+    .name = "_qc.NanoStatsIterator",
+    .basicsize = sizeof(NanoStatsIterator),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = NanoStatsIterator_slots,
 };
 
 static PyObject *
@@ -4434,6 +5059,212 @@ NanoInfo_from_header(const uint8_t *header, size_t header_length,
     return 0;
 }
 
+static Py_ssize_t
+get_tag_int_value(const uint8_t *tag)
+{
+    uint8_t tag_type = tag[2];
+    const uint8_t *value_start = tag + 3;
+    switch (tag_type) {
+        case 'c':
+            return ((int8_t *)value_start)[0];
+        case 'C':
+            return ((uint8_t *)value_start)[0];
+        case 's':
+            return ((int16_t *)value_start)[0];
+        case 'S':
+            return ((uint16_t *)value_start)[0];
+        case 'i':
+            return ((int32_t *)value_start)[0];
+        case 'I':
+            return ((uint32_t *)value_start)[0];
+        default:
+            return PY_SSIZE_T_MIN;
+    }
+}
+
+static Py_ssize_t
+tag_length(const uint8_t *tag, size_t maximum_tag_length)
+{
+    if (maximum_tag_length < 4) {
+        PyErr_SetString(PyExc_ValueError, "truncated tags");
+        return -1;
+    }
+    uint8_t tag_type = tag[2];
+    const uint8_t *value_start = tag + 3;
+    size_t value_length;
+    bool is_array = false;
+    uint32_t array_length = 1;
+    if (tag_type == 'B') {
+        is_array = true;
+        value_start = tag + 8;
+        tag_type = tag[3];
+        if (maximum_tag_length < 8) {
+            PyErr_SetString(PyExc_ValueError, "truncated tags");
+            return -1;
+        }
+        array_length = *(uint32_t *)(tag + 4);
+    };
+
+    switch (tag_type) {
+        case 'A':
+        case 'c':
+        case 'C':
+            value_length = 1;
+            break;
+        case 's':
+        case 'S':
+            value_length = 2;
+            break;
+        case 'I':
+        case 'i':
+        case 'f':
+            value_length = 4;
+            break;
+        case 'Z':
+        case 'H':
+            if (is_array) {
+                PyErr_Format(PyExc_ValueError, "Invalid type for array %c",
+                             tag_type);
+                return -1;
+            }
+            uint8_t *string_end = memchr(value_start, 0, maximum_tag_length - 3);
+            if (string_end == NULL) {
+                PyErr_SetString(PyExc_ValueError, "truncated tags");
+                return -1;
+            }
+            value_length =
+                (string_end - value_start) + 1;  // +1 for terminating null
+            break;
+        default:
+            PyErr_Format(PyExc_ValueError, "Unknown tag type %c", tag_type);
+            return -1;
+    }
+    size_t this_tag_length = (value_start - tag) + array_length * value_length;
+    if (this_tag_length > maximum_tag_length) {
+        PyErr_SetString(PyExc_ValueError, "truncated tags");
+        return -1;
+    }
+    return this_tag_length;
+}
+
+struct TagInfo {
+    int32_t channel_id;
+    float duration;
+    time_t start_time;
+    uint64_t parent_id_hash;
+};
+
+/**
+ * @brief "Hash" a uuid4 by using the first 8 digits and last 8 digits for
+ * 64 random bits. Return 0 on error.
+ */
+static uint64_t
+uuid4_hash(char *uuid)
+{
+    /* UUID4 takes the form of,
+        xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx
+        ^^^^^^^^                    ^^^^^^^^
+        These hexadecimal digits are used, 16 in total. M should be 4. N can
+        be 8,9,A,B,C,D. The rest of the digits are andom.
+     */
+    if (uuid[8] != '-' || uuid[13] != '-' ||
+        uuid[14] != '4' ||  // UUID version 4 check.
+        uuid[18] != '-' || uuid[23] != '-' || uuid[36] != 0) {
+        return 0;
+    }
+    char *end_ptr = uuid;
+    uint64_t first_bit = strtoull(uuid, &end_ptr, 16);
+    if (end_ptr - uuid != 8) {
+        // strtoull stops at first non-hexadecimal. This should be at position 8.
+        return 0;
+    }
+    uint64_t last_bit = strtoull(uuid + 28, &end_ptr, 16);
+    if (end_ptr - uuid != 36) {
+        // first non-hexadecimal should be at string end.
+        return 0;
+    }
+    return (first_bit << 32) | (last_bit & 0xFFFFFFFFULL);
+}
+
+/**
+ * @brief Throw a Python RuntimeError for an unexpected typecode and return -1
+ */
+static inline int
+tag_wrong_typecode(char *tag, char expected_typecode, char actual_typecode)
+{
+    PyErr_Format(PyExc_RuntimeError,
+                 "Wrong tag type for '%s' expected '%c' got '%c'", tag,
+                 expected_typecode, actual_typecode);
+    return -1;
+}
+
+/**
+ * @brief correct memcmp shorthand for ease of writing.
+ */
+static inline bool
+has_tag_id(const uint8_t *restrict tag, char *expected_tag)
+{
+    return memcmp(tag, expected_tag, strlen(expected_tag)) == 0;
+    ;
+}
+
+static int
+TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
+{
+    info->channel_id = -1;
+    info->duration = 0.0;
+    info->start_time = 0;
+    info->parent_id_hash = 0;
+    while (tags_length > 0) {
+        Py_ssize_t this_tag_length = tag_length(tags, tags_length);
+        if (this_tag_length == -1) {
+            return -1;
+        }
+        const uint8_t *tag = tags;
+        uint8_t typecode = tags[2];
+
+        if (has_tag_id(tag, "ch")) {
+            Py_ssize_t channel_id = get_tag_int_value(tag);
+            if (channel_id == PY_SSIZE_T_MIN) {
+                return -1;
+            }
+            info->channel_id = channel_id;
+        }
+        else if (has_tag_id(tag, "st")) {
+            if (typecode != 'Z') {
+                return tag_wrong_typecode("st", 'Z', typecode);
+            }
+            info->start_time = time_string_to_timestamp(tags + 3);
+        }
+        else if (has_tag_id(tag, "du")) {
+            if (typecode != 'f') {
+                return tag_wrong_typecode("du", 'f', typecode);
+            }
+            info->duration = ((float *)(tags + 3))[0];
+        }
+        else if (has_tag_id(tag, "pi")) {
+            if (typecode != 'Z') {
+                return tag_wrong_typecode("pi", 'Z', typecode);
+            }
+            const uint8_t *value = tag + 3;
+            // -3 for tag id, typecode. -1 for terminating 0.
+            size_t value_length = this_tag_length - 4;
+            if (value_length != 36) {
+                PyErr_Format(PyExc_RuntimeError,
+                             "pi tag should have a valid uuid4 format with 36 "
+                             "characters. "
+                             " Counted %zu.",
+                             value_length);
+                return -1;
+            }
+            info->parent_id_hash = uuid4_hash((char *)value);
+        }
+        tags = tags + this_tag_length;
+        tags_length -= this_tag_length;
+    }
+    return 0;
+}
+
 /**
  * @brief Add a FASTQ record to the NanoStats module
  *
@@ -4464,16 +5295,20 @@ NanoStats_add_meta(NanoStats *self, struct FastqMeta *meta)
     size_t sequence_length = meta->sequence_length;
     info->length = sequence_length;
 
-    if (meta->channel != -1) {
-        /* Already parsed from BAM */
-        info->channel_id = meta->channel;
-        info->duration = meta->duration;
-        info->start_time = meta->start_time;
+    if (meta->tags_length) {
+        struct TagInfo tag_info;
+        if (TagInfo_from_tags(meta->record_start + meta->tags_offset,
+                              meta->tags_length, &tag_info) != 0) {
+            return -1;
+        }
+        info->channel_id = tag_info.channel_id;
+        info->duration = tag_info.duration;
+        info->start_time = tag_info.start_time;
+        info->parent_id_hash = tag_info.parent_id_hash;
     }
-    else if (NanoInfo_from_header(meta->record_start + 1, meta->name_length,
-                                  info) != 0) {
-        PyObject *header_obj = PyUnicode_DecodeASCII(
-            (const char *)meta->record_start + 1, meta->name_length, NULL);
+    else if (NanoInfo_from_header(meta->name, meta->name_length, info) != 0) {
+        PyObject *header_obj = PyUnicode_DecodeASCII((const char *)meta->name,
+                                                     meta->name_length, NULL);
         if (header_obj == NULL) {
             return -1;
         }
@@ -4509,10 +5344,14 @@ PyDoc_STRVAR(NanoStats_add_read__doc__,
 static PyObject *
 NanoStats_add_read(NanoStats *self, FastqRecordView *read)
 {
-    if (!FastqRecordView_CheckExact(read)) {
+    int is_view = is_FastqRecordView(self, read);
+    if (is_view == -1) {
+        return NULL;
+    }
+    else if (is_view == 0) {
         PyErr_Format(PyExc_TypeError,
-                     "read should be a FastqRecordView object, got %s",
-                     Py_TYPE(read)->tp_name);
+                     "read should be a FastqRecordView object, got %R",
+                     Py_TYPE((PyObject *)read));
         return NULL;
     }
     if (NanoStats_add_meta(self, &read->meta) != 0) {
@@ -4535,17 +5374,21 @@ PyDoc_STRVAR(NanoStats_add_record_array__doc__,
 static PyObject *
 NanoStats_add_record_array(NanoStats *self, FastqRecordArrayView *record_array)
 {
-    if (!FastqRecordArrayView_CheckExact(record_array)) {
+    int is_record_array = is_FastqRecordArrayView(self, record_array);
+    if (is_record_array == -1) {
+        return NULL;
+    }
+    else if (is_record_array == 0) {
         PyErr_Format(
             PyExc_TypeError,
-            "record_array should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array)->tp_name);
+            "record_array should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array));
         return NULL;
     }
     if (self->skipped) {
         Py_RETURN_NONE;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array);
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array);
     struct FastqMeta *records = record_array->records;
     for (Py_ssize_t i = 0; i < number_of_records; i++) {
         if (NanoStats_add_meta(self, records + i) != 0) {
@@ -4597,13 +5440,20 @@ static PyMemberDef NanoStats_members[] = {
     {NULL},
 };
 
-static PyTypeObject NanoStats_Type = {
-    .tp_name = "_qc.NanoStats",
-    .tp_basicsize = sizeof(NanoStats),
-    .tp_dealloc = (destructor)NanoStats_dealloc,
-    .tp_new = (newfunc)NanoStats__new__,
-    .tp_methods = NanoStats_methods,
-    .tp_members = NanoStats_members,
+static PyType_Slot NanoStats_slots[] = {
+    {Py_tp_dealloc, (destructor)NanoStats_dealloc},
+    {Py_tp_new, (newfunc)NanoStats__new__},
+    {Py_tp_methods, NanoStats_methods},
+    {Py_tp_members, NanoStats_members},
+    {0, NULL},
+};
+
+static PyType_Spec NanoStats_spec = {
+    .name = "_qc.NanoStats",
+    .basicsize = sizeof(NanoStats),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = NanoStats_slots,
 };
 
 /***********************
@@ -4641,7 +5491,9 @@ InsertSizeMetrics_dealloc(InsertSizeMetrics *self)
     PyMem_Free(self->hash_table_read1);
     PyMem_Free(self->hash_table_read2);
     PyMem_Free(self->insert_sizes);
-    Py_TYPE(self)->tp_free(self);
+    PyTypeObject *tp = Py_TYPE((PyObject *)self);
+    PyObject_Free(self);
+    Py_XDECREF((PyObject *)tp);
 }
 
 static PyMemberDef InsertSizeMetrics_members[] = {
@@ -4920,15 +5772,26 @@ InsertSizeMetrics_add_sequence_pair(InsertSizeMetrics *self, PyObject *args)
                           &sequence1_obj, &sequence2_obj)) {
         return NULL;
     }
-    if (!PyUnicode_IS_COMPACT_ASCII(sequence1_obj) ||
-        !PyUnicode_IS_COMPACT_ASCII(sequence2_obj)) {
+    Py_ssize_t sequence1_length = PyUnicode_GetLength(sequence1_obj);
+    Py_ssize_t sequence2_length = PyUnicode_GetLength(sequence2_obj);
+    Py_ssize_t utf8_length1;
+    Py_ssize_t utf8_length2;
+    const uint8_t *sequence1 =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence1_obj, &utf8_length1);
+    const uint8_t *sequence2 =
+        (const uint8_t *)PyUnicode_AsUTF8AndSize(sequence2_obj, &utf8_length2);
+    if (sequence1_length != utf8_length1) {
         PyErr_SetString(PyExc_ValueError,
-                        "Both sequences must be ASCII strings.");
+                        "sequence1 should consist only of ASCII characters.");
+        return NULL;
+    }
+    if (sequence2_length != utf8_length2) {
+        PyErr_SetString(PyExc_ValueError,
+                        "sequence2 should consist only of ASCII characters.");
         return NULL;
     }
     int ret = InsertSizeMetrics_add_sequence_pair_ptr(
-        self, PyUnicode_DATA(sequence1_obj), PyUnicode_GET_LENGTH(sequence1_obj),
-        PyUnicode_DATA(sequence2_obj), PyUnicode_GET_LENGTH(sequence2_obj));
+        self, sequence1, sequence1_length, sequence2, sequence2_length);
     if (ret != 0) {
         return NULL;
     }
@@ -4960,27 +5823,35 @@ InsertSizeMetrics_add_record_array_pair(InsertSizeMetrics *self,
     }
     FastqRecordArrayView *record_array1 = (FastqRecordArrayView *)args[0];
     FastqRecordArrayView *record_array2 = (FastqRecordArrayView *)args[1];
-    if (!FastqRecordArrayView_CheckExact(record_array1)) {
-        PyErr_Format(
-            PyExc_TypeError,
-            "record_array1 should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array1)->tp_name);
+    int is_record_array1 = is_FastqRecordArrayView(self, record_array1);
+    if (is_record_array1 == -1) {
         return NULL;
     }
-    if (!FastqRecordArrayView_CheckExact(record_array2)) {
+    else if (is_record_array1 == 0) {
         PyErr_Format(
             PyExc_TypeError,
-            "record_array2 should be a FastqRecordArrayView object, got %s",
-            Py_TYPE(record_array2)->tp_name);
+            "record_array1 should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array1));
         return NULL;
     }
-    Py_ssize_t number_of_records = Py_SIZE(record_array1);
-    if (Py_SIZE(record_array2) != number_of_records) {
+    int is_record_array2 = is_FastqRecordArrayView(self, record_array2);
+    if (is_record_array2 == -1) {
+        return NULL;
+    }
+    else if (is_record_array2 == 0) {
+        PyErr_Format(
+            PyExc_TypeError,
+            "record_array2 should be a FastqRecordArrayView object, got %R",
+            Py_TYPE((PyObject *)record_array2));
+        return NULL;
+    }
+    Py_ssize_t number_of_records = Py_SIZE((PyObject *)record_array1);
+    if (Py_SIZE((PyObject *)record_array2) != number_of_records) {
         PyErr_Format(
             PyExc_ValueError,
             "record_array1 and record_array2 must be of the same size. "
             "Got %zd and %zd respectively.",
-            number_of_records, Py_SIZE(record_array2));
+            number_of_records, Py_SIZE((PyObject *)record_array2));
     }
     struct FastqMeta *records1 = record_array1->records;
     struct FastqMeta *records2 = record_array2->records;
@@ -5012,8 +5883,13 @@ static PyObject *
 InsertSizeMetrics_insert_sizes(InsertSizeMetrics *self,
                                PyObject *Py_UNUSED(ignore))
 {
-    return PythonArray_FromBuffer(
-        'Q', self->insert_sizes, (self->max_insert_size + 1) * sizeof(uint64_t));
+    struct QCModuleState *state = get_qc_module_state_from_obj(self);
+    if (state == NULL) {
+        return NULL;
+    }
+    return PythonArray_FromBuffer('Q', self->insert_sizes,
+                                  (self->max_insert_size + 1) * sizeof(uint64_t),
+                                  state->PythonArray_Type);
 }
 
 static PyObject *
@@ -5096,28 +5972,25 @@ static PyMethodDef InsertSizeMetrics_methods[] = {
     {NULL},
 };
 
-static PyTypeObject InsertSizeMetrics_Type = {
-    .tp_name = "_qc.InsertSizeMetrics",
-    .tp_basicsize = sizeof(InsertSizeMetrics),
-    .tp_dealloc = (destructor)InsertSizeMetrics_dealloc,
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = InsertSizeMetrics__new__,
-    .tp_methods = InsertSizeMetrics_methods,
-    .tp_members = InsertSizeMetrics_members,
+static PyType_Slot InsertSizeMetrics_slots[] = {
+    {Py_tp_dealloc, (destructor)InsertSizeMetrics_dealloc},
+    {Py_tp_new, (newfunc)InsertSizeMetrics__new__},
+    {Py_tp_methods, InsertSizeMetrics_methods},
+    {Py_tp_members, InsertSizeMetrics_members},
+    {0, NULL},
+};
+
+static PyType_Spec InsertSizeMetrics_spec = {
+    .name = "_qc.InsertSizeMetrics",
+    .basicsize = sizeof(InsertSizeMetrics),
+    .itemsize = 0,
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = InsertSizeMetrics_slots,
 };
 
 /*************************
  * MODULE INITIALIZATION *
  *************************/
-
-static struct PyModuleDef _qc_module = {
-    PyModuleDef_HEAD_INIT,
-    "_qc", /* name of module */
-    NULL,  /* module documentation, may be NULL */
-    -1,
-    NULL, /* module methods */
-    .m_slots = NULL,
-};
 
 /* A C implementation of from module_name import class_name*/
 static PyTypeObject *
@@ -5127,109 +6000,243 @@ ImportClassFromModule(const char *module_name, const char *class_name)
     if (module == NULL) {
         return NULL;
     }
-    PyTypeObject *type_object =
-        (PyTypeObject *)PyObject_GetAttrString(module, class_name);
+    PyObject *type_object = PyObject_GetAttrString(module, class_name);
     if (type_object == NULL) {
         return NULL;
     }
     if (!PyType_CheckExact(type_object)) {
-        PyErr_Format(PyExc_RuntimeError, "%s.%s is not a type class but, %s",
-                     module_name, class_name, Py_TYPE(type_object)->tp_name);
+        PyErr_Format(PyExc_RuntimeError, "%s.%s is not a type class but, %R",
+                     module_name, class_name, Py_TYPE((PyObject *)type_object));
         return NULL;
     }
-    return type_object;
+    return (PyTypeObject *)type_object;
 }
 
-/* Simple reimplementation of PyModule_AddType given that this is only
-   available from python 3.9 onwards*/
-static int
-python_module_add_type(PyObject *module, PyTypeObject *type)
+/**
+ * @brief Add a new type to the module initiated from spec. Return NULL on
+ * failure. Returns the type on success.
+ */
+static PyTypeObject *
+python_module_add_type_spec(PyObject *module, PyType_Spec *spec)
 {
-    if (PyType_Ready(type) != 0) {
-        return -1;
-    }
-    const char *class_name = strchr(type->tp_name, '.');
+    const char *class_name = strchr(spec->name, '.');
     if (class_name == NULL) {
-        return -1;
+        return NULL;
     }
     class_name += 1;  // Use the part after the dot.
-    Py_INCREF(type);
+
+    PyTypeObject *type =
+        (PyTypeObject *)PyType_FromModuleAndSpec(module, spec, NULL);
+    if (type == NULL) {
+        return NULL;
+    }
+
     if (PyModule_AddObject(module, class_name, (PyObject *)type) != 0) {
+        Py_DECREF(type);
+        return NULL;
+    }
+    Py_INCREF((PyObject *)type);
+    return type;
+}
+
+struct AddressAndSpec {
+    PyTypeObject **address;
+    PyType_Spec *spec;
+};
+
+static int
+_qc_exec(PyObject *module)
+{
+    struct QCModuleState *state = PyModule_GetState(module);
+
+    PyTypeObject *PythonArray = ImportClassFromModule("array", "array");
+    if (PythonArray == NULL) {
+        return -1;
+    }
+    state->PythonArray_Type = PythonArray;
+
+    struct AddressAndSpec state_address_and_spec[] = {
+        {&state->AdapterCounter_Type, &AdapterCounter_spec},
+        {&state->BamParser_Type, &BamParser_spec},
+        {&state->DedupEstimator_Type, &DedupEstimator_spec},
+        {&state->FastqParser_Type, &FastqParser_spec},
+        {&state->FastqRecordView_Type, &FastqRecordView_spec},
+        {&state->FastqRecordArrayView_Type, &FastqRecordArrayView_spec},
+        {&state->InsertSizeMetrics_Type, &InsertSizeMetrics_spec},
+        {&state->NanoporeReadInfo_Type, &NanoporeReadInfo_spec},
+        {&state->NanoStats_Type, &NanoStats_spec},
+        {&state->NanoStatsIterator_Type, &NanoStatsIterator_spec},
+        {&state->OverrepresentedSequences_Type, &OverrepresentedSequences_spec},
+        {&state->PerTileQuality_Type, &PerTileQuality_spec},
+        {&state->QCMetrics_Type, &QCMetrics_spec},
+    };
+
+    size_t state_address_entries =
+        sizeof(state_address_and_spec) / sizeof(struct AddressAndSpec);
+
+    for (size_t i = 0; i < state_address_entries; i++) {
+        struct AddressAndSpec x = state_address_and_spec[i];
+        PyTypeObject **address = x.address;
+        PyType_Spec *spec = x.spec;
+        PyTypeObject *tp = python_module_add_type_spec(module, spec);
+        if (tp == NULL) {
+            return -1;
+        }
+        Py_INCREF((PyObject *)tp);
+        address[0] = tp;
+    }
+
+    int ret = 0;
+    ret = PyModule_AddIntConstant(module, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntConstant(module, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntConstant(module, "TABLE_SIZE",
+                                  PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, A);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, C);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, G);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, T);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, N);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, PHRED_MAX);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, MAX_SEQUENCE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_MAX_UNIQUE_FRAGMENTS);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_FRAGMENT_LENGTH);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_UNIQUE_SAMPLE_EVERY);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_BASES_FROM_START);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_BASES_FROM_END);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
+    if (ret < 0) {
+        return -1;
+    }
+    ret = PyModule_AddIntMacro(module, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
+    if (ret < 0) {
+        return -1;
+    }
+
+    ret = PyModule_AddIntMacro(module, DEFAULT_END_ANCHOR_LENGTH);
+    if (ret < 0) {
         return -1;
     }
     return 0;
 }
 
+static int
+_qc_traverse(PyObject *mod, visitproc visit, void *arg)
+{
+    PyTypeObject **mod_state_types = PyModule_GetState(mod);
+    if (mod_state_types == NULL) {
+        return -1;
+    }
+    size_t number_of_types =
+        sizeof(struct QCModuleState) / sizeof(PyTypeObject *);
+    for (size_t i = 0; i < number_of_types; i++) {
+        PyTypeObject *tp = mod_state_types[i];
+        Py_VISIT(tp);
+    }
+    return 0;
+}
+
+static int
+_qc_clear(PyObject *mod)
+{
+    PyTypeObject **mod_state_types = PyModule_GetState(mod);
+    if (mod_state_types == NULL) {
+        return -1;
+    }
+    size_t number_of_types =
+        sizeof(struct QCModuleState) / sizeof(PyTypeObject *);
+    for (size_t i = 0; i < number_of_types; i++) {
+        Py_DECREF(mod_state_types[i]);
+        mod_state_types[i] = NULL;
+    }
+    return 0;
+}
+
+static void
+_qc_free(void *mod)
+{
+    _qc_clear((PyObject *)mod);
+}
+
+static PyModuleDef_Slot _qc_module_slots[] = {
+    {Py_mod_exec, _qc_exec},
+    {0, NULL},
+};
+
+static struct PyModuleDef _qc_module = {
+    PyModuleDef_HEAD_INIT,  // TODO: Add traverse etc.
+    .m_name = "_qc",
+    .m_doc = NULL,
+    .m_size = sizeof(struct QCModuleState),
+    .m_methods = NULL,
+    .m_slots = _qc_module_slots,
+    .m_traverse = _qc_traverse,
+    .m_clear = _qc_clear,
+    .m_free = _qc_free,
+};
+
 PyMODINIT_FUNC
 PyInit__qc(void)
 {
-    PyObject *m = PyModule_Create(&_qc_module);
-    if (m == NULL) {
-        return NULL;
-    }
-
-    PythonArray = ImportClassFromModule("array", "array");
-    if (PythonArray == NULL) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &FastqParser_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &BamParser_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &FastqRecordView_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &FastqRecordArrayView_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &QCMetrics_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &AdapterCounter_type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &PerTileQuality_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &SequenceDuplication_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &DedupEstimator_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &NanoporeReadInfo_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &NanoStats_Type) != 0) {
-        return NULL;
-    }
-    if (python_module_add_type(m, &NanoStatsIterator_Type) != 0) {
-        return NULL;
-    }
-
-    if (python_module_add_type(m, &InsertSizeMetrics_Type) != 0) {
-        return NULL;
-    }
-    PyModule_AddIntConstant(m, "NUMBER_OF_NUCS", NUC_TABLE_SIZE);
-    PyModule_AddIntConstant(m, "NUMBER_OF_PHREDS", PHRED_TABLE_SIZE);
-    PyModule_AddIntConstant(m, "TABLE_SIZE", PHRED_TABLE_SIZE * NUC_TABLE_SIZE);
-    PyModule_AddIntMacro(m, A);
-    PyModule_AddIntMacro(m, C);
-    PyModule_AddIntMacro(m, G);
-    PyModule_AddIntMacro(m, T);
-    PyModule_AddIntMacro(m, N);
-    PyModule_AddIntMacro(m, PHRED_MAX);
-    PyModule_AddIntMacro(m, MAX_SEQUENCE_SIZE);
-    PyModule_AddIntMacro(m, DEFAULT_MAX_UNIQUE_FRAGMENTS);
-    PyModule_AddIntMacro(m, DEFAULT_DEDUP_MAX_STORED_FINGERPRINTS);
-    PyModule_AddIntMacro(m, DEFAULT_FRAGMENT_LENGTH);
-    PyModule_AddIntMacro(m, DEFAULT_UNIQUE_SAMPLE_EVERY);
-    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_LENGTH);
-    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_LENGTH);
-    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_FRONT_SEQUENCE_OFFSET);
-    PyModule_AddIntMacro(m, DEFAULT_FINGERPRINT_BACK_SEQUENCE_OFFSET);
-    PyModule_AddIntMacro(m, INSERT_SIZE_MAX_ADAPTER_STORE_SIZE);
-    return m;
+    return PyModuleDef_Init(&_qc_module);
 }

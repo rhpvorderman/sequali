@@ -16,16 +16,53 @@
 
 import io
 import re
+import typing
 from pathlib import Path
 
 import pytest
 
 from sequali import FastqParser
 
+import xopen
+
 DATA = Path(__file__).parent / "data"
 
 
-def test_fastq_parser():
+class SimpleFastqRecord(typing.NamedTuple):
+    name: str
+    sequence: str
+    qualities: str
+
+
+def simple_fastq_parser(filename: str):
+    with xopen.xopen(filename, "rt", encoding="ascii") as f:
+        while True:
+            name = f.readline().rstrip("\n")[1:]
+            if name == "":
+                return
+            sequence = f.readline().rstrip("\n")
+            f.readline()  # skip +
+            qualities = f.readline().rstrip("\n")
+            yield SimpleFastqRecord(name, sequence, qualities)
+
+
+@pytest.mark.parametrize("filename", [
+    str(DATA / "simple.fastq"),
+    str(DATA / "100_nanopore_reads.fastq.gz")
+])
+def test_fastq_parser(filename):
+    with xopen.xopen(filename, "rb") as fileobj:
+        parser = FastqParser(fileobj)
+        simple_parser = simple_fastq_parser(filename)
+        for record_array in parser:
+            for record in record_array:
+                test_record = next(simple_parser)
+                assert record.name() == test_record.name
+                assert record.sequence() == test_record.sequence
+                assert record.qualities() == test_record.qualities
+
+
+def test_fastq_parser_simple():
     with open(DATA / "simple.fastq", "rb") as fileobj:
         parser = FastqParser(fileobj)
         record_arrays = list(parser)
@@ -34,12 +71,15 @@ def test_fastq_parser():
     assert records[0].name() == "Myheader/1"
     assert records[0].sequence() == "GATTACA"
     assert records[0].qualities() == "HHHHHHH"
+    assert records[0].tags() == b""
     assert records[1].name() == "AnotherHeader/1"
     assert records[1].sequence() == "ACATTAG"
     assert records[1].qualities() == "KKKKKKK"
+    assert records[1].tags() == b""
     assert records[2].name() == "YetAnotherHeader/1"
     assert records[2].sequence() == "AAAATTTT"
     assert records[2].qualities() == "XKLLCCCC"
+    assert records[2].tags() == b""
     assert len(records) == 3
 
 

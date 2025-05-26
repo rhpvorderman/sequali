@@ -22,8 +22,8 @@
   :target: https://codecov.io/gh/rhpvorderman/sequali
   :alt:
 
-.. |zenodo-shield| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.10854010.svg
-  :target: https://doi.org/10.5281/zenodo.10854010
+.. |zenodo-shield| image:: ./docs/_static/images/doi_image.svg
+  :target: https://doi.org/10.1093/bioadv/vbaf010
   :alt:
 
 |python-version-shield| |conda-version-shield| |python-install-version-shield|
@@ -41,6 +41,9 @@ Features:
 
 + `MultiQC <https://multiqc.info>`_ support since MultiQC version 1.22.
 + Low memory footprint, small install size and fast execution times.
+
+  + Sequali typically needs less than 2 GB of memory and 3-30 minutes runtime
+    when run on 2 cores (the default).
 + Informative graphs that allow for judging the quality of a sequence at
   a quick glance.
 + Overrepresentation analysis using 21 bp sequence fragments. Overrepresented
@@ -55,11 +58,13 @@ Features:
 + Per tile quality plots for illumina reads.
 + Channel and other plots for nanopore reads.
 + FASTQ and unaligned BAM are supported. See "Supported formats".
++ Reproducible reports without timestamps.
 
 Example reports:
 
 + `GM24385_1.fastq.gz <https://sequali.readthedocs.io/en/latest/GM24385_1.fastq.gz.html>`_;
-  HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. `Sequence file download <https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/UCSC_Ultralong_OxfordNanopore_Promethion/GM24385_1.fastq.gz>`_.
+  HG002 (Genome In A Bottle) on ultra-long Nanopore Sequencing. ENA accession:
+  `ERR3988483 <https://www.ebi.ac.uk/ena/browser/view/ERR3988483>`_.
 + `GM24385_1_cut.fastq.gz <https://sequali.readthedocs.io/en/latest/GM24385_1_cut.fastq.gz.html>`_;
   ``GM24385_1.fastq.gz`` processed with cutadapt:
   ``cutadapt -o GM24385_1_cut.fastq.gz --cut -64 --cut 64 --minimum-length 500 -Z --max-aer 0.1 GM24385_1.fastq.gz``.
@@ -87,10 +92,12 @@ Supported formats
     per tile quality will be provided.
   - For sequences called by guppy additional plots for nanopore specific
     data will be provided.
-- unaligned BAM. Any alignment flags are currently ignored.
+- (unaligned) BAM with single reads. Read-pair information is currently ignored.
 
-  - For uBAM data as delivered by dorado additional nanopore plots will be
+  - For BAM data as delivered by dorado additional nanopore plots will be
     provided.
+  - For aligned BAM files, secondary and supplementary reads are ignored
+    similar to how ``samtools fastq`` handles the data.
 
 .. formats end
 
@@ -121,6 +128,48 @@ Quickstart
 This will create a report ``my.fastq.gz.html`` and a json ``my.fastq.gz.json``
 in the current working directory.
 
+To set the directory where the reports are created the ``--outdir`` flag can
+be used. This is useful when using [MultiQC](https://github.com/multiqc/multiqc).
+
+.. code-block::
+
+    sequali --out-dir /my/dir/all_sequali_reports my.fastq.gz
+
+The html and json filenames can be set separately.
+
+.. code-block::
+
+    sequali --html before_qc.html --json before_qc.json my.fastq.gz
+    sequali --html after_qc.html --json after_qc.json my.cutadapt.fastq.gz
+
+Sequali can handle paired-end data.
+
+.. code-block::
+
+    sequali /sequencing_data/sample100_R1.fastq.gz /sequencing_data/sample100_R2.fastq.gz
+
+Additionally sequali can handle BAM data. Proper pair handling is not yet supported for
+BAM data, so this is primarily useful for ONT datasets.
+
+.. code-block::
+
+    sequali /sequencing_data/sample100_dorado_called_hac_v4.30.bam
+
+Sequali by default uses one thread per compressed input file and one thread for
+the read processing, typically keeping two cores busy. Sequali can also use a single
+core, which is slower, but typically more efficient for HPC scenarios where
+multiple files can be run simultaneously. (Below a SLURM example.)
+
+.. code-block::
+
+    sbatch -c 1 --time 59 --partition short \
+    --wrap 'sequali --threads 1 /cluster-scratch/myusername/my.fastq.gz'
+
+Using a thread count higher than ``2`` has no effect. Due to the decompression
+bottleneck, bringing the full power of multithreading to Sequali has limited
+utility whilst having a disproportionally high cost in additional code
+complexity.
+
 .. quickstart end
 
 For all command line options checkout the
@@ -144,10 +193,22 @@ Acknowledgements
   <https://matplotlib.org/stable/users/explain/colors/colormaps.html>`_ for
   a good introduction.
 + Wouter de Coster for his `excellent post on how to correctly average phred
-  scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_.
+  scores <https://gigabaseorgigabyte.wordpress.com/2017/06/26/averaging-basecall-quality-scores-the-right-way/>`_
+  as well as the idea for using end-anchored plots from `NanoQC
+  <https://github.com/wdecoster/nanoQC>`_.
 + Marcel Martin for providing very extensive feedback.
++ Agnès Barnabé for creating a Galaxy wrapper.
 
 .. acknowledgements end
+
+Citation
+========
+.. citation start
+
+If you wish to credit Sequali please cite `the Sequali article
+<https://doi.org/10.1093/bioadv/vbaf010>`_.
+
+.. citation end
 
 License
 =======

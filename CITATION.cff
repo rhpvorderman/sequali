@@ -4,8 +4,7 @@
 cff-version: 1.2.0
 title: Sequali
 message: >-
-  If you use this software, please cite it using the
-  metadata from this file.
+  If you use this software, please cite the article.
 type: software
 authors:
   - given-names: Ruben Harmen Paul
@@ -13,9 +12,7 @@ authors:
     email: r.h.p.vorderman@lumc.nl
     affiliation: Leids Universitair Medisch Centrum
     orcid: 'https://orcid.org/0000-0002-8813-1528'
-identifiers:
-  - type: doi
-    value: 10.5281/zenodo.10822485
+doi: 10.1093/bioadv/vbaf010
 repository-code: 'https://github.com/rhpvorderman/sequali'
 abstract: >-
   Sequali is a QC tool that generates useful graphs for both short and

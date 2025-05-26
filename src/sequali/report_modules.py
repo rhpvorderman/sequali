@@ -21,10 +21,11 @@ import html
 import io
 import math
 import os
+import string
 import sys
-import time
 import typing
 import xml.etree.ElementTree
+import zipfile
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
@@ -35,9 +36,16 @@ import pygal  # type: ignore
 import pygal.style  # type: ignore
 
 from ._qc import A, C, G, N, T
-from ._qc import (AdapterCounter, DedupEstimator,
-                  INSERT_SIZE_MAX_ADAPTER_STORE_SIZE, InsertSizeMetrics,
-                  NanoStats, PerTileQuality, QCMetrics, SequenceDuplication)
+from ._qc import (
+    AdapterCounter,
+    DedupEstimator,
+    INSERT_SIZE_MAX_ADAPTER_STORE_SIZE,
+    InsertSizeMetrics,
+    NanoStats,
+    OverrepresentedSequences,
+    PerTileQuality,
+    QCMetrics,
+)
 from ._qc import NUMBER_OF_NUCS, NUMBER_OF_PHREDS, PHRED_MAX
 from ._version import __version__
 from .adapters import Adapter
@@ -108,6 +116,14 @@ DEFAULT_MAX_THRESHOLD = sys.maxsize
 COMMON_GRAPH_OPTIONS = dict(
     truncate_label=-1,
     width=1250,
+    height=700,
+    disable_xml_declaration=True,
+    js=[],  # Script is globally downloaded once
+)
+
+SIDE_BY_SIDE_GRAPH_OPTIONS = dict(
+    truncate_label=-1,
+    width=550,
     height=700,
     disable_xml_declaration=True,
     js=[],  # Script is globally downloaded once
@@ -226,6 +242,19 @@ def figurize_plot(plot: pygal.Graph):
     """
 
 
+def plots_side_by_side(plot1: str, plot2: str) -> str:
+    return f"""
+        <div class="image_row">
+            <div class="image_column">
+                {plot1}
+            </div>
+            <div class="image_column">
+                {plot2}
+            </div>
+        </div>
+    """
+
+
 def equidistant_ranges(length: int, parts: int) -> Iterator[Tuple[int, int]]:
     size = length // parts
     remainder = length % parts
@@ -341,6 +370,10 @@ class ReportModule(ABC):
         return dataclasses.asdict(self)
 
     @abstractmethod
+    def plots(self) -> List[pygal.Graph]:
+        pass
+
+    @abstractmethod
     def to_html(self) -> str:
         pass
 
@@ -353,7 +386,6 @@ class ReportModule(ABC):
 @dataclasses.dataclass
 class Meta(ReportModule):
     sequali_version: str
-    report_generated: str
     filename: str
     filesize: int
     filename_read2: Optional[str]
@@ -375,10 +407,7 @@ class Meta(ReportModule):
         else:
             filename_read2 = None
             filesize_read2 = None
-        timestamp = time.time()
-        time_struct = time.localtime(timestamp)
-        report_generated = time.strftime("%Y-%m-%d %H:%M:%S%z", time_struct)
-        return cls(__version__, report_generated, filename, filesize,
+        return cls(__version__, filename, filesize,
                    filename_read2, filesize_read2)
 
     def to_html(self) -> str:
@@ -402,10 +431,12 @@ class Meta(ReportModule):
             """)
         content.write(f"""
             <tr><td>Sequali version</td><td>{self.sequali_version}</td></tr>
-            <tr><td>Report generated on</td><td>{self.report_generated}</td></tr>
             </table>
         """)
         return content.getvalue()
+
+    def plots(self) -> List[pygal.Graph]:
+        return []
 
 
 @dataclasses.dataclass
@@ -465,6 +496,9 @@ class Summary(ReportModule):
             </table>
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return []
+
 
 @dataclasses.dataclass
 class SequenceLengthDistribution(ReportModule):
@@ -479,6 +513,8 @@ class SequenceLengthDistribution(ReportModule):
     q90: int
     q95: int
     q99: int
+    n50: int
+    n90: int
     read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
@@ -498,6 +534,13 @@ class SequenceLengthDistribution(ReportModule):
                 self.q75, self.q90, self.q95, self.q99}) == 1:
             return ""
         return f"""
+            <p class="explanation">
+            See this
+            <a
+            href="https://en.wikipedia.org/wiki/N50,_L50,_and_related_statistics"
+            >wikipedia lemma</a>
+                for an explanation about contiguity statistics.
+            </p>
             <table>
                 <tr><th>Percentile</th><th>Read length</th></tr>
                 <tr><td>1</td><td style="text-align:right;">{self.q1:,}</td></tr>
@@ -510,6 +553,11 @@ class SequenceLengthDistribution(ReportModule):
                 <tr><td>95</td><td style="text-align:right;">{self.q95:,}</td></tr>
                 <tr><td>99</td><td style="text-align:right;">{self.q99:,}</td></tr>
             </table>
+            <table>
+                <tr><th>Contiguity</th><th>Read length</th></tr>
+                <tr><td>N90</td><td style="text-align:right;">{self.n90:,}</td></tr>
+                <tr><td>N50</td><td style="text-align:right;">{self.n50:,}</td></tr>
+            </table>
         """
 
     def to_html(self):
@@ -519,6 +567,9 @@ class SequenceLengthDistribution(ReportModule):
             {self.distribution_table()}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
     @classmethod
     def from_base_count_tables(cls,
@@ -567,14 +618,30 @@ class SequenceLengthDistribution(ReportModule):
             if done:
                 break
 
+        total_bases = sum(base_count_tables)
+        half_bases = total_bases // 2
+        ten_percent_bases = int(total_bases * 0.1)
+        sum_bases = 0
+        N50 = None
+        N90 = None
+        for length, number in enumerate(sequence_lengths):
+            sum_bases += length * number
+            if N90 is None and sum_bases >= ten_percent_bases:
+                N90 = length
+            if N50 is None and sum_bases >= half_bases:
+                N50 = length
+                break
         return cls(["0"] + x_labels, [sequence_lengths[0]] + lengths,
-                   *percentile_lengths, read_pair_info=read_pair_info)  # type: ignore
+                   *percentile_lengths, n50=N50, n90=N90,  # type: ignore
+                   read_pair_info=read_pair_info)  # type: ignore
 
 
 @dataclasses.dataclass
 class PerPositionMeanQualityAndSpread(ReportModule):
     x_labels: List[str]
     percentiles: List[Tuple[str, List[float]]]
+    front_percentiles: List[Tuple[str, List[float]]]
+    end_percentiles: List[Tuple[str, List[float]]]
     read_pair_info: Optional[str] = None
 
     def plot(self) -> pygal.Graph:
@@ -605,23 +672,92 @@ class PerPositionMeanQualityAndSpread(ReportModule):
                  stroke_style={"dasharray": '1,2'})
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        plot = pygal.Line(
+            title=self.prepend_read_info(
+                "Per position quality percentiles on read start"),
+            show_dots=False,
+            x_title="position",
+            y_title="phred score",
+            y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
+            style=pygal.style.DefaultStyle(
+                colors=["#000000"] * 12,
+                **COMMON_GRAPH_STYLE_OPTIONS,
+                ),
+            x_labels=[str(x) for x in
+                      range(1, len(self.front_percentiles[0][1]) + 1)],
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        percentiles = dict(self.front_percentiles)
+        plot.add("top 1%", percentiles["top 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", percentiles["top 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", percentiles["mean"],
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", percentiles["bottom 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", percentiles["bottom 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        plot = pygal.Line(
+            title=self.prepend_read_info(
+                "Per position quality percentiles on read end"),
+            show_dots=False,
+            x_title="position",
+            y_title="phred score",
+            y_labels=list(range(0, 51, 10)),
+            range=(0.0, 50.0),
+            style=pygal.style.DefaultStyle(
+                colors=["#000000"] * 12,
+                **COMMON_GRAPH_STYLE_OPTIONS,
+                ),
+            x_labels=[str(x) for x in
+                      range(-len(self.end_percentiles[0][1]), 0)],
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        percentiles = dict(self.end_percentiles)
+        plot.add("top 1%", percentiles["top 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        plot.add("top 5%", percentiles["top 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("mean", percentiles["mean"],
+                 show_dots=True, dots_size=1)
+        plot.add("bottom 5%", percentiles["bottom 5%"],
+                 stroke_style={"dasharray": '3,3'})
+        plot.add("bottom 1%", percentiles["bottom 1%"],
+                 stroke_style={"dasharray": '1,2'})
+        return plot
+
     def to_html(self):
         return f"""
-            {html_header("Per position quality percentiles", 1,
+            {html_header(
+            "Per position quality percentiles (approximation)", 1,
                          self.read_pair_info)}
             <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
-            based on the sampled categories, rather than exact phreds, it is
+            based on the binned phreds, rather than exact phreds, it is
             an approximation.</p>
             {figurize_plot(self.plot())}
+            {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+            )}
         """
 
-    @classmethod
-    def from_phred_table_and_labels(cls,
-                                    phred_tables: array.ArrayType,
-                                    x_labels,
-                                    read_pair_info: Optional[str] = None):
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot(), self.front_plot(), self.end_plot()]
+
+    @staticmethod
+    def phred_tables_to_percentiles(phred_tables: array.ArrayType):
         percentiles = [1, 5, 10, 25, 50, 75, 90, 95, 99]
         percentile_fractions = [i / 100 for i in percentiles]
         total_tables = len(phred_tables) // NUMBER_OF_PHREDS
@@ -685,25 +821,36 @@ class PerPositionMeanQualityAndSpread(ReportModule):
             ("top 5%", reversed_percentile_tables[-2]),
             ("top 1%", reversed_percentile_tables[-1]),
         ]
+        return graph_series
+
+    @classmethod
+    def from_phred_table_and_labels(cls,
+                                    phred_tables: array.ArrayType,
+                                    x_labels,
+                                    front_phred_tables: array.ArrayType,
+                                    end_phred_tables: array.ArrayType,
+                                    read_pair_info: Optional[str] = None):
         return cls(
             x_labels=x_labels,
-            percentiles=graph_series,
+            percentiles=cls.phred_tables_to_percentiles(phred_tables),
+            front_percentiles=cls.phred_tables_to_percentiles(front_phred_tables),
+            end_percentiles=cls.phred_tables_to_percentiles(end_phred_tables),
             read_pair_info=read_pair_info,
-            )
+        )
 
 
 @dataclasses.dataclass
 class PerBaseQualityScoreDistribution(ReportModule):
     x_labels: Sequence[str]
     series: Sequence[Sequence[float]]
+    front_anchored_series: Sequence[Sequence[float]]
+    end_anchored_series: Sequence[Sequence[float]]
     read_pair_info: Optional[str] = None
 
-    @classmethod
-    def from_phred_count_table_and_labels(
-            cls, phred_tables: array.ArrayType, x_labels: Sequence[str],
-            read_pair_info: Optional[str] = None
-    ):
-        total_tables = len(x_labels)
+    @staticmethod
+    def quality_distribution_table(
+            phred_tables: array.ArrayType) -> List[List[float]]:
+        total_tables = len(phred_tables) // NUMBER_OF_PHREDS
         quality_distribution = [
             [0.0 for _ in range(total_tables)]
             for _ in range(NUMBER_OF_PHREDS)
@@ -718,9 +865,29 @@ class PerBaseQualityScoreDistribution(ReportModule):
                     continue
                 nuc_fraction = phred_count / total_nucs
                 quality_distribution[offset][cat_index] = nuc_fraction
-        return cls(x_labels, quality_distribution, read_pair_info=read_pair_info)
+        return quality_distribution
 
-    def plot(self) -> pygal.Graph:
+    @classmethod
+    def from_phred_count_table_and_labels(
+            cls,
+            phred_tables: array.ArrayType,
+            x_labels: Sequence[str],
+            front_anchored_phreds: array.ArrayType,
+            end_anchored_phreds: array.ArrayType,
+            read_pair_info: Optional[str] = None,
+    ):
+        quality_distribution = cls.quality_distribution_table(phred_tables)
+        front_quality_distribution = cls.quality_distribution_table(
+            front_anchored_phreds)
+        end_quality_distribution = cls.quality_distribution_table(end_anchored_phreds)
+        return cls(
+            x_labels=x_labels,
+            series=quality_distribution,
+            front_anchored_series=front_quality_distribution,
+            end_anchored_series=end_quality_distribution,
+            read_pair_info=read_pair_info)
+
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.StackedBar(
             title=self.prepend_read_info("Per base quality distribution"),
             style=QUALITY_DISTRIBUTION_STYLE,
@@ -738,12 +905,62 @@ class PerBaseQualityScoreDistribution(ReportModule):
                      show_dots=serie_filled)
         return plot
 
+    def front_anchored_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in range(1, len(self.front_anchored_series[0]) + 1)]
+        plot = pygal.StackedBar(
+            title=self.prepend_read_info("Per base quality distribution on read start"),
+            style=QUALITY_DISTRIBUTION_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.front_anchored_series):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, x_labels),
+                     show_dots=serie_filled)
+        return plot
+
+    def end_anchored_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in range(-len(self.end_anchored_series[0]), 0)]
+        plot = pygal.StackedBar(
+            title=self.prepend_read_info("Per base quality distribution on read end"),
+            style=QUALITY_DISTRIBUTION_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        for name, serie in zip(QUALITY_SERIES_NAMES, self.end_anchored_series):
+            serie_filled = sum(serie) > 0.0
+            plot.add(name, label_values(serie, x_labels),
+                     show_dots=serie_filled)
+        return plot
+
     def to_html(self):
         return f"""
             {html_header("Per position quality score distribution",
                          1, self.read_pair_info)}
-            {figurize_plot(self.plot())}
+            {figurize_plot(self.main_plot())}
+            {plots_side_by_side(
+                figurize_plot(self.front_anchored_plot()),
+                figurize_plot(self.end_anchored_plot()),
+            )}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_anchored_plot(),
+                self.end_anchored_plot()]
 
 
 @dataclasses.dataclass
@@ -786,6 +1003,9 @@ class PerSequenceAverageQualityScores(ReportModule):
             {figurize_plot(self.plot())}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
+
     def quality_scores_table(self) -> str:
         table = io.StringIO()
         total = max(sum(self.average_quality_counts), 1)
@@ -814,6 +1034,19 @@ class PerSequenceAverageQualityScores(ReportModule):
         return cls(list(metrics.phred_scores()), read_pair_info=read_pair_info)
 
 
+BASE_COLORS = (
+    COLOR_GREEN,
+    "#228B22",  # ForestGreen
+    "#00BFFF",  # DeepSkyBlue
+    "#1E90FF",  # DodgerBlue
+)
+
+BASE_COLOR_STYLE = pygal.style.Style(
+    colors=BASE_COLORS,
+    **COMMON_GRAPH_STYLE_OPTIONS
+)
+
+
 @dataclasses.dataclass
 class PerPositionBaseContent(ReportModule):
     x_labels: Sequence[str]
@@ -821,22 +1054,14 @@ class PerPositionBaseContent(ReportModule):
     C: Sequence[float]
     G: Sequence[float]
     T: Sequence[float]
+    front_anchored: Dict[str, List[float]]
+    end_anchored: Dict[str, List[float]]
     read_pair_info: Optional[str] = None
 
-    def plot(self) -> pygal.Graph:
-        style_class = pygal.style.Style
-        green = COLOR_GREEN
-        dark_green = "#228B22"  # ForestGreen
-        blue = "#00BFFF"  # DeepSkyBlue
-        dark_blue = "#1E90FF"  # DodgerBlue
-        black = "#000000"
-        style = style_class(
-            colors=(green, dark_green, blue, dark_blue, black),
-            **COMMON_GRAPH_STYLE_OPTIONS
-        )
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.StackedLine(
             title=self.prepend_read_info("Base content"),
-            style=style,
+            style=BASE_COLOR_STYLE,
             dots_size=1,
             y_labels=[i / 10 for i in range(11)],
             x_title="position",
@@ -851,19 +1076,67 @@ class PerPositionBaseContent(ReportModule):
         plot.add("T", label_values(self.T, self.x_labels))
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(1, len(self.front_anchored["A"]) + 1)]
+        plot = pygal.StackedLine(
+            title=self.prepend_read_info("Base content on read start"),
+            style=BASE_COLOR_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        plot.add("G", label_values(self.front_anchored["G"], x_labels))
+        plot.add("C", label_values(self.front_anchored["C"], x_labels))
+        plot.add("A", label_values(self.front_anchored["A"], x_labels))
+        plot.add("T", label_values(self.front_anchored["T"], x_labels))
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(-len(self.end_anchored["A"]), 0)]
+        plot = pygal.StackedLine(
+            title=self.prepend_read_info("Base content on read end"),
+            style=BASE_COLOR_STYLE,
+            dots_size=1,
+            y_labels=[i / 10 for i in range(11)],
+            x_title="position",
+            y_title="fraction",
+            fill=True,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        plot.add("G", label_values(self.end_anchored["G"], x_labels))
+        plot.add("C", label_values(self.end_anchored["C"], x_labels))
+        plot.add("A", label_values(self.end_anchored["A"], x_labels))
+        plot.add("T", label_values(self.end_anchored["T"], x_labels))
+        return plot
+
     def to_html(self) -> str:
         return f"""
              {html_header("Per position base content", 1,
                           self.read_pair_info)}
-             {figurize_plot(self.plot())}
+             {figurize_plot(self.main_plot())}
+             {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+             )}
         """
 
-    @classmethod
-    def from_base_count_tables_and_labels(cls,
-                                          base_count_tables: array.ArrayType,
-                                          labels: Sequence[str],
-                                          read_pair_info: Optional[str] = None,
-                                          ):
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_plot(), self.end_plot()]
+
+    @staticmethod
+    def base_content_distribution_table(
+            base_count_tables: array.ArrayType,) -> Dict[str, List[float]]:
         total_tables = len(base_count_tables) // NUMBER_OF_NUCS
         base_fractions = [
             [0.0 for _ in range(total_tables)]
@@ -880,12 +1153,35 @@ class PerPositionBaseContent(ReportModule):
             base_fractions[C][index] = table[C] / named_total
             base_fractions[G][index] = table[G] / named_total
             base_fractions[T][index] = table[T] / named_total
+        return {
+            "A": base_fractions[A],
+            "C": base_fractions[C],
+            "G": base_fractions[G],
+            "T": base_fractions[T],
+        }
+
+    @classmethod
+    def from_base_count_tables_and_labels(
+            cls,
+            base_count_tables: array.ArrayType,
+            labels: Sequence[str],
+            front_anchored_base_count_tables: array.ArrayType,
+            end_anchored_base_count_tables: array.ArrayType,
+            read_pair_info: Optional[str] = None,
+    ):
+        base_fractions = cls.base_content_distribution_table(base_count_tables)
+        front_base_fractions = cls.base_content_distribution_table(
+            front_anchored_base_count_tables)
+        end_base_fractions = cls.base_content_distribution_table(
+            end_anchored_base_count_tables)
         return cls(
             labels,
-            A=base_fractions[A],
-            C=base_fractions[C],
-            G=base_fractions[G],
-            T=base_fractions[T],
+            A=base_fractions["A"],
+            C=base_fractions["C"],
+            G=base_fractions["G"],
+            T=base_fractions["T"],
+            front_anchored=front_base_fractions,
+            end_anchored=end_base_fractions,
             read_pair_info=read_pair_info,
         )
 
@@ -936,6 +1232,9 @@ class PerPositionNContent(ReportModule):
                          self.read_pair_info)}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
 
 @dataclasses.dataclass
@@ -992,6 +1291,9 @@ class PerSequenceGCContent(ReportModule):
             {figurize_plot(self.smoothened_plot())}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot(), self.smoothened_plot()]
+
     @classmethod
     def from_qc_metrics(cls, metrics: QCMetrics, read_pair_info: Optional[str] = None):
         gc_content = list(metrics.gc_content())
@@ -1008,9 +1310,11 @@ class PerSequenceGCContent(ReportModule):
 class AdapterContent(ReportModule):
     x_labels: Sequence[str]
     adapter_content: Sequence[Tuple[str, Sequence[float]]]
+    front_adapter_content: Sequence[Tuple[str, Sequence[float]]]
+    end_adapter_content: Sequence[Tuple[str, Sequence[float]]]
     read_pair_info: Optional[str] = None
 
-    def plot(self) -> pygal.Graph:
+    def main_plot(self) -> pygal.Graph:
         plot = pygal.Line(
             title=self.prepend_read_info("Adapter content (%)"),
             range=(0.0, 100.0),
@@ -1031,6 +1335,57 @@ class AdapterContent(ReportModule):
             plot.add(label, label_values(content, self.x_labels))
         return plot
 
+    def front_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(1, len(self.front_adapter_content[0][1]) + 1)]
+        plot = pygal.Line(
+            title=self.prepend_read_info("Adapter content (%) on read start"),
+            range=(0.0, 100.0),
+            x_title="position",
+            y_title="%",
+            legend_at_bottom=True,
+            legend_at_bottom_columns=1,
+            truncate_legend=-1,
+            style=MULTIPLE_SERIES_STYLE,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        adapter_content = [(label, content) for label, content in
+                           self.front_adapter_content
+                           if content and max(content) >= 0.1]
+        adapter_content.sort(key=lambda x: max(x[1]),
+                             reverse=True)
+        for label, content in adapter_content:
+            plot.add(label, label_values(content, x_labels))
+        return plot
+
+    def end_plot(self) -> pygal.Graph:
+        x_labels = [str(x) for x in
+                    range(-len(self.end_adapter_content[0][1]), 0)]
+        plot = pygal.Line(
+            title=self.prepend_read_info("Adapter content (%) on read end"),
+            range=(0.0, 100.0),
+            x_title="position",
+            y_title="%",
+            legend_at_bottom=True,
+            legend_at_bottom_columns=1,
+            truncate_legend=-1,
+            style=MULTIPLE_SERIES_STYLE,
+            x_labels=x_labels,
+            show_minor_x_labels=False,
+            x_labels_major_every=10,
+            **SIDE_BY_SIDE_GRAPH_OPTIONS,
+        )
+        adapter_content = [(label, content) for label, content in
+                           self.end_adapter_content if content and max(content) >= 0.1]
+        adapter_content.sort(key=lambda x: max(x[1]),
+                             reverse=True)
+        for label, content in adapter_content:
+            plot.add(label, label_values(content, x_labels))
+        return plot
+
     def to_html(self):
         return f"""
             {html_header("Adapter content", 1, self.read_pair_info)}
@@ -1039,7 +1394,7 @@ class AdapterContent(ReportModule):
             length of the sequences used to estimate the content, values below this
             threshold are problably false positives. The legend is sorted from
             most frequent to least frequent.</p>
-            <p class="explanation">For nanopore the the adapter mix (AMX) and
+            <p class="explanation">For nanopore the adapter mix (AMX) and
             ligation kit have overlapping adapter sequences and are therefore
             indistinguishable. Please consult the
             <a href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits">
@@ -1048,13 +1403,27 @@ class AdapterContent(ReportModule):
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.</p>
-            {figurize_plot(self.plot())}
+            <p>Adapter counts are accumulated towards the start for front
+            (5') adapters and towards the end for end (3') adapters.</p>
+            {figurize_plot(self.main_plot())}
+            <p>For the reads start and end plots, only adapters found in the
+            first and last {len(self.end_adapter_content[0][1])} bp are shown.
+            All adapter counts are accumulated towards the start and end
+            respectively.</p>
+            {plots_side_by_side(
+                figurize_plot(self.front_plot()),
+                figurize_plot(self.end_plot()),
+            )}
         """  # noqa: E501
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.main_plot(), self.front_plot(), self.end_plot()]
 
     @classmethod
     def from_adapter_counter_adapters_and_ranges(
             cls, adapter_counter: AdapterCounter, adapters: Sequence[Adapter],
             data_ranges: Sequence[Tuple[int, int]],
+            front_and_back_sample_length: int = 100,
             read_pair_info: Optional[str] = None,
     ):
 
@@ -1067,12 +1436,17 @@ class AdapterContent(ReportModule):
             return accumulated_counts
 
         all_adapters = []
+        front_adapters = []
+        end_adapters = []
         sequence_to_adapter = {adapter.sequence: adapter for adapter in adapters}
         adapter_names = [adapter.name for adapter in adapters]
         total_sequences = adapter_counter.number_of_sequences
-        for adapter_sequence, countarray in adapter_counter.get_counts():
+
+        for adapter_sequence, forward_counts, reverse_counts \
+                in adapter_counter.get_counts():
+            end_counts = array.array("Q", reversed(reverse_counts))
             adapter = sequence_to_adapter[adapter_sequence]
-            adapter_counts = [sum(countarray[start:stop])
+            adapter_counts = [sum(forward_counts[start:stop])
                               for start, stop in data_ranges]
             if adapter.sequence_position == "end":
                 accumulated_counts = accumulate_counts(adapter_counts)
@@ -1083,9 +1457,21 @@ class AdapterContent(ReportModule):
                     accumulate_counts(reversed(adapter_counts))))
             all_adapters.append([count * 100 / total_sequences
                                  for count in accumulated_counts])
-        return cls(stringify_ranges(data_ranges),
-                   list(zip(adapter_names, all_adapters)),
-                   read_pair_info=read_pair_info)
+            end_adapters.append([count * 100 / total_sequences
+                                 for count in accumulate_counts(end_counts[
+                                              -front_and_back_sample_length:])])
+            front_adapter_counts = list(reversed(
+                accumulate_counts(reversed(
+                    forward_counts[:front_and_back_sample_length]))))
+            front_adapters.append([count * 100 / total_sequences
+                                   for count in front_adapter_counts])
+
+        return cls(
+           stringify_ranges(data_ranges),
+           list(zip(adapter_names, all_adapters)),
+           front_adapter_content=list(zip(adapter_names, front_adapters)),
+           end_adapter_content=list(zip(adapter_names, end_adapters)),
+           read_pair_info=read_pair_info)
 
 
 @dataclasses.dataclass
@@ -1214,6 +1600,9 @@ class PerTileQualityReport(ReportModule):
             {figurize_plot(self.plot())}
         """
 
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
+
 
 @dataclasses.dataclass
 class DuplicationCounts(ReportModule):
@@ -1292,6 +1681,9 @@ class DuplicationCounts(ReportModule):
             {first_part}
             {figurize_plot(self.plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.plot()]
 
     @staticmethod
     def estimated_counts_to_fractions(
@@ -1492,10 +1884,13 @@ class OverRepresentedSequences(ReportModule):
         content.write("</table></div>")
         return content.getvalue()
 
+    def plots(self) -> List[pygal.Graph]:
+        return []
+
     @classmethod
     def from_sequence_duplication(
             cls,
-            seqdup: SequenceDuplication,
+            seqdup: OverrepresentedSequences,
             fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
             min_threshold: int = DEFAULT_MIN_THRESHOLD,
             max_threshold: int = DEFAULT_MAX_THRESHOLD,
@@ -1534,6 +1929,8 @@ class NanoStatsReport(ReportModule):
     per_channel_bases: Dict[int, int]
     per_channel_quality: Dict[int, float]
     translocation_speed: List[int]
+    reads_with_parent: Optional[int] = None
+    total_reads: Optional[int] = None
     skipped_reason: Optional[str] = None
 
     @staticmethod
@@ -1547,15 +1944,17 @@ class NanoStatsReport(ReportModule):
     def from_nanostats(cls, nanostats: NanoStats):
         if nanostats.skipped_reason:
             return cls(
-                [],
-                [],
-                [],
-                [],
-                [],
-                {},
-                {},
-                [],
-                nanostats.skipped_reason
+                x_labels=[],
+                time_bases=[],
+                time_reads=[],
+                time_active_channels=[],
+                qual_percentages_over_time=[],
+                per_channel_bases={},
+                per_channel_quality={},
+                translocation_speed=[],
+                reads_with_parent=None,
+                total_reads=None,
+                skipped_reason=nanostats.skipped_reason,
             )
         run_start_time = nanostats.minimum_time
         run_end_time = nanostats.maximum_time
@@ -1578,7 +1977,11 @@ class NanoStatsReport(ReportModule):
         per_channel_bases: Dict[int, int] = defaultdict(lambda: 0)
         per_channel_cumulative_error: Dict[int, float] = defaultdict(lambda: 0.0)
         translocation_speeds = [0] * 81
+        total_reads = nanostats.number_of_reads
+        reads_with_parent = 0
         for readinfo in nanostats.nano_info_iterator():
+            if readinfo.parent_id_hash:
+                reads_with_parent += 1
             relative_start_time = readinfo.start_time - run_start_time
             timeslot = relative_start_time // time_interval
             length = readinfo.length
@@ -1627,7 +2030,9 @@ class NanoStatsReport(ReportModule):
             per_channel_bases=dict(sorted(per_channel_bases.items())),
             per_channel_quality=dict(sorted(per_channel_quality.items())),
             translocation_speed=translocation_speeds,
-            skipped_reason=nanostats.skipped_reason
+            skipped_reason=nanostats.skipped_reason,
+            total_reads=total_reads,
+            reads_with_parent=reads_with_parent if reads_with_parent > 0 else None,
         )
 
     def time_bases_plot(self):
@@ -1742,6 +2147,40 @@ class NanoStatsReport(ReportModule):
         {figurize_plot(plot)}
         """
 
+    def read_split_section(self):
+        section = io.StringIO()
+        section.write(html_header("Chimeric read splitting", 1))
+        section.write(
+            """
+            <p class="explanation">Dorado performs read splitting when it finds
+            adapter sequences in the middle of the signal. The read is split
+            and the original signal uuid is saved in the 'pi' tag.</p>
+            """
+        )
+        if self.reads_with_parent is None:
+            section.write("<p>No 'pi' tags were found.</p>")
+            return section.getvalue()
+
+        graph_options = dict(**COMMON_GRAPH_OPTIONS)
+        graph_options["height"] = 300
+        plot = pygal.HorizontalStackedBar(
+            title="Split reads",
+            x_tile="Number of reads",
+            legend_at_bottom=True,
+            style=MULTIPLE_SERIES_STYLE,
+            **graph_options,
+        )
+        plot.add("Reads originating from a split", [
+            {"value": self.reads_with_parent,
+             "label": "Reads originating from a split"}
+        ])
+        plot.add("Unsplit reads", [
+            {"value": self.total_reads - self.reads_with_parent,
+             "label": "Unsplit reads"}
+        ])
+        section.write(figurize_plot(plot))
+        return section.getvalue()
+
     def to_html(self) -> str:
         if self.skipped_reason:
             return f"""
@@ -1761,7 +2200,17 @@ class NanoStatsReport(ReportModule):
         {html_header("Per channel base yield versus quality", 2)}
         {figurize_plot(self.channel_plot())}
         {self.translocation_section()}
+        {self.read_split_section()}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [
+            self.time_bases_plot(),
+            self.time_reads_plot(),
+            self.time_active_channels_plot(),
+            self.time_quality_distribution_plot(),
+            self.channel_plot()
+        ]
 
 
 @dataclasses.dataclass
@@ -1817,6 +2266,9 @@ class InsertSizeMetricsReport(ReportModule):
             </table>
             {figurize_plot(self.insert_sizes_plot())}
         """
+
+    def plots(self) -> List[pygal.Graph]:
+        return [self.insert_sizes_plot()]
 
 
 @dataclasses.dataclass
@@ -1942,6 +2394,9 @@ class AdapterFromOverlapReport(ReportModule):
                 """)
         report.write("</table>")
         return report.getvalue()
+
+    def plots(self) -> List[pygal.Graph]:
+        return []
 
 
 NAME_TO_CLASS: Dict[str, Type[ReportModule]] = {
@@ -2076,6 +2531,11 @@ def qc_metrics_modules(metrics: QCMetrics,
                        ) -> List[ReportModule]:
     base_count_tables = metrics.base_count_table()
     phred_count_table = metrics.phred_count_table()
+    front_base_counts = base_count_tables[:metrics.end_anchor_length * NUMBER_OF_NUCS]
+    end_base_counts = metrics.end_anchored_base_count_table()
+    front_phred_counts = phred_count_table[:metrics.end_anchor_length *
+                                           NUMBER_OF_PHREDS]
+    end_phred_counts = metrics.end_anchored_phred_count_table()
     x_labels = stringify_ranges(data_ranges)
     aggregrated_base_matrix = aggregate_count_matrix(
         base_count_tables, data_ranges, NUMBER_OF_NUCS)
@@ -2113,13 +2573,21 @@ def qc_metrics_modules(metrics: QCMetrics,
             base_count_tables, total_reads, data_ranges,
             read_pair_info=read_pair_info),
         PerBaseQualityScoreDistribution.from_phred_count_table_and_labels(
-            aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
+            phred_tables=aggregated_phred_matrix,
+            x_labels=x_labels,
+            front_anchored_phreds=front_phred_counts,
+            end_anchored_phreds=end_phred_counts,
+            read_pair_info=read_pair_info),
         PerPositionMeanQualityAndSpread.from_phred_table_and_labels(
-           aggregated_phred_matrix, x_labels, read_pair_info=read_pair_info),
+           aggregated_phred_matrix, x_labels, front_phred_counts,
+           end_phred_counts, read_pair_info=read_pair_info),
         PerSequenceAverageQualityScores.from_qc_metrics(
             metrics, read_pair_info=read_pair_info),
         PerPositionBaseContent.from_base_count_tables_and_labels(
-            aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
+            base_count_tables=aggregrated_base_matrix, labels=x_labels,
+            front_anchored_base_count_tables=front_base_counts,
+            end_anchored_base_count_tables=end_base_counts,
+            read_pair_info=read_pair_info),
         PerPositionNContent.from_base_count_tables_and_labels(
             aggregrated_base_matrix, x_labels, read_pair_info=read_pair_info),
         PerSequenceGCContent.from_qc_metrics(
@@ -2131,7 +2599,7 @@ def calculate_stats(
         filename: str,
         metrics: QCMetrics,
         per_tile_quality: PerTileQuality,
-        sequence_duplication: SequenceDuplication,
+        sequence_duplication: OverrepresentedSequences,
         dedup_estimator: DedupEstimator,
         nanostats: NanoStats,
         adapters: List[Adapter],
@@ -2140,7 +2608,7 @@ def calculate_stats(
         insert_size_metrics: Optional[InsertSizeMetrics] = None,
         metrics_reverse: Optional[QCMetrics] = None,
         per_tile_quality_reverse: Optional[PerTileQuality] = None,
-        sequence_duplication_reverse: Optional[SequenceDuplication] = None,
+        sequence_duplication_reverse: Optional[OverrepresentedSequences] = None,
         graph_resolution: int = 200,
         fraction_threshold: float = DEFAULT_FRACTION_THRESHOLD,
         min_threshold: int = DEFAULT_MIN_THRESHOLD,
@@ -2203,3 +2671,39 @@ def calculate_stats(
         ))
     modules.sort(key=module_sort_key)
     return modules
+
+
+def _file_namify(
+        name: str,
+        replacement_char: str = "",
+        acceptable_chars=string.ascii_letters + string.digits + "_") -> str:
+    """Convert a name to a valid filename"""
+    # Horribly inefficient, but given the tiny amount of data, not
+    # important.
+    name = name.replace(" ", "_")
+    name = name.replace("%", "percent")
+    return "".join(
+        char if char in acceptable_chars else replacement_char
+        for char in name
+    )
+
+
+def pack_module_svgs(modules: List[ReportModule], output_zip: str):
+    all_plots: List[pygal.Graph] = []
+    for module in modules:
+        all_plots.extend(module.plots())
+    os.makedirs(os.path.dirname(output_zip), exist_ok=True)
+    with zipfile.ZipFile(output_zip, mode="w") as z:
+        for plot in all_plots:
+            plot.config.disable_xml_declaration = False
+            try:
+                plot_data = plot.render(is_unicode=False)
+            except Exception:  # Not sure which errors pygal will throw.
+                continue
+            zip_info = zipfile.ZipInfo(
+                filename=_file_namify(plot.config.title) + ".svg",
+                date_time=(1980, 1, 1, 0, 0, 0)  # Timestamp 0
+            )
+            z.writestr(zip_info, plot_data,
+                       compress_type=zipfile.ZIP_DEFLATED,
+                       compresslevel=6)

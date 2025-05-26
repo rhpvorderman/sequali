@@ -103,3 +103,14 @@ tr:hover {
     max-height: 35.75em;
     overflow-y: scroll;
 }
+
+.image_column {
+    float: left;
+    width: 49%;
+    padding: 1px;
+}
+.image_row::after {
+    content: "";
+    clear: both;
+    display: table;
+}
