@@ -10,7 +10,7 @@ Changelog
 version 1.0.0
 ------------------
 This release addresses part of the received feedback after Sequali's
-publication. The application is mature enough to warrant a 1.0.0 release.
+publication.
 
 + Python 3.13 support was added.
 + Python 3.8 and 3.9 are no longer supported.
