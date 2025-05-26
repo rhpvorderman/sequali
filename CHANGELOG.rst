@@ -7,6 +7,12 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 1.0.1
+------------------
++ Fix a configuration issue where on later setuptools versions wheels would be
+  compiled without optimization flags, leading to much degraded performance.
+  This only affected PyPI wheels and version 1.0.0 has been yanked from PyPI.
+
 version 1.0.0
 ------------------
 This release addresses part of the received feedback after Sequali's
