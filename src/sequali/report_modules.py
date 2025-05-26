@@ -1403,7 +1403,13 @@ class AdapterContent(ReportModule):
             <p class="explanation">For illumina short reads, the last part of
             the graph will be flat as the 12&#8239;bp probes cannot be found in
             the last 11 base pairs.</p>
+            <p>Adapter counts are accumulated towards the start for front
+            (5') adapters and towards the end for end (3') adapters.</p>
             {figurize_plot(self.main_plot())}
+            <p>For the reads start and end plots, only adapters found in the
+            first and last {len(self.end_adapter_content[0][1])} bp are shown.
+            All adapter counts are accumulated towards the start and end
+            respectively.</p>
             {plots_side_by_side(
                 figurize_plot(self.front_plot()),
                 figurize_plot(self.end_plot()),
