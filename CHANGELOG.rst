@@ -7,6 +7,10 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+develop
+------------------
++ Require at least setuptools version 77 for building the package.
+
 version 1.0.1
 ------------------
 + Fix a configuration issue where on later setuptools versions wheels would be
