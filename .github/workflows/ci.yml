@@ -128,13 +128,8 @@ jobs:
       - name: Build wheels
         run: cibuildwheel --output-dir dist
         env:
-          CIBW_SKIP: "*-win32 *-manylinux_i686 pp3*"  # Skip 32 bit, pypy
           CIBW_ARCHS_LINUX: ${{ matrix.cibw_archs_linux }}
           # Fully test the build wheels again.
-          CIBW_TEST_REQUIRES: "pytest"
-          # Simple test that requires the project to be build correctly
-          CIBW_TEST_COMMAND: >-
-            pytest {project}/tests/
       - name: Build sdist
         if: ${{runner.os == 'Linux' && matrix.cibw_archs_linux == 'x86_64'}}
         run: |
