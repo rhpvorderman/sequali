@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=60", "setuptools-scm>=8.0", "wheel"]
+requires = ["setuptools>=77", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,7 +17,7 @@ keywords=[
     "illumina",
 ]
 readme = "README.rst"
-license = {text = "AGPL-v3.0"}
+license = "AGPL-3.0-or-later"
 classifiers = [
         "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: 3",
@@ -26,7 +26,6 @@ classifiers = [
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
         "Development Status :: 5 - Production/Stable",
-        "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 requires-python = ">=3.10"
@@ -64,3 +63,15 @@ sequali = [
 
 [tool.setuptools_scm]
 write_to = "src/sequali/_version.py"
+
+[tool.cibuildwheel.linux.environment]
+CFLAGS = "-O3 -DNDEBUG"
+
+[tool.cibuildwheel.macos.environment]
+CFLAGS = "-O3 -DNDEBUG"
+
+[tool.cibuildwheel]
+test-requires = "pytest"
+test-command = "pytest {project}/tests/"
+skip =  "*-win32 *-manylinux_i686 pp3*"  # Skip 32 bit, pypy
+build-verbosity = 1
