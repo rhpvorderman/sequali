@@ -3187,7 +3187,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     double *restrict error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
     const uint8_t *restrict qualities_ptr = qualities;
-    const uint8_t *qualities_unroll_end = qualities_end - 1;
+    const uint8_t *qualities_unroll_end = qualities_end - 3;
     while (qualities_ptr < qualities_unroll_end) {
         uint8_t phred0 = qualities_ptr[0] - phred_offset;
         uint8_t phred1 = qualities_ptr[1] - phred_offset;

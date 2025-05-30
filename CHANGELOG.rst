@@ -9,6 +9,7 @@ Changelog
 
 develop
 ------------------
++ Fix heap overflow issue caused by a wrong pointer offset.
 + Require at least setuptools version 77 for building the package.
 
 version 1.0.1
