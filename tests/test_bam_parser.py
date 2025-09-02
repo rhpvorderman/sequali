@@ -165,3 +165,10 @@ def test_bam_parser_skip_secondary_supplementary():
         assert len(records) == 2
         assert records[0].name() == "unmapped"
         assert records[1].name() == "everything_but_secondary_and_supplementary"
+
+
+def test_bam_parser_secondary_alignment_chunks():
+    with xopen.xopen(DATA / "secondary_alignment.bam", "rb") as f:
+        parser = BamParser(f)
+        for records in parser:
+            pass
