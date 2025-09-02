@@ -1525,6 +1525,7 @@ BamParser__next__(BamParser *self)
     record_start = self->read_in_buffer;
     buffer_end = record_start + leftover_size;
     size_t parsed_records = 0;
+    size_t skipped_records = 0;
     PyObject *read_data_obj = NULL;
     struct QCModuleState *state = get_qc_module_state_from_obj(self);
     if (state == NULL) {
@@ -1532,7 +1533,7 @@ BamParser__next__(BamParser *self)
     }
     PyTypeObject *FastqRecordArrayView_Type = state->FastqRecordArrayView_Type;
 
-    while (parsed_records == 0) {
+    while (parsed_records + skipped_records == 0) {
         /* Keep expanding input buffer until at least one record is parsed */
         size_t read_in_size;
         leftover_size = buffer_end - record_start;
@@ -1614,9 +1615,19 @@ BamParser__next__(BamParser *self)
                 Py_DECREF(old_read_data_obj);
                 return NULL;
             }
-            memcpy(PyBytes_AsString(read_data_obj),
-                   PyBytes_AsString(old_read_data_obj),
-                   PyBytes_Size(old_read_data_obj));
+            uint8_t *read_data_obj_ptr =
+                (uint8_t *)PyBytes_AsString(read_data_obj);
+            uint8_t *old_read_data_obj_ptr =
+                (uint8_t *)PyBytes_AsString(old_read_data_obj);
+            Py_ssize_t old_read_data_size = PyBytes_Size(old_read_data_obj);
+            memcpy(read_data_obj_ptr, old_read_data_obj_ptr, old_read_data_size);
+
+            /* Adjust FastqMeta relative to the object pointer. */
+            for (size_t i = 0; i < parsed_records; i++) {
+                struct FastqMeta *meta = self->meta_buffer + i;
+                intptr_t offset = meta->record_start - old_read_data_obj_ptr;
+                meta->record_start = read_data_obj_ptr + offset;
+            }
             Py_DECREF(old_read_data_obj);
         }
         uint8_t *read_data_record_start =
@@ -1635,6 +1646,7 @@ BamParser__next__(BamParser *self)
             if (header->flag & BAM_EXCLUDE_FLAGS) {
                 // Skip excluded records such as secondary and supplementary alignments.
                 record_start = record_end;
+                skipped_records += 1;
                 continue;
             }
             uint8_t *bam_name_start =
