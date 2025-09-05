@@ -9,6 +9,7 @@ Changelog
 
 develop
 ------------------
++ Raise a warning on wrongly formatted ``pi`` tags rather than an error.
 + Fix issue where too many secondary and supplementary reads in a row would 
   crash Sequali.
 + Fix heap overflow issue caused by a wrong pointer offset.
