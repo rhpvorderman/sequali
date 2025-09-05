@@ -1990,8 +1990,6 @@ class NanoStatsReport(ReportModule):
         for readinfo in nanostats.nano_info_iterator():
             if readinfo.parent_id_hash:
                 reads_with_parent += 1
-            relative_start_time = readinfo.start_time - run_start_time
-            timeslot = relative_start_time // time_interval
             length = readinfo.length
             cumulative_error_rate = readinfo.cumulative_error_rate
             channel_id = readinfo.channel_id
@@ -2001,10 +1999,13 @@ class NanoStatsReport(ReportModule):
             else:
                 phred = 0
             phred_index = min(phred, 47) >> 2
-            time_active_slots_sets[timeslot].add(channel_id)
-            time_bases[timeslot] += length
-            time_reads[timeslot] += 1
-            time_qualities[timeslot][phred_index] += 1
+            if readinfo.start_time:  # if 0, no st tag was found.
+                relative_start_time = readinfo.start_time - run_start_time
+                timeslot = relative_start_time // time_interval
+                time_active_slots_sets[timeslot].add(channel_id)
+                time_bases[timeslot] += length
+                time_reads[timeslot] += 1
+                time_qualities[timeslot][phred_index] += 1
             per_channel_bases[channel_id] += length
             per_channel_cumulative_error[channel_id] += cumulative_error_rate
             read_duration = readinfo.duration
