@@ -9,6 +9,8 @@ Changelog
 
 develop
 ------------------
++ Fix issue where too many secondary and supplementary reads in a row would 
+  crash Sequali.
 + Fix heap overflow issue caused by a wrong pointer offset.
 + Require at least setuptools version 77 for building the package.
 
