@@ -5262,14 +5262,15 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
             // -3 for tag id, typecode. -1 for terminating 0.
             size_t value_length = this_tag_length - 4;
             if (value_length != 36) {
-                PyErr_Format(PyExc_RuntimeError,
-                             "pi tag should have a valid uuid4 format with 36 "
-                             "characters. "
-                             " Counted %zu.",
-                             value_length);
-                return -1;
+                PyErr_WarnFormat(
+                    PyExc_UserWarning, 1,
+                    "pi tag should have a valid uuid4 format with 36 "
+                    "characters. Counted %zu. Skipping tag.",
+                    value_length);
             }
-            info->parent_id_hash = uuid4_hash((char *)value);
+            else {
+                info->parent_id_hash = uuid4_hash((char *)value);
+            }
         }
         tags = tags + this_tag_length;
         tags_length -= this_tag_length;
