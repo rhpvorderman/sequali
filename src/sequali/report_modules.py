@@ -739,18 +739,20 @@ class PerPositionMeanQualityAndSpread(ReportModule):
     def to_html(self):
         return f"""
             {html_header(
-            "Per position quality percentiles (approximation)", 1,
-                         self.read_pair_info)}
+                "Per position quality percentiles (approximation)", 1,
+                self.read_pair_info)}
             <p class="explanation">Shows the mean for all bases and the means
             of the lowest and
             highest percentiles to indicate the spread. Since the graph is
             based on the binned phreds, rather than exact phreds, it is
             an approximation.</p>
             {figurize_plot(self.plot())}
-            {plots_side_by_side(
-                figurize_plot(self.front_plot()),
-                figurize_plot(self.end_plot()),
-            )}
+            {
+                plots_side_by_side(
+                    figurize_plot(self.front_plot()),
+                    figurize_plot(self.end_plot()),
+                )
+            }
         """
 
     def plots(self) -> List[pygal.Graph]:
@@ -952,10 +954,12 @@ class PerBaseQualityScoreDistribution(ReportModule):
             {html_header("Per position quality score distribution",
                          1, self.read_pair_info)}
             {figurize_plot(self.main_plot())}
-            {plots_side_by_side(
-                figurize_plot(self.front_anchored_plot()),
-                figurize_plot(self.end_anchored_plot()),
-            )}
+            {
+                plots_side_by_side(
+                    figurize_plot(self.front_anchored_plot()),
+                    figurize_plot(self.end_anchored_plot()),
+                )
+            }
         """
 
     def plots(self) -> List[pygal.Graph]:
@@ -1125,10 +1129,12 @@ class PerPositionBaseContent(ReportModule):
              {html_header("Per position base content", 1,
                           self.read_pair_info)}
              {figurize_plot(self.main_plot())}
-             {plots_side_by_side(
-                figurize_plot(self.front_plot()),
-                figurize_plot(self.end_plot()),
-             )}
+             {
+                plots_side_by_side(
+                    figurize_plot(self.front_plot()),
+                    figurize_plot(self.end_plot()),
+                )
+             }
         """
 
     def plots(self) -> List[pygal.Graph]:
@@ -1397,7 +1403,9 @@ class AdapterContent(ReportModule):
             <p class="explanation">For nanopore the adapter mix (AMX) and
             ligation kit have overlapping adapter sequences and are therefore
             indistinguishable. Please consult the
-            <a href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits">
+            <a
+            href="https://help.nanoporetech.com/en/articles/6632917-what-are-the-adapter-sequences-used-in-the-kits"
+            >
             nanopore documentation</a> for more information which adapters are
             used by your kit.</p>
             <p class="explanation">For illumina short reads, the last part of
