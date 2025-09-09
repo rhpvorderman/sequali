@@ -6014,6 +6014,7 @@ ImportClassFromModule(const char *module_name, const char *class_name)
         return NULL;
     }
     PyObject *type_object = PyObject_GetAttrString(module, class_name);
+    Py_DECREF(module);
     if (type_object == NULL) {
         return NULL;
     }
@@ -6094,7 +6095,6 @@ _qc_exec(PyObject *module)
         if (tp == NULL) {
             return -1;
         }
-        Py_INCREF((PyObject *)tp);
         address[0] = tp;
     }
 
@@ -6218,7 +6218,7 @@ _qc_clear(PyObject *mod)
     size_t number_of_types =
         sizeof(struct QCModuleState) / sizeof(PyTypeObject *);
     for (size_t i = 0; i < number_of_types; i++) {
-        Py_DECREF(mod_state_types[i]);
+        Py_XDECREF(mod_state_types[i]);
         mod_state_types[i] = NULL;
     }
     return 0;
