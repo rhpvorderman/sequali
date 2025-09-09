@@ -944,12 +944,6 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
-static PyObject *
-FastqParser__iter__(PyObject *self)
-{
-    return Py_NewRef(self);
-}
-
 static inline bool
 buffer_contains_fastq(const uint8_t *buffer, size_t buffer_size)
 {
@@ -1235,7 +1229,7 @@ static PyMethodDef FastqParser_methods[] = {
 static PyType_Slot FastqParser_slots[] = {
     {Py_tp_dealloc, (destructor)FastqParser_dealloc},
     {Py_tp_new, FastqParser__new__},
-    {Py_tp_iter, FastqParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, FastqParser__next__},
     {Py_tp_methods, FastqParser_methods},
     {0, NULL},
@@ -1493,12 +1487,6 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     return (PyObject *)self;
 }
 
-static PyObject *
-BamParser__iter__(BamParser *self)
-{
-    return Py_NewRef(self);
-}
-
 struct BamRecordHeader {
     uint32_t block_size;
     int32_t reference_id;
@@ -1722,7 +1710,7 @@ static PyMemberDef BamParser_members[] = {
 static PyType_Slot BamParser_slots[] = {
     {Py_tp_dealloc, (destructor)BamParser_dealloc},
     {Py_tp_new, BamParser__new__},
-    {Py_tp_iter, BamParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, BamParser__next__},
     {Py_tp_members, BamParser_members},
     {0, NULL},
@@ -4950,12 +4938,6 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
 }
 
 static PyObject *
-NanoStatsIterator__iter__(NanoStatsIterator *self)
-{
-    return Py_NewRef(self);
-}
-
-static PyObject *
 NanoStatsIterator__next__(NanoStatsIterator *self)
 {
     size_t current_pos = self->current_pos;
@@ -4975,7 +4957,7 @@ NanoStatsIterator__next__(NanoStatsIterator *self)
 
 static PyType_Slot NanoStatsIterator_slots[] = {
     {Py_tp_dealloc, (destructor)NanoStatsIterator_dealloc},
-    {Py_tp_iter, (iternextfunc)NanoStatsIterator__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, (iternextfunc)NanoStatsIterator__next__},
     {0, NULL},
 };
