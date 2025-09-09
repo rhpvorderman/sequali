@@ -602,8 +602,7 @@ FastqRecordArrayView_FromPointerSizeAndObject(struct FastqMeta *records,
     if (records != NULL) {
         memcpy(self->records, records, size);
     }
-    Py_INCREF(obj);
-    self->obj = obj;
+    self->obj = Py_NewRef(obj);
     return (PyObject *)self;
 }
 
@@ -941,16 +940,14 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     return (PyObject *)self;
 }
 
 static PyObject *
 FastqParser__iter__(PyObject *self)
 {
-    Py_INCREF(self);
-    return self;
+    return Py_NewRef(self);
 }
 
 static inline bool
@@ -1491,8 +1488,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     self->header = header;
     return (PyObject *)self;
 }
@@ -1500,8 +1496,7 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 static PyObject *
 BamParser__iter__(BamParser *self)
 {
-    Py_INCREF((PyObject *)self);
-    return (PyObject *)self;
+    return Py_NewRef(self);
 }
 
 struct BamRecordHeader {
@@ -2938,8 +2933,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         if (counts_reverse == NULL) {
             return NULL;
         }
-        PyObject *adapter = PyTuple_GetItem(self->adapters, i);
-        Py_INCREF(adapter);
+        PyObject *adapter = Py_NewRef(PyTuple_GetItem(self->adapters, i));
         PyObject *tup = PyTuple_New(3);
         PyTuple_SetItem(tup, 0, adapter);
         PyTuple_SetItem(tup, 1, counts_forward);
@@ -4951,16 +4945,14 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
     self->nano_infos = nano_stats->nano_infos;
     self->number_of_reads = nano_stats->number_of_reads;
     self->current_pos = 0;
-    Py_INCREF((PyObject *)nano_stats);
-    self->nano_stats = (PyObject *)nano_stats;
+    self->nano_stats = Py_NewRef(nano_stats);
     return (PyObject *)self;
 }
 
 static PyObject *
 NanoStatsIterator__iter__(NanoStatsIterator *self)
 {
-    Py_INCREF((PyObject *)self);
-    return (PyObject *)self;
+    return Py_NewRef(self);
 }
 
 static PyObject *
