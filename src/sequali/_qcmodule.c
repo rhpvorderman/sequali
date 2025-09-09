@@ -126,6 +126,10 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize,
     if (array == NULL) {
         return NULL;
     }
+    if (buffersize == 0) {
+        /* Return empty array */
+        return array;
+    }
     /* We cannot paste into the array directly, so use a temporary memoryview */
     PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, PyBUF_READ);
     if (tmp == NULL) {
@@ -598,8 +602,7 @@ FastqRecordArrayView_FromPointerSizeAndObject(struct FastqMeta *records,
     if (records != NULL) {
         memcpy(self->records, records, size);
     }
-    Py_INCREF(obj);
-    self->obj = obj;
+    self->obj = Py_NewRef(obj);
     return (PyObject *)self;
 }
 
@@ -937,16 +940,8 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     return (PyObject *)self;
-}
-
-static PyObject *
-FastqParser__iter__(PyObject *self)
-{
-    Py_INCREF(self);
-    return self;
 }
 
 static inline bool
@@ -1234,7 +1229,7 @@ static PyMethodDef FastqParser_methods[] = {
 static PyType_Slot FastqParser_slots[] = {
     {Py_tp_dealloc, (destructor)FastqParser_dealloc},
     {Py_tp_new, FastqParser__new__},
-    {Py_tp_iter, FastqParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, FastqParser__next__},
     {Py_tp_methods, FastqParser_methods},
     {0, NULL},
@@ -1487,16 +1482,8 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     self->header = header;
-    return (PyObject *)self;
-}
-
-static PyObject *
-BamParser__iter__(BamParser *self)
-{
-    Py_INCREF((PyObject *)self);
     return (PyObject *)self;
 }
 
@@ -1723,7 +1710,7 @@ static PyMemberDef BamParser_members[] = {
 static PyType_Slot BamParser_slots[] = {
     {Py_tp_dealloc, (destructor)BamParser_dealloc},
     {Py_tp_new, BamParser__new__},
-    {Py_tp_iter, BamParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, BamParser__next__},
     {Py_tp_members, BamParser_members},
     {0, NULL},
@@ -2934,8 +2921,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         if (counts_reverse == NULL) {
             return NULL;
         }
-        PyObject *adapter = PyTuple_GetItem(self->adapters, i);
-        Py_INCREF(adapter);
+        PyObject *adapter = Py_NewRef(PyTuple_GetItem(self->adapters, i));
         PyObject *tup = PyTuple_New(3);
         PyTuple_SetItem(tup, 0, adapter);
         PyTuple_SetItem(tup, 1, counts_forward);
@@ -4942,19 +4928,12 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    self->NanoporeReadInfo_Type = state->NanoporeReadInfo_Type;
+    self->NanoporeReadInfo_Type =
+        (PyTypeObject *)Py_NewRef(state->NanoporeReadInfo_Type);
     self->nano_infos = nano_stats->nano_infos;
     self->number_of_reads = nano_stats->number_of_reads;
     self->current_pos = 0;
-    Py_INCREF((PyObject *)nano_stats);
-    self->nano_stats = (PyObject *)nano_stats;
-    return (PyObject *)self;
-}
-
-static PyObject *
-NanoStatsIterator__iter__(NanoStatsIterator *self)
-{
-    Py_INCREF((PyObject *)self);
+    self->nano_stats = Py_NewRef(nano_stats);
     return (PyObject *)self;
 }
 
@@ -4978,7 +4957,7 @@ NanoStatsIterator__next__(NanoStatsIterator *self)
 
 static PyType_Slot NanoStatsIterator_slots[] = {
     {Py_tp_dealloc, (destructor)NanoStatsIterator_dealloc},
-    {Py_tp_iter, (iternextfunc)NanoStatsIterator__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, (iternextfunc)NanoStatsIterator__next__},
     {0, NULL},
 };
@@ -6014,6 +5993,7 @@ ImportClassFromModule(const char *module_name, const char *class_name)
         return NULL;
     }
     PyObject *type_object = PyObject_GetAttrString(module, class_name);
+    Py_DECREF(module);
     if (type_object == NULL) {
         return NULL;
     }
@@ -6044,11 +6024,10 @@ python_module_add_type_spec(PyObject *module, PyType_Spec *spec)
         return NULL;
     }
 
-    if (PyModule_AddObject(module, class_name, (PyObject *)type) != 0) {
+    if (PyModule_AddObjectRef(module, class_name, (PyObject *)type) != 0) {
         Py_DECREF(type);
         return NULL;
     }
-    Py_INCREF((PyObject *)type);
     return type;
 }
 
@@ -6095,7 +6074,6 @@ _qc_exec(PyObject *module)
         if (tp == NULL) {
             return -1;
         }
-        Py_INCREF((PyObject *)tp);
         address[0] = tp;
     }
 
@@ -6219,7 +6197,7 @@ _qc_clear(PyObject *mod)
     size_t number_of_types =
         sizeof(struct QCModuleState) / sizeof(PyTypeObject *);
     for (size_t i = 0; i < number_of_types; i++) {
-        Py_DECREF(mod_state_types[i]);
+        Py_XDECREF(mod_state_types[i]);
         mod_state_types[i] = NULL;
     }
     return 0;

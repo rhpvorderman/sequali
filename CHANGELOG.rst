@@ -9,6 +9,7 @@ Changelog
 
 develop
 ------------------
++ Fix various reference counting errors.
 + Fix issue where a missing ``st`` tag causes an IndexError.
 + Raise a warning on wrongly formatted ``pi`` tags rather than an error.
 + Fix issue where too many secondary and supplementary reads in a row would 
