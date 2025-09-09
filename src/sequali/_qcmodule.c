@@ -126,6 +126,10 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize,
     if (array == NULL) {
         return NULL;
     }
+    if (buffersize == 0) {
+        /* Return empty array */
+        return array;
+    }
     /* We cannot paste into the array directly, so use a temporary memoryview */
     PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, PyBUF_READ);
     if (tmp == NULL) {
@@ -598,8 +602,7 @@ FastqRecordArrayView_FromPointerSizeAndObject(struct FastqMeta *records,
     if (records != NULL) {
         memcpy(self->records, records, size);
     }
-    Py_INCREF(obj);
-    self->obj = obj;
+    self->obj = Py_NewRef(obj);
     return (PyObject *)self;
 }
 
@@ -937,16 +940,8 @@ FastqParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     return (PyObject *)self;
-}
-
-static PyObject *
-FastqParser__iter__(PyObject *self)
-{
-    Py_INCREF(self);
-    return self;
 }
 
 static inline bool
@@ -1234,7 +1229,7 @@ static PyMethodDef FastqParser_methods[] = {
 static PyType_Slot FastqParser_slots[] = {
     {Py_tp_dealloc, (destructor)FastqParser_dealloc},
     {Py_tp_new, FastqParser__new__},
-    {Py_tp_iter, FastqParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, FastqParser__next__},
     {Py_tp_methods, FastqParser_methods},
     {0, NULL},
@@ -1487,16 +1482,8 @@ BamParser__new__(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->read_in_size = read_in_size;
     self->meta_buffer = NULL;
     self->meta_buffer_size = 0;
-    Py_INCREF(file_obj);
-    self->file_obj = file_obj;
+    self->file_obj = Py_NewRef(file_obj);
     self->header = header;
-    return (PyObject *)self;
-}
-
-static PyObject *
-BamParser__iter__(BamParser *self)
-{
-    Py_INCREF((PyObject *)self);
     return (PyObject *)self;
 }
 
@@ -1525,6 +1512,7 @@ BamParser__next__(BamParser *self)
     record_start = self->read_in_buffer;
     buffer_end = record_start + leftover_size;
     size_t parsed_records = 0;
+    size_t skipped_records = 0;
     PyObject *read_data_obj = NULL;
     struct QCModuleState *state = get_qc_module_state_from_obj(self);
     if (state == NULL) {
@@ -1532,7 +1520,7 @@ BamParser__next__(BamParser *self)
     }
     PyTypeObject *FastqRecordArrayView_Type = state->FastqRecordArrayView_Type;
 
-    while (parsed_records == 0) {
+    while (parsed_records + skipped_records == 0) {
         /* Keep expanding input buffer until at least one record is parsed */
         size_t read_in_size;
         leftover_size = buffer_end - record_start;
@@ -1614,9 +1602,19 @@ BamParser__next__(BamParser *self)
                 Py_DECREF(old_read_data_obj);
                 return NULL;
             }
-            memcpy(PyBytes_AsString(read_data_obj),
-                   PyBytes_AsString(old_read_data_obj),
-                   PyBytes_Size(old_read_data_obj));
+            uint8_t *read_data_obj_ptr =
+                (uint8_t *)PyBytes_AsString(read_data_obj);
+            uint8_t *old_read_data_obj_ptr =
+                (uint8_t *)PyBytes_AsString(old_read_data_obj);
+            Py_ssize_t old_read_data_size = PyBytes_Size(old_read_data_obj);
+            memcpy(read_data_obj_ptr, old_read_data_obj_ptr, old_read_data_size);
+
+            /* Adjust FastqMeta relative to the object pointer. */
+            for (size_t i = 0; i < parsed_records; i++) {
+                struct FastqMeta *meta = self->meta_buffer + i;
+                intptr_t offset = meta->record_start - old_read_data_obj_ptr;
+                meta->record_start = read_data_obj_ptr + offset;
+            }
             Py_DECREF(old_read_data_obj);
         }
         uint8_t *read_data_record_start =
@@ -1635,6 +1633,7 @@ BamParser__next__(BamParser *self)
             if (header->flag & BAM_EXCLUDE_FLAGS) {
                 // Skip excluded records such as secondary and supplementary alignments.
                 record_start = record_end;
+                skipped_records += 1;
                 continue;
             }
             uint8_t *bam_name_start =
@@ -1711,7 +1710,7 @@ static PyMemberDef BamParser_members[] = {
 static PyType_Slot BamParser_slots[] = {
     {Py_tp_dealloc, (destructor)BamParser_dealloc},
     {Py_tp_new, BamParser__new__},
-    {Py_tp_iter, BamParser__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, BamParser__next__},
     {Py_tp_members, BamParser_members},
     {0, NULL},
@@ -2922,8 +2921,7 @@ AdapterCounter_get_counts(AdapterCounter *self, PyObject *Py_UNUSED(ignore))
         if (counts_reverse == NULL) {
             return NULL;
         }
-        PyObject *adapter = PyTuple_GetItem(self->adapters, i);
-        Py_INCREF(adapter);
+        PyObject *adapter = Py_NewRef(PyTuple_GetItem(self->adapters, i));
         PyObject *tup = PyTuple_New(3);
         PyTuple_SetItem(tup, 0, adapter);
         PyTuple_SetItem(tup, 1, counts_forward);
@@ -3187,7 +3185,7 @@ PerTileQuality_add_meta(PerTileQuality *self, struct FastqMeta *meta)
     double *restrict error_cursor = total_errors;
     const uint8_t *qualities_end = qualities + sequence_length;
     const uint8_t *restrict qualities_ptr = qualities;
-    const uint8_t *qualities_unroll_end = qualities_end - 1;
+    const uint8_t *qualities_unroll_end = qualities_end - 3;
     while (qualities_ptr < qualities_unroll_end) {
         uint8_t phred0 = qualities_ptr[0] - phred_offset;
         uint8_t phred1 = qualities_ptr[1] - phred_offset;
@@ -4930,19 +4928,12 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    self->NanoporeReadInfo_Type = state->NanoporeReadInfo_Type;
+    self->NanoporeReadInfo_Type =
+        (PyTypeObject *)Py_NewRef(state->NanoporeReadInfo_Type);
     self->nano_infos = nano_stats->nano_infos;
     self->number_of_reads = nano_stats->number_of_reads;
     self->current_pos = 0;
-    Py_INCREF((PyObject *)nano_stats);
-    self->nano_stats = (PyObject *)nano_stats;
-    return (PyObject *)self;
-}
-
-static PyObject *
-NanoStatsIterator__iter__(NanoStatsIterator *self)
-{
-    Py_INCREF((PyObject *)self);
+    self->nano_stats = Py_NewRef(nano_stats);
     return (PyObject *)self;
 }
 
@@ -4966,7 +4957,7 @@ NanoStatsIterator__next__(NanoStatsIterator *self)
 
 static PyType_Slot NanoStatsIterator_slots[] = {
     {Py_tp_dealloc, (destructor)NanoStatsIterator_dealloc},
-    {Py_tp_iter, (iternextfunc)NanoStatsIterator__iter__},
+    {Py_tp_iter, PyObject_SelfIter},
     {Py_tp_iternext, (iternextfunc)NanoStatsIterator__next__},
     {0, NULL},
 };
@@ -5250,14 +5241,15 @@ TagInfo_from_tags(const uint8_t *tags, size_t tags_length, struct TagInfo *info)
             // -3 for tag id, typecode. -1 for terminating 0.
             size_t value_length = this_tag_length - 4;
             if (value_length != 36) {
-                PyErr_Format(PyExc_RuntimeError,
-                             "pi tag should have a valid uuid4 format with 36 "
-                             "characters. "
-                             " Counted %zu.",
-                             value_length);
-                return -1;
+                PyErr_WarnFormat(
+                    PyExc_UserWarning, 1,
+                    "pi tag should have a valid uuid4 format with 36 "
+                    "characters. Counted %zu. Skipping tag.",
+                    value_length);
             }
-            info->parent_id_hash = uuid4_hash((char *)value);
+            else {
+                info->parent_id_hash = uuid4_hash((char *)value);
+            }
         }
         tags = tags + this_tag_length;
         tags_length -= this_tag_length;
@@ -6001,6 +5993,7 @@ ImportClassFromModule(const char *module_name, const char *class_name)
         return NULL;
     }
     PyObject *type_object = PyObject_GetAttrString(module, class_name);
+    Py_DECREF(module);
     if (type_object == NULL) {
         return NULL;
     }
@@ -6031,11 +6024,10 @@ python_module_add_type_spec(PyObject *module, PyType_Spec *spec)
         return NULL;
     }
 
-    if (PyModule_AddObject(module, class_name, (PyObject *)type) != 0) {
+    if (PyModule_AddObjectRef(module, class_name, (PyObject *)type) != 0) {
         Py_DECREF(type);
         return NULL;
     }
-    Py_INCREF((PyObject *)type);
     return type;
 }
 
@@ -6082,7 +6074,6 @@ _qc_exec(PyObject *module)
         if (tp == NULL) {
             return -1;
         }
-        Py_INCREF((PyObject *)tp);
         address[0] = tp;
     }
 
@@ -6206,7 +6197,7 @@ _qc_clear(PyObject *mod)
     size_t number_of_types =
         sizeof(struct QCModuleState) / sizeof(PyTypeObject *);
     for (size_t i = 0; i < number_of_types; i++) {
-        Py_DECREF(mod_state_types[i]);
+        Py_XDECREF(mod_state_types[i]);
         mod_state_types[i] = NULL;
     }
     return 0;

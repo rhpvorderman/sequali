@@ -7,6 +7,16 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version 1.0.2
+------------------
++ Fix various reference counting errors.
++ Fix issue where a missing ``st`` tag causes an IndexError.
++ Raise a warning on wrongly formatted ``pi`` tags rather than an error.
++ Fix issue where too many secondary and supplementary reads in a row would 
+  crash Sequali.
++ Fix heap overflow issue caused by a wrong pointer offset.
++ Require at least setuptools version 77 for building the package.
+
 version 1.0.1
 ------------------
 + Fix a configuration issue where on later setuptools versions wheels would be
