@@ -4946,7 +4946,8 @@ NanoStatsIterator_FromNanoStats(NanoStats *nano_stats)
     if (self == NULL) {
         return PyErr_NoMemory();
     }
-    self->NanoporeReadInfo_Type = state->NanoporeReadInfo_Type;
+    self->NanoporeReadInfo_Type =
+        (PyTypeObject *)Py_NewRef(state->NanoporeReadInfo_Type);
     self->nano_infos = nano_stats->nano_infos;
     self->number_of_reads = nano_stats->number_of_reads;
     self->current_pos = 0;
