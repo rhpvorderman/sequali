@@ -126,6 +126,10 @@ PythonArray_FromBuffer(char typecode, void *buffer, size_t buffersize,
     if (array == NULL) {
         return NULL;
     }
+    if (buffersize == 0) {
+        /* Return empty array */
+        return array;
+    }
     /* We cannot paste into the array directly, so use a temporary memoryview */
     PyObject *tmp = PyMemoryView_FromMemory(buffer, buffersize, PyBUF_READ);
     if (tmp == NULL) {
