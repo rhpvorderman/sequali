@@ -4272,6 +4272,7 @@ struct EstimatorEntry {
     // 32 bits allows storing 4 billion counts. This should never overflow in practice.
     uint32_t count;
 };
+#pragma pack()
 
 typedef struct _DedupEstimatorStruct {
     PyObject_HEAD
