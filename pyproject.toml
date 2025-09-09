@@ -73,5 +73,5 @@ CFLAGS = "-O3 -DNDEBUG"
 [tool.cibuildwheel]
 test-requires = "pytest"
 test-command = "pytest {project}/tests/"
-skip =  "*-win32 *-manylinux_i686 pp3*"  # Skip 32 bit, pypy
+skip =  "*-win32 *-manylinux_i686 pp3* cp3??t-*"   # Skip 32 bit, pypy
 build-verbosity = 1
