@@ -6044,11 +6044,10 @@ python_module_add_type_spec(PyObject *module, PyType_Spec *spec)
         return NULL;
     }
 
-    if (PyModule_AddObject(module, class_name, (PyObject *)type) != 0) {
+    if (PyModule_AddObjectRef(module, class_name, (PyObject *)type) != 0) {
         Py_DECREF(type);
         return NULL;
     }
-    Py_INCREF((PyObject *)type);
     return type;
 }
 
