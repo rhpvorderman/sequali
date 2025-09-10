@@ -9,6 +9,7 @@ Changelog
 
 version 1.0.2
 ------------------
++ Test on Python 3.14 and 3.14t.
 + Fix various reference counting errors.
 + Fix issue where a missing ``st`` tag causes an IndexError.
 + Raise a warning on wrongly formatted ``pi`` tags rather than an error.
