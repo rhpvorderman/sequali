@@ -47,7 +47,6 @@ jobs:
           - "3.12"
           - "3.13"
           - "3.14"
-          - "3.14t"
         os: ["ubuntu-latest"]
         include:
           # MacOS ARM m1
