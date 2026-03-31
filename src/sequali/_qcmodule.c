@@ -2646,6 +2646,11 @@ update_adapter_count_array(size_t position, size_t length, bitmask_t match,
                            AdapterSequence *adapter_sequences,
                            struct AdapterCounts *adapter_counter)
 {
+    if (adapter_sequences == NULL) {
+        /* This happens when we match by four and one of the adapter
+           sequences is an empty word.*/
+        return already_found;
+    }
     size_t adapter_index = 0;
     while (true) {
         AdapterSequence *adapter = adapter_sequences + adapter_index;
@@ -2690,7 +2695,7 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
         R |= init_mask;
         uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
         R &= bitmask[index];
-        if (R & found_mask) {
+        if UNLIKELY (R & found_mask) {
             already_found = update_adapter_count_array(
                 pos, sequence_length, R, already_found, adapter_sequences,
                 adapter_counter);
@@ -2698,12 +2703,72 @@ find_single_matcher(const uint8_t *sequence, size_t sequence_length,
     }
 }
 
-static void (*find_four_matchers)(const uint8_t *sequence, size_t sequence_length,
-                                  const bitmask_t *restrict init_masks,
-                                  const bitmask_t *restrict found_masks,
-                                  const bitmask_t (*by_four_bitmasks)[4],
-                                  AdapterSequence **adapter_sequences_store,
-                                  struct AdapterCounts *adapter_counter) = NULL;
+void
+find_four_matchers_default(const uint8_t *sequence, size_t sequence_length,
+                           const bitmask_t *restrict init_masks,
+                           const bitmask_t *restrict found_masks,
+                           const bitmask_t (*restrict by_four_bitmasks)[4],
+                           AdapterSequence **adapter_sequences_store,
+                           struct AdapterCounts *adapter_counter)
+{
+    bitmask_t found_mask0 = found_masks[0];
+    bitmask_t found_mask1 = found_masks[1];
+    bitmask_t found_mask2 = found_masks[2];
+    bitmask_t found_mask3 = found_masks[3];
+    bitmask_t init_mask0 = init_masks[0];
+    bitmask_t init_mask1 = init_masks[1];
+    bitmask_t init_mask2 = init_masks[2];
+    bitmask_t init_mask3 = init_masks[3];
+    bitmask_t R0 = 0;
+    bitmask_t R1 = 0;
+    bitmask_t R2 = 0;
+    bitmask_t R3 = 0;
+    bitmask_t already_found0 = 0;
+    bitmask_t already_found1 = 0;
+    bitmask_t already_found2 = 0;
+    bitmask_t already_found3 = 0;
+
+    for (size_t pos = 0; pos < sequence_length; pos++) {
+        R0 <<= 1;
+        R1 <<= 1;
+        R2 <<= 1;
+        R3 <<= 1;
+
+        R0 |= init_mask0;
+        R1 |= init_mask1;
+        R2 |= init_mask2;
+        R3 |= init_mask3;
+        uint8_t index = NUCLEOTIDE_TO_INDEX[sequence[pos]];
+        const bitmask_t *restrict bitmask = by_four_bitmasks[index];
+        R0 &= bitmask[0];
+        R1 &= bitmask[1];
+        R2 &= bitmask[2];
+        R3 &= bitmask[3];
+
+        if UNLIKELY (R0 & found_mask0 || R1 & found_mask1 ||
+                     R2 & found_mask2 || R3 & found_mask3) {
+            already_found0 = update_adapter_count_array(
+                pos, sequence_length, R0, already_found0,
+                adapter_sequences_store[0], adapter_counter);
+            already_found1 = update_adapter_count_array(
+                pos, sequence_length, R1, already_found1,
+                adapter_sequences_store[1], adapter_counter);
+            already_found2 = update_adapter_count_array(
+                pos, sequence_length, R2, already_found2,
+                adapter_sequences_store[2], adapter_counter);
+            already_found3 = update_adapter_count_array(
+                pos, sequence_length, R3, already_found3,
+                adapter_sequences_store[3], adapter_counter);
+        }
+    }
+}
+
+static void (*find_four_matchers)(
+    const uint8_t *sequence, size_t sequence_length,
+    const bitmask_t *restrict init_masks, const bitmask_t *restrict found_masks,
+    const bitmask_t (*by_four_bitmasks)[4],
+    AdapterSequence **adapter_sequences_store,
+    struct AdapterCounts *adapter_counter) = find_four_matchers_default;
 
 #if COMPILER_HAS_TARGETED_DISPATCH && BUILD_IS_X86_64
 __attribute__((__target__("avx2"))) static void
@@ -2741,7 +2806,7 @@ find_four_matchers_avx2(const uint8_t *sequence, size_t sequence_length,
            a 1 across the entire 256-bit vector. */
         int check_int =
             _mm256_movemask_epi8(_mm256_adds_epu8(check, _mm256_set1_epi8(127)));
-        if (check_int) {
+        if UNLIKELY (check_int) {
             bitmask_t Rray[4];
             _mm256_storeu_si256(((__m256i *)Rray), R);
 
@@ -2777,7 +2842,7 @@ find_four_matchers_init_func_ptr(void)
         find_four_matchers = find_four_matchers_avx2;
     }
     else {
-        find_four_matchers = NULL;
+        find_four_matchers = find_four_matchers_default;
     }
 }
 #endif

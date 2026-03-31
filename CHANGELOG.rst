@@ -7,6 +7,11 @@ Changelog
 .. This document is user facing. Please word the changes in such a way
 .. that users understand how the changes affect the new version.
 
+version develop
+------------------
++ Speed up the adapter finder module for non-avx2 targets.
+
+
 version 1.0.2
 ------------------
 + Test on Python 3.14.
