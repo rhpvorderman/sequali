@@ -301,3 +301,13 @@ def test_images_zip(tmp_path, testfiles):
         for info in z.infolist():
             assert info.filename.endswith(".svg")
             assert info.date_time == (1980, 1, 1, 0, 0, 0)
+
+
+def test_random_sequences(tmp_path):
+    # The test contains random sequences of increasing length. This allows
+    # for catching errors with incorrect memory allocations.
+    random_sequences = TEST_DATA / "random_seqs.fastq"
+    sys.argv = ["", "--dir", str(tmp_path), str(random_sequences)]
+    main()
+    random_seqs_json = tmp_path / "random_seqs.fastq.json"
+    assert random_seqs_json.exists()
