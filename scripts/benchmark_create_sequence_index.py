@@ -29,4 +29,4 @@ if __name__ == "__main__":
     print(f"total memory usage:\t"
           f"{(resource_usage.ru_maxrss - prior_mem_usage) / 1024:.2f} MiB")
     print(f"total kmers stored:\t{len(sequence_index):,}")
-    print(f"{resource_usage.ru_utime + resource_usage.ru_stime :.2f} seconds")
+    print(f"{resource_usage.ru_utime + resource_usage.ru_stime:.2f} seconds")
