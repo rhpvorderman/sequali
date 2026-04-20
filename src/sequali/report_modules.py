@@ -585,7 +585,7 @@ class SequenceLengthDistribution(ReportModule):
         for i, table in enumerate(table_iterator(base_count_tables, NUMBER_OF_NUCS)):
             base_counts[i + 1] = sum(table)
         previous_count = 0
-        for i in range(max_length, 0, -1):
+        for i in range(max_length, -1, -1):
             number_at_least = base_counts[i]
             sequence_lengths[i] = number_at_least - previous_count
             previous_count = number_at_least

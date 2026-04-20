@@ -311,3 +311,13 @@ def test_random_sequences(tmp_path):
     main()
     random_seqs_json = tmp_path / "random_seqs.fastq.json"
     assert random_seqs_json.exists()
+    with open(random_seqs_json) as f:
+        data = json.load(f)
+    summary = data["summary"]
+    assert summary["mean_length"] == 250.0
+    assert summary["minimum_length"] == 0
+    assert summary["maximum_length"] == 500
+    assert summary["total_reads"] == 501
+    assert summary["total_bases"] == 125250
+    assert summary["total_gc_bases"] == 62634
+    assert sum(data["sequence_length_distribution"]["counts"]) == 501

@@ -9,6 +9,8 @@ Changelog
 
 version develop
 ------------------
++ Fix off by one error in sequence lengths calculation that prevented sequences
+  of length 0 to be recorded.
 + Speed up the adapter finder module for non-avx2 targets.
 
 
