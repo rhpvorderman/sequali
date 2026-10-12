@@ -1041,14 +1041,23 @@ FastqParser_create_record_array(FastqParser *self, size_t min_records,
         Py_ssize_t actual_buffer_size = read_in_offset + read_bytes;
         if (actual_buffer_size < new_buffer_size) {
             PyObject *old_buffer_obj = new_buffer_obj;
+            uint8_t *old_start = (uint8_t *)PyBytes_AsString(old_buffer_obj);
             new_buffer_obj = PyBytes_FromStringAndSize(NULL, actual_buffer_size);
             if (new_buffer_obj == NULL) {
                 Py_DECREF(old_buffer_obj);
                 return NULL;
             }
-            memcpy(PyBytes_AsString(new_buffer_obj),
-                   PyBytes_AsString(old_buffer_obj), actual_buffer_size);
+            uint8_t *new_start = (uint8_t *)PyBytes_AsString(new_buffer_obj);
+            memcpy(new_start, old_start, actual_buffer_size);
             Py_DECREF(old_buffer_obj);
+
+            /* Change the already parsed records to point to the new buffer. */
+            struct FastqMeta *meta_buffer = self->meta_buffer;
+            for (size_t i = 0; i < parsed_records; i++) {
+                struct FastqMeta *record = meta_buffer + i;
+                intptr_t record_offset = record->record_start - old_start;
+                record->record_start = new_start + record_offset;
+            }
         }
         new_buffer = (uint8_t *)PyBytes_AsString(new_buffer_obj);
         new_buffer_size = actual_buffer_size;

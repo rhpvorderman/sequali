@@ -10,6 +10,9 @@ Changelog
 version develop
 ------------------
 + Speed up the adapter finder module for non-avx2 targets.
++ Fix a use-after-free in the FASTQ parser that could cause crashes or
+  garbled read names on paired-end data where R2 reads are longer than
+  R1 reads.
 
 
 version 1.0.2
